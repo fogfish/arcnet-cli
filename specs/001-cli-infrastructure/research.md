@@ -53,9 +53,11 @@ The user pointed to [`github.com/fogfish/iq`](https://github.com/fogfish/iq/tree
 
 ## Decision: GoReleaser configuration shape
 
-- **Decision**: Mirror the reference `.goreleaser.yaml` almost exactly: `go mod tidy` pre-hook, `CGO_ENABLED=0`, `goos: [linux, windows, darwin]` with `windows/arm64` ignored, binary-only archives, `checksums.txt`, ascending changelog excluding `^docs:`/`^test:`, and a `brews:` tap block pointed at this repo (owner `fogfish`, name `arcnet-cli`, binary `arc`).
+- **Decision**: Mirror the reference `.goreleaser.yaml` almost exactly: `go mod tidy` pre-hook, `CGO_ENABLED=0`, `goos: [linux, windows, darwin]` with `windows/arm64` ignored, binary-only archives, `checksums.txt`, ascending changelog excluding `^docs:`/`^test:`, and a `brews:` tap block pointed at this repo (owner `fogfish`, name `arcnet-cli`, binary `arc`). The config uses GoReleaser's `version: 2` schema (the current, non-deprecated shape — `archives[].formats` as a list, `snapshot.version_template`), and `goreleaser/goreleaser-action@v5`'s `version:` input MUST be pinned to a GoReleaser 2.x release/constraint (e.g. `"~> v2"`) to match; the action defaults to a `~> v1` constraint when unpinned, which cannot parse a `version: 2` file.
 - **Rationale**: The user explicitly asked to use the reference project as the setup pattern; constitution Principle XIII mandates GoReleaser plus (where the ecosystem has a package-manager convention) a Homebrew formula whose smoke test invokes `<binary> --version`.
-- **Alternatives considered**: Dropping the `brews:` block since it's a "SHOULD" not "MUST" — rejected in favor of matching the reference project 1:1 as instructed, since Homebrew is a valid, low-cost convention for this ecosystem and the constitution explicitly anticipates it.
+- **Alternatives considered**: Dropping the `brews:` block since it's a "SHOULD" not "MUST" — rejected in favor of matching the reference project 1:1 as instructed, since Homebrew is a valid, low-cost convention for this ecosystem and the constitution explicitly anticipates it. Leaving the action's `version:` input unpinned (relying on the action's default) — rejected after BUG-001: the default resolves to a `~> v1` constraint, incompatible with the `version: 2` config schema, causing the release step to fail on every CI run.
+
+**Bugfix**: 2026-07-01 — BUG-001 Recorded the GoReleaser major version (2.x) as an explicit decision and pinned it to the `goreleaser-action` step, closing the gap where the config schema version and the CI-installed binary version could silently diverge.
 
 ## Decision: Vulnerability scanning
 
