@@ -20,6 +20,10 @@ profile.cov
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
+# arc CLI binary and release artifacts
+/arc
+/dist/
+
 # Go workspace file
 go.work
 go.work.sum

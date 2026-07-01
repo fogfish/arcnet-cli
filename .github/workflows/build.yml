@@ -1,0 +1,50 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test -v -coverprofile=profile.cov $(go list ./... | grep -v /examples/)
+
+      - name: Report coverage
+        uses: shogo82148/actions-goveralls@v1
+        continue-on-error: true
+        with:
+          path-to-profile: profile.cov
+
+      - name: Determine version increment
+        id: version
+        uses: reecetech/version-increment@2023.10.2
+        with:
+          scheme: semver
+
+      - name: Tag release
+        run: |
+          git tag ${{ steps.version.outputs.version }}
+          git push origin ${{ steps.version.outputs.version }}
+
+      - name: Scan for vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+      - name: Release
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          args: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
