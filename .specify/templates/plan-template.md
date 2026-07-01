@@ -18,17 +18,17 @@
   the iteration process.
 -->
 
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]
+**Language/Version**: Go [version, e.g., 1.22 — match `go.mod`]
 
-**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]
+**Primary Dependencies**: `github.com/spf13/cobra`, `github.com/charmbracelet/lipgloss` [plus any feature-specific external client/SDK — check for an existing adapter first, Principle VII]
 
-**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
+**Storage**: [if applicable, e.g., local files under XDG config dir, a remote API, or N/A]
 
-**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]
+**Testing**: `go test ./...` with `github.com/fogfish/it/v2` for unit and colocated E2E tests (constitution Principles VI, VIII — no alternative assertion library)
 
-**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
+**Target Platform**: [OS/arch targets declared in `.goreleaser.yaml`, e.g., linux/darwin/windows amd64+arm64]
 
-**Project Type**: [e.g., library/cli/web-service/mobile-app/compiler/desktop-app or NEEDS CLARIFICATION]
+**Project Type**: Single Cobra CLI binary (constitution Principle III — no web/mobile split)
 
 **Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]
 
@@ -58,50 +58,32 @@ specs/[###-feature]/
 
 ### Source Code (repository root)
 <!--
-  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
+  ACTION REQUIRED: Expand the tree below with the concrete packages this
+  feature touches (real command/domain names). This project is a single
+  Cobra-based Go CLI (constitution Principle III) — there is no web/mobile
+  layout to choose between; only the internal package boundaries vary
+  per feature.
 -->
 
 ```text
-# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
-src/
-├── models/
-├── services/
-├── cli/
-└── lib/
+cmd/
+└── <command>/
+    ├── <command>.go        # Cobra command: flag parsing, RunE, output formatting only
+    └── <command>_test.go   # E2E test(s), one per spec.md acceptance scenario, via sut() (Principle VIII)
 
-tests/
-├── contract/
-├── integration/
-└── unit/
+internal/
+└── <domain>/
+    ├── <type>.go           # domain types, port interfaces — no cobra, no cmd/ imports (Principle III)
+    ├── <type>_test.go      # unit tests, github.com/fogfish/it/v2 (Principle VI)
+    └── adapter/
+        └── <adapter>.go    # driven adapter implementing the port (Principle VII)
 
-# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
-backend/
-├── src/
-│   ├── models/
-│   ├── services/
-│   └── api/
-└── tests/
-
-frontend/
-├── src/
-│   ├── components/
-│   ├── pages/
-│   └── services/
-└── tests/
-
-# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
-api/
-└── [same as backend above]
-
-ios/ or android/
-└── [platform-specific structure: feature modules, UI flows, platform tests]
+testdata/                   # fixtures colocated with the E2E test(s) above (Principle VIII)
 ```
 
-**Structure Decision**: [Document the selected structure and reference the real
-directories captured above]
+**Structure Decision**: [Name the concrete command(s) and domain package(s)
+this feature adds or touches, replacing the `<command>`/`<domain>` placeholders
+above]
 
 ## Complexity Tracking
 
