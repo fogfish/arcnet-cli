@@ -32,6 +32,8 @@ Bootstrap `arc`, an empty Cobra CLI skeleton (`cmd/arc`), plus the three mandato
 
 **Bugfix**: 2026-07-01 — BUG-001 Updated from bugfix patch (added the GoReleaser Action/config schema version-pinning constraint; the `build` workflow's release step was failing on every push to `main`)
 
+**Bugfix**: 2026-07-01 — BUG-002 Updated from bugfix patch: third-party Actions pinned in `.github/workflows/*` (`actions/checkout`, `actions/setup-go`, `shogo82148/actions-goveralls`, `dominikh/staticcheck-action`, `reecetech/version-increment`, `goreleaser/goreleaser-action`) SHOULD be periodically checked against GitHub's currently supported Actions runtime (Node version); a runner deprecation warning without a job failure is non-blocking and does not require an immediate fix if no newer, runtime-current version is yet published upstream
+
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
