@@ -141,6 +141,9 @@ description: "Task list template for feature implementation"
 
 - [X] T026 [P] Add a generated command reference (`cobra/doc`) or update README.md with `arc` build/install instructions (Principle XII, SHOULD)
 - [ ] T027 Run the full [quickstart.md](quickstart.md) validation end-to-end (all 5 steps) after Phases 3–5 are complete
+- [X] T029 Investigate each third-party Action pinned across `.github/workflows/*.yml` (`actions/checkout@v4`, `actions/setup-go@v5`, `shogo82148/actions-goveralls@v1`, `dominikh/staticcheck-action@v1.3.1`, `reecetech/version-increment@2023.10.2`, `goreleaser/goreleaser-action@v5`) for a newer major/tag that has migrated off the deprecated Node 20 Actions runtime; bump the pin where a runtime-current version exists, otherwise document the pin as an accepted, upstream-owned limitation (BUG-002). Findings: `actions/checkout@v4` and `actions/setup-go@v5` were on `node20` with `node24`-migrated majors available (`v7.0.0`, `v6.5.0`) — bumped to `@v7`/`@v6` in all three workflow files; `goreleaser/goreleaser-action@v5` was on `node20` with a `node24`-migrated `v7.2.3` available (whose own default `version` input is now also `"~> v2"`, confirming BUG-001's fix) — bumped to `@v7` in `build.yml`. `shogo82148/actions-goveralls@v1` was already `node24` — unchanged. `dominikh/staticcheck-action@v1.3.1` and `reecetech/version-increment@2023.10.2` are `composite` actions (shell-orchestrated, no own Node runtime) — not a source of the warning, left unchanged. `actionlint` passes clean on all three workflow files after the bumps.
+
+**Bugfix**: 2026-07-01 — BUG-002 Fixed: bumped `actions/checkout@v4`→`@v7`, `actions/setup-go@v5`→`@v6` (all three workflows), and `goreleaser/goreleaser-action@v5`→`@v7` (`build.yml`) to node24-runtime majors, closing the deprecation warning for the three JS-based actions that were emitting it. T029 closed.
 
 ---
 
