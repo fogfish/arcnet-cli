@@ -3,7 +3,77 @@
 ================================================================================
 SYNC IMPACT REPORT
 ================================================================================
-Version change: 1.1.0 → 1.2.0 (MINOR)
+Version change: 1.4.0 → 1.5.0 (MINOR)
+Reason: Reverts and replaces v1.4.0's file system abstraction mandate.
+On review, that dependency did not hold up:
+  1. `stream`'s local (`lfs`) and S3 backends share one Go package, so even
+     purely local use unavoidably compiled in and go.sum-pinned the full AWS
+     SDK v2 tree (8 direct + 15 indirect modules: S3 client, STS, SSO,
+     credential-chain resolution) for a command that touches no cloud API.
+  2. The S3 backend would not actually have delivered a git-versionable
+     remote graph anyway: `arc init`'s entire contract (CORE §11) is
+     producing a git commit, and git requires a real local working tree,
+     which an S3 object store accessed via API calls is not. The dependency
+     bought no real capability, only the appearance of one.
+
+"Filesystem Abstraction" (Mandatory Libraries & Tooling) and the matching
+Principle VII bullet are rewritten: `internal/adapter/fsys` is now mandated
+to be built exclusively on stdlib `io/fs` (reads) plus a minimal
+project-defined writable-file extension (`io.Writer`+`io.Closer`+`Stat()`,
+since `io/fs` has no write-side interface of its own) — no third-party
+filesystem or object-storage library. `internal/adapter/fsys` remains the
+sole place `os`'s file/directory functions may appear anywhere in the
+codebase; that boundary was the valuable part of the original amendment and
+is kept. Path/directory conventions now follow stdlib `io/fs`'s own contract
+(`fs.ValidPath`: relative, no leading/trailing slash) rather than a
+third-party library's convention. Compliance Checklist, Compliance 
+
+Real S3-backed graph storage, if it becomes a genuine requirement later, is
+deferred entirely — it needs its own design (and likely can't reuse this
+git-coupled `arc init` command's contract unchanged), not a dependency
+adopted speculatively "for later."
+
+--------------------------------------------------------------------------------
+Previous: 1.3.0 → 1.4.0 (MINOR, now reverted above)
+Reason: `github.com/fogfish/stream` (plus stdlib `io/fs`) added as an explicit
+mandatory dependency for all filesystem I/O, local or S3 (new "Filesystem
+Abstraction" subsection of Mandatory Libraries & Tooling, plus a new bullet
+under Principle VII). Domain/service code MUST route file reads/writes
+through the shared `internal/adapter/fsys` package instead of calling
+`os.*` directly; the only sanctioned exception is `fsys`'s own minimal,
+documented extension for creating a mount root that
+`github.com/fogfish/stream/lfs` requires to pre-exist. Compliance Checklist
+and Compliance Review both gained a corresponding checkbox/bullet, and the
+"mandated libraries" review bullet now names `fogfish/stream` alongside
+`fogfish/faults` and `fogfish/it/v2`.
+
+This corrects a design mistake surfaced during `specs/002-arc-init` planning:
+that feature's first draft had domain/service code calling `os.MkdirAll`/
+`os.WriteFile` directly for graph-layout creation, which is exactly the
+"filesystem when used as a state store... MUST be accessed through a port
+interface" case Principle VII already named but never grounded in a concrete,
+mandated library — this amendment closes that gap the same way the `faults`
+amendment closed it for error annotation.
+
+--------------------------------------------------------------------------------
+Previous: 1.2.0 → 1.3.0 (MINOR)
+Reason: `github.com/fogfish/faults` added as an explicit mandatory dependency
+for error context annotation (new "Error Handling & Annotation" subsection of
+Mandatory Libraries & Tooling, plus a new rule under Principle XII), replacing
+ad hoc `fmt.Errorf("...: %w", err)` wrapping with typed, reusable
+`faults.Type`/`faults.SafeN` constants matched via `errors.Is()`. Compliance
+Checklist and Compliance Review both gained a corresponding checkbox/bullet.
+
+Known tension (flagged, not silently resolved): ADR 002 DS-07's own example
+code still shows `fmt.Errorf("stage: %w", err)` for per-layer error wrapping.
+That example predates this amendment and is now superseded in spirit by this
+mandate, but the ADR document itself was left unedited here — per Principle I,
+deviating from an accepted ADR requires either updating the ADR directly or a
+superseding ADR, not a silent divergence. This is called out explicitly so a
+follow-up either amends ADR 002 DS-07's example or records why it is exempt.
+
+--------------------------------------------------------------------------------
+Previous: 1.1.0 → 1.2.0 (MINOR)
 Reason: `github.com/charmbracelet/lipgloss` added as an explicit mandatory
 dependency for all colored/styled terminal output (Principle X and
 [Mandatory Libraries & Tooling](#mandatory-libraries--tooling)), replacing
@@ -248,6 +318,7 @@ Every integration with a system outside the CLI's own process MUST follow a cons
 
 **Rules**:
 - All external integrations (cloud provider APIs, REST/gRPC services, message queues, package registries, local databases, or the filesystem when used as a state store) MUST be accessed through a port interface defined in the domain package, with the concrete client living in an adapter package
+- **All filesystem I/O MUST go through the shared `internal/adapter/fsys` package**, built exclusively on stdlib `io/fs`, `io.Reader`, and `io.Writer` (see [Mandatory Libraries & Tooling](#mandatory-libraries--tooling)) — no third-party filesystem library. The `os` package's file/directory functions (`os.Open`, `os.Create`, `os.Stat`, `os.ReadDir`, `os.MkdirAll`, `os.Remove`, `os.RemoveAll`, `os.WriteFile`, etc.) MUST NOT appear anywhere outside `internal/adapter/fsys` — that package is the sole place they are permitted, since something has to touch the real filesystem. This does not restrict `os`'s non-filesystem APIs (`os.Stdout`/`os.Stderr`, `os.Exit`, `os.Getenv`, `os.Args`) or `os/exec`, both used normally throughout `cmd/` per Principles IX/X
 - **Before adding a new adapter, verify whether an adapter for that capability already exists** in a shared package; duplicate clients for the same external system are forbidden
 - Adapter interfaces MUST be small (Interface Segregation): one interface per capability (e.g., a `Lister` and a `Fetcher`, not one interface mirroring the entire vendor SDK)
 - **Vendor SDK types MUST NOT leak through port interfaces**: a port exports domain types and standard-library types only
@@ -365,6 +436,7 @@ The tool MUST be self-documenting from the terminal, with web documentation as a
 - A generated command reference (e.g., via `cobra/doc`) SHOULD be produced as part of the release process for any tool intended for general distribution; man pages SHOULD be generated where the target platforms support them
 - Documentation MUST be updated in the same PR as the command/flag change it describes; help text and README MUST NOT drift from actual behavior
 - **Expected/anticipated errors MUST be rewritten into human-readable guidance** before reaching the user — never a raw library error, stack trace, or Go `panic`. Where a correction is knowable (e.g., a typo'd subcommand), the tool SHOULD suggest it
+- **Error context annotation MUST use `github.com/fogfish/faults`** (see [Mandatory Libraries & Tooling](#mandatory-libraries--tooling)), not ad hoc `fmt.Errorf("...: %w", err)` chains — a `faults.Type`/`faults.SafeN` constant's message is itself the human-readable guidance this rule requires, so the two rules are satisfied by the same construct rather than two independent ones that can drift apart
 - Unexpected/internal errors MUST include enough detail to file a useful bug report (and, where feasible, a ready-to-use issue URL); the user MUST NOT see a bare `panic:` trace in normal operation
 
 **Rationale**: A CLI's primary documentation surface is the CLI itself — `--help` is read far more often than the README. Keeping `Short`/`Long`/`Example` mandatory and synchronized with behavior, and rewriting expected errors into guidance, is what makes the tool feel solid rather than merely functional.
@@ -405,6 +477,18 @@ The following libraries and tools are not illustrative options — they are mand
 
 **CLI Framework**
 - `github.com/spf13/cobra` MUST be used for all command/flag parsing (Principle IX). No alternative CLI framework (`urfave/cli`, `kingpin`, a hand-rolled wrapper around the stdlib `flag` package) is permitted for the project's own command surface.
+
+**Filesystem Abstraction**
+- All filesystem I/O MUST be abstracted behind the shared `internal/adapter/fsys` package (ADR 001's application-level adapter tier), built exclusively on stdlib `io/fs` for reads (`fs.FS`, `fs.StatFS`, `fs.ReadDirFS`) plus a minimal project-defined writable-file extension (`io.Writer` + `io.Closer` + `Stat() (fs.FileInfo, error)`, since `io/fs` itself is read-only by design) — no third-party filesystem/object-storage library.
+- `internal/adapter/fsys` is the sole place the `os` package's file/directory functions may appear (Principle VII). A use-case's own private `port/` package MAY declare its own narrowly-shaped interface that `internal/adapter/fsys`'s concrete types satisfy structurally (ADR 001 port isolation rule 1) — the concrete `os`-backed implementation is still written once, in `internal/adapter/fsys`.
+- Path/directory conventions MUST follow stdlib `io/fs`'s own contract (`fs.ValidPath`): relative, slash-separated, no leading or trailing slash, `"."` for the root — not any third-party library's own convention.
+
+**Error Handling & Annotation**
+- `github.com/fogfish/faults` MUST be used to annotate errors with context everywhere an error crosses a package boundary worth explaining (Principle XII). Ad hoc `fmt.Errorf("<context>: %w", err)` call sites for this purpose are forbidden — they are exactly the untyped, non-refactorable string wrapping `faults` exists to replace.
+- Every reusable, expected error condition MUST be declared once as a package-level constant using `faults.Type` (static message) or `faults.Safe1` through `faults.Safe5` (compile-time-typed dynamic arguments), never constructed inline at the call site: `const errGitUnavailable = faults.Type("git is required but was not found on PATH")`.
+- Wrapping an underlying error MUST use the constant's `.With(err[, args...])` method: `return errGitUnavailable.With(err)`. Callers that need to branch on a specific failure MUST use `errors.Is(err, errGitUnavailable)` — never a string-matching or type-assertion check against the wrapped error.
+- `faults.Fast` MAY replace `faults.Type`/`faults.SafeN` only on a call path shown by profiling to be genuinely performance-sensitive (the library's own documentation cites roughly 75% loss of error-path throughput from `faults.Type`'s runtime-introspection cost under heavy load); it MUST NOT be reached for by default given this CLI's per-invocation, non-hot-loop execution model.
+- This mandate does not replace the constitution's own error-wrapping guidance in Principle XII — `faults.Type`'s message *is* the human-readable context that principle requires; the two are the same mechanism, not two competing ones.
 
 **Terminal Output & Styling**
 - `github.com/charmbracelet/lipgloss` MUST be used for all colored/styled terminal output (Principle X). Color/style definitions are `lipgloss.Style` values, selected per the TTY/`NO_COLOR`/`--color` rules in Principle X — never raw ANSI escape sequences written by hand, and never a second styling library introduced alongside it.
@@ -458,9 +542,11 @@ A project adopting this constitution MUST implement at minimum these workflows u
 - [ ] No Bash scripts used for unit-level code correctness validation (only optional smoke-test scripts and infrastructure tasks)
 - [ ] Unit and E2E tests use `github.com/fogfish/it/v2` exclusively (Principle VI, [Mandatory Libraries & Tooling](#mandatory-libraries--tooling))
 - [ ] New external integrations follow the port/adapter pattern (Principle VII)
+- [ ] Filesystem I/O goes through `io/fs`-based `internal/adapter/fsys`; no `os.*` file/directory calls anywhere outside that package (Principle VII, [Mandatory Libraries & Tooling](#mandatory-libraries--tooling))
 - [ ] Terminal output respects TTY detection, `NO_COLOR`, `--quiet`/`--verbose` (Principle X)
 - [ ] Configuration precedence and XDG locations respected; no secrets logged (Principle XI)
 - [ ] Help text (`Short`/`Long`/`Example`) populated for every new/changed command (Principle XII)
+- [ ] Error context annotation uses `github.com/fogfish/faults` (`Type`/`SafeN` constants + `.With()`), not ad hoc `fmt.Errorf` wrapping (Principle XII, [Mandatory Libraries & Tooling](#mandatory-libraries--tooling))
 - [ ] Release artifacts (if applicable) build via the GoReleaser pipeline with version injected at build time (Principle XIII)
 - [ ] Versioning, deprecation, and telemetry-consent rules followed for any user-facing or scriptable-output change (Principle XIV)
 - [ ] **E2E tests turn GREEN as implementation satisfies acceptance criteria (Principle VIII)**
@@ -550,18 +636,20 @@ If **Principle XIV (Versioning, Security & Compatibility)** cannot be satisfied:
 - Reviewers MUST challenge complexity and request justification when principles are violated
 - Reviewers MUST verify adherence to accepted ADRs (Principle I)
 - Reviewers MUST verify new external integrations follow the port/adapter pattern (Principle VII)
+- Reviewers MUST verify filesystem I/O uses `io/fs`-based `internal/adapter/fsys`, with no `os.*` file/directory calls anywhere outside that package (Principle VII)
 - Reviewers MUST verify command/flag changes follow CLIG conventions (Principle IX)
 - Reviewers MUST verify terminal output respects TTY detection and `NO_COLOR` (Principle X)
 - Reviewers MUST verify colored/styled output uses `github.com/charmbracelet/lipgloss`, with no raw ANSI escape sequences in formatting code (Principle X)
 - Reviewers MUST verify no secrets are logged or required only via plaintext flags (Principle XI)
 - Reviewers MUST verify help text is populated and accurate for changed commands (Principle XII)
+- Reviewers MUST verify errors are annotated via `github.com/fogfish/faults` (`Type`/`SafeN` constants, `.With()`, `errors.Is()` matching), not ad hoc `fmt.Errorf` wrapping (Principle XII)
 - Reviewers MUST verify TDD was followed: tests written first, compiled, and failed semantically (Principle VI)
 - Reviewers MUST verify unit and E2E tests use `github.com/fogfish/it/v2` exclusively (Principle VI)
 - Reviewers MUST verify E2E tests exist for all spec scenarios and changed minimally during implementation (Principle VIII)
 - Reviewers MUST verify E2E tests are colocated with their command and exercise the command's `RunE` via the `sut()` pattern, not an internal function bypassing it (Principle VIII)
 - Reviewers MUST verify release artifacts are produced via the mandated GoReleaser pipeline (Principle XIII)
 - Reviewers MUST verify release/versioning changes preserve the `--json`/`--plain` stability contract (Principle XIV)
-- Reviewers MUST verify mandated libraries and tooling (Cobra, `fogfish/it/v2`, `staticcheck`, GoReleaser, required CI workflows) are used unchanged, per [Mandatory Libraries & Tooling](#mandatory-libraries--tooling)
+- Reviewers MUST verify mandated libraries and tooling (Cobra, `fogfish/faults`, `fogfish/it/v2`, `staticcheck`, GoReleaser, required CI workflows) are used unchanged, and that no third-party filesystem library has been introduced in place of `internal/adapter/fsys`'s `io/fs`-based design, per [Mandatory Libraries & Tooling](#mandatory-libraries--tooling)
 - Template files in [.specify/templates/](.specify/templates/) provide execution workflows that enforce these principles
 
 ### Task List Requirements
@@ -601,4 +689,4 @@ Every feature's `tasks.md` file MUST include these mandatory sections from [task
   descriptions to the specific feature)
 - Omitting mandatory sections violates this constitution and blocks feature completion
 
-**Version**: 1.2.0 | **Ratified**: 2026-06-30 | **Last Amended**: 2026-06-30
+**Version**: 1.5.0 | **Ratified**: 2026-06-30 | **Last Amended**: 2026-07-02

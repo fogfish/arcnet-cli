@@ -1,0 +1,19 @@
+// Package ctrl is the graph management (control plane) domain use-case: it
+// creates, and will later inspect and validate, a knowledge graph's local
+// state.
+package ctrl
+
+import (
+	"context"
+
+	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
+	"github.com/fogfish/arcnet-cli/internal/app/ctrl/kernel"
+	"github.com/fogfish/arcnet-cli/internal/app/ctrl/port"
+	"github.com/fogfish/arcnet-cli/internal/app/ctrl/service"
+)
+
+// Init bootstraps a new, empty knowledge graph at dir. It is a thin
+// delegator into service.Init.
+func Init(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, dir string) (kernel.InitResult, error) {
+	return service.Init(ctx, mounter, vcs, dir)
+}
