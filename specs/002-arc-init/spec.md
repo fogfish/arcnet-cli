@@ -83,6 +83,7 @@ A user runs the init command again, by mistake or out of habit, against a direct
 - **FR-014**: When the target directory already contains a `.arc/` state directory, the tool MUST refuse to initialize, MUST make no filesystem or git changes, and MUST print a clear error explaining that a graph already exists at that location.
 - **FR-015**: When the target directory exists but is not already a graph (no `.arc/` present) and already contains any files or subdirectories, the tool MUST refuse to initialize, MUST make no filesystem or git changes, and MUST print a clear error explaining that the target directory must be empty.
 - **FR-016**: By default, the tool MUST report success as a single, concise line (resolved path and a short, unambiguous commit reference per FR-012) and MUST NOT print the intermediate steps it took internally; a user who wants to see those intermediate steps MUST be able to request them explicitly via a verbosity option, without changing the default's conciseness. *(Added 2026-07-02 — BUG-001: default output was over-reporting every internal step.)*
+- **FR-017**: The tool MUST seed the new graph with a default per-kind merge-rule configuration usable by later graph-mutating commands, preferring the canonical published defaults when they can be fetched, and MUST always succeed using a built-in fallback default when they cannot be fetched (no network access, or any fetch failure) — initialization MUST NOT fail, and MUST NOT block on network access, on this basis alone. *(Added 2026-07-02 — cross-referenced from `specs/003-apply-patch`, which introduces the first consumer of this configuration.)*
 
 ### Key Entities
 
@@ -106,10 +107,12 @@ A user runs the init command again, by mistake or out of habit, against a direct
 
 - Git is installed and available on the user's system; the tool depends on it and does not bundle or substitute for it.
 - The user has write permission to the target directory and, when the directory does not yet exist, to its parent directory.
-- Initialization is fully local and offline — no network access is required or attempted.
+- Initialization always succeeds fully local and offline; network access (FR-017's best-effort canonical-config fetch) is an optional enhancement the tool attempts but never requires, and its absence or failure is never visible to the user as an initialization error. *(Revised 2026-07-02 — see FR-017 cross-reference.)*
 - The user's git identity (`user.name` / `user.email`) is already configured through the user's normal git setup; the tool does not configure git identity itself.
 - Only the CORE canonical layout is created by this command. Domain-profile-specific folders or files are opt-in additions made by later commands, not part of initialization, consistent with the tool's extension-agnostic design.
 
 ## Notes
 
 **Bugfix**: 2026-07-02 — BUG-001: Added FR-016 (default output MUST be a single concise line; step-by-step detail is opt-in via a verbosity option). The rest of BUG-001's fixes (progress-line styling/alignment, short commit hash, `PostRunE` hint text) are presentation-layer decisions that stay in `plan.md`/`research.md`/`contracts/` per this spec's technology-agnostic scope.
+
+**Cross-feature update**: 2026-07-02 — `specs/003-apply-patch` introduces the first command (`arc apply`) that consumes per-kind merge-rule configuration, and requires `arc init` to seed it (FR-017, added above). The fetch source, URL, fallback content, and adapter design are implementation detail owned by `specs/003-apply-patch/plan.md`/`research.md` (D5), not this spec, per this document's technology-agnostic scope — this spec only records the resulting behavioral change to `arc init` itself (always-local-success, network as best-effort enhancement).

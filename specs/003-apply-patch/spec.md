@@ -48,15 +48,15 @@ A user applies a patch for a second document that discusses subjects (entities, 
 
 A user's graph has opted into a domain profile (a set of node kinds beyond the format's built-in source/entity/resource, each with its own merge rule declared by that profile) and applies a patch whose extraction tool produced nodes of one of those domain-specific kinds.
 
-**Why this priority**: The graph format is explicitly designed to be extended by domain profiles, and a real deployment is expected to use them. Without this, `arc apply` would only ever work for the three built-in kinds, permanently blocking any domain-specific use of the tool.
+**Why this priority**: The graph format is explicitly designed to be extended by domain profiles, and a real deployment is expected to use them. Without this, a domain-specific kind could only ever be ingested using the format's generic default behavior, never the more precise behavior (e.g. a validation-owned field) its own profile actually calls for.
 
-**Independent Test**: Can be fully tested by registering a domain kind and its merge behavior for a graph, applying a patch that contains a node of that kind, and confirming it is created or merged correctly using the registered behavior.
+**Independent Test**: Can be fully tested by registering a domain kind and its merge behavior for a graph, applying a patch that contains a node of that kind, and confirming it is created or merged correctly using the registered behavior rather than the generic default.
 
 **Acceptance Scenarios**:
 
 1. **Given** a graph that has registered a domain-specific node kind together with its merge behavior, **When** a patch containing a node of that kind is applied, **Then** the tool creates or merges that node using the registered behavior, exactly as it would for a built-in kind.
-2. **Given** a graph with no domain kinds registered, **When** a patch containing a node of an unregistered kind is applied, **Then** the tool refuses the entire application (per FR-018) and reports which kind was not recognized.
-3. **Given** a user wants a graph to accept a domain-specific kind, **When** they register that kind together with its merge behavior, **Then** subsequent patch applications recognize and correctly process nodes of that kind.
+2. **Given** a graph with no domain kinds registered, **When** a patch containing a node of an unregistered kind is applied, **Then** the tool still creates or merges that node — using the format's general-purpose "union" behavior as a safe default (per FR-018) — completes the application, and warns the user that the kind was not explicitly registered.
+3. **Given** a user wants a graph to process a domain-specific kind with a merge behavior other than the generic default, **When** they register that kind together with its intended merge behavior, **Then** subsequent patch applications use the registered behavior instead of the default, and the earlier unregistered-kind warning no longer appears for that kind.
 
 ---
 
@@ -79,7 +79,7 @@ A user accidentally applies the same patch file twice — by mistake, because a 
 - What happens when the patch file's manifest is missing a mandatory field (`kind: patch`, `document`, or `published`)? The tool must refuse with a clear explanation and make no changes.
 - What happens when a patch is not valid for this tool at all (wrong `kind` value, unparsable front-matter, or a body that doesn't follow the H1-kind/H2-node section structure)? The tool must refuse with a clear explanation and make no changes.
 - What happens when the target directory is not an initialized graph? The tool must refuse and make no changes, the same way other graph-mutating commands do.
-- What happens when a patch node section names a kind the tool has no merge rule for? The tool must refuse that node (and, per the all-or-nothing contribution model, the whole patch) rather than silently guessing a merge strategy or dropping the node.
+- What happens when a patch node section names a kind that is neither built-in nor explicitly registered for the graph? The tool does not refuse or drop the node — it applies the format's general-purpose "union" merge behavior as a safe default and warns the user which kind was not recognized, so an unfamiliar or newly-introduced kind never silently blocks an otherwise well-formed patch, but also never silently passes unnoticed.
 - What happens when merging a patch's node into an existing node produces conflicting values for a field that is supposed to have one authoritative value? The contribution is not silently discarded and not silently overwritten; see FR-013 for the resolution behavior.
 - What happens when applying is interrupted partway through (process killed, disk full, permission error)? The graph and its git history must be left exactly as they were before the attempt — no partially written node files, no dangling commit.
 - What happens when the patch references a node (via a link) that the patch itself does not define and that doesn't already exist in the graph? The link is recorded as written; resolving it is not this command's responsibility (consistent with the graph format allowing forward/dangling references).
@@ -105,7 +105,7 @@ A user accidentally applies the same patch file twice — by mistake, because a 
 - **FR-015**: The tool MUST leave no partially-created or partially-modified graph state, and no dangling commit, when application fails or is interrupted at any point before the commit completes.
 - **FR-016**: On success, the tool MUST report to the user what happened — counts of nodes created versus merged, by kind, and a reference to the resulting commit — without requiring a separate inspection command to confirm the outcome.
 - **FR-017**: The tool MUST preserve every attribute and relation on an existing node that the patch's contribution does not itself concern, whether or not the tool recognizes that attribute or relation.
-- **FR-018**: The tool MUST refuse to apply, and MUST make no filesystem or git changes, when a node section in the patch declares a kind that is neither one of the format's built-in kinds (source/entity/resource) nor a domain/extension kind registered for that graph (FR-019); the refusal MUST name the unrecognized kind.
+- **FR-018**: When a node section in the patch declares a kind that is neither one of the format's built-in kinds (source/entity/resource) nor a domain/extension kind registered for that graph (FR-019), the tool MUST still create or merge that node — applying the format's general-purpose "union" behavior as a safe default — and MUST emit a clear, visible warning naming the unrecognized kind; the application MUST NOT be refused or aborted on this basis alone.
 - **FR-019**: The tool MUST provide a way for a graph to register a domain/extension node kind together with its declared merge behavior (one of the format's fixed merge behaviors — none / union / union-first-writer / other declared equivalent), so that later patch applications recognize and correctly process nodes of that kind. Registration MUST itself be refused, leaving no partial state, if it would register the same kind twice with conflicting merge behavior.
 - **FR-020**: When applying a patch node whose kind is a registered domain/extension kind, the tool MUST create or merge it using that kind's registered merge behavior, with the same creation/merge/conflict-flagging guarantees (FR-005 through FR-013) that apply to the format's built-in kinds.
 
@@ -136,6 +136,7 @@ A user accidentally applies the same patch file twice — by mistake, because a 
 - **SC-005**: A user can confirm what an application did (created vs. merged, by kind) from the command's own output alone, without needing to run a follow-up inspection command.
 - **SC-006**: 100% of failed or interrupted applications leave the graph and its git history exactly as they were beforehand — zero observed cases of partial writes or dangling commits.
 - **SC-007**: A patch that introduces a registered domain-specific node kind is applied using its declared merge behavior with the same correctness guarantees (SC-002–SC-004) as the format's built-in kinds.
+- **SC-008**: 100% of patches that introduce an unregistered node kind still apply successfully (using the default union merge behavior) rather than being blocked, and 100% of those applications surface a clear warning identifying which kind was not explicitly registered.
 
 ## Assumptions
 

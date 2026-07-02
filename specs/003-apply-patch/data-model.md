@@ -22,6 +22,8 @@ Value types are immutable (constitution Principle IV) and carry no Cobra, `os/ex
 
 `ConfigPath` — the constant `".arc/config.yml"`, shared by `internal/app/ctrl` (seeding) and `internal/app/config` (load/save), avoiding two independently-maintained path literals.
 
+`Lookup(kind Kind) (op MergeOp, ok bool)` — the one query method a caller needs (research.md D5-revised); `ok=false` when `kind` is absent from the set, the exact condition `internal/app/graph/service.Apply` uses to decide "apply with the safe `union` default and warn" instead of failing.
+
 ### Link / LinkBlock
 
 | Field | Type | Notes |
@@ -68,6 +70,7 @@ The domain value `component.go`'s `Apply` returns to `cmd/arc/graph`, rendered b
 | `Created` | `map[core.Kind]int` | Node counts by kind, newly created |
 | `Merged` | `map[core.Kind]int` | Node counts by kind, merged into existing nodes |
 | `Conflicts` | `[]string` | Relative paths of node files that received a conflict marker (FR-013), for the `PostRunE` hint (research.md D9) |
+| `Warnings` | `[]string` | One human-readable sentence per node whose kind was not found in the resolved `MergeRuleSet` and was therefore applied using the default `union` behavior (spec FR-018, research.md D5-revised); empty when every kind was recognized |
 | `CommitHash` | `string` | Short hash of the single resulting commit; empty when `Skipped` |
 | `Timeline` | `[]string` | Period codes touched (`"2026"`, `"2026-04"`), for human/JSON output |
 
@@ -87,13 +90,23 @@ type VCS interface {
 
 Both this and `ctrl.port.VCS` are satisfied structurally by the one promoted `internal/adapter/git.Git` type (research.md D4, ADR 001 port isolation rule 1).
 
-### `internal/app/config` (no `port/` package — depends on `fsys.Store` directly, research.md D5)
+### `internal/app/config`
+
+Depends on `fsys.Store` directly for load/save (no port needed, research.md D5 — same exception `ctrl` established), plus one new use-case-private port for the seed fetch (research.md D5-revised):
 
 ```go
+// port/fetcher.go
+type Fetcher interface {
+    Fetch(ctx context.Context, url string) ([]byte, error)
+}
+
 // component.go
 func Resolve(store fsys.Store) (core.MergeRuleSet, error)
 func Save(store fsys.Store, cfg kernel.Config) error
+func Default(ctx context.Context, fetcher port.Fetcher) (cfg kernel.Config, usedFallback bool)
 ```
+
+`Default` has no `error` return, by construction — a fetch/parse failure of any kind is not an error condition, it is the `usedFallback = true` path returning `core.CoreMergeRules` (research.md D5-revised, satisfying `specs/002-arc-init/spec.md` FR-017's "initialization MUST NOT fail... on this basis alone"). `DefaultSourceURL = "https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/config.yml"` is a package constant. The real `Fetcher` (`internal/app/config/adapter/http`) wraps stdlib `net/http` with a fixed 3-second timeout, no retries; a mock `Fetcher` (`internal/app/config/adapter/mock`) backs `Default`'s unit tests (constitution Principle VI — no real network access in `go test`).
 
 ## Filesystem I/O
 
@@ -119,7 +132,8 @@ Each label gets one `Start`/`Done` (or `Error`) pair (flat `Reporter`, ADR 002 D
 |---|---|---|---|
 | `ErrManifestInvalid` | `faults.Type` | `"patch manifest is missing a mandatory field (kind: patch, document, published)"` | `ParsePatch` (spec FR-001, FR-002) |
 | `ErrPatchStructure` | `faults.Type` | `"patch body does not follow the H1-kind/H2-node section structure"` | `ParsePatch` (spec FR-002) |
-| `ErrUnrecognizedKind` | `faults.Safe1[string]` | `"%s is not a recognized node kind for this graph"` | `Merge` caller (spec FR-018), when a node's kind is absent from the resolved `MergeRuleSet` |
+
+An unrecognized node kind is **not** an error sentinel (research.md D5-revised, D10) — it produces a `kernel.ApplyResult.Warnings` entry, not a returned `error`.
 
 ### `internal/app/config` (`service/errors.go`)
 
@@ -143,6 +157,7 @@ Each label gets one `Start`/`Done` (or `Error`) pair (flat `Reporter`, ADR 002 D
 | Manifest missing mandatory field → refuse, no writes | FR-001, FR-002 | `core.ParsePatch`, before `service.Apply` does anything else |
 | Document already tracked → skip, no writes, no commit | FR-003 | `service.Apply` guard (`port.VCS.IsTracked`), before any write |
 | Target not an initialized graph → refuse, no writes | FR-014 | `service.Apply` guard (`Store.Stat(".arc")`), before any write |
-| Node kind not in resolved `MergeRuleSet` → refuse whole patch, no writes | FR-018 | `service.Apply`, checked for every node before any node is written (all-or-nothing) |
+| Node kind not in resolved `MergeRuleSet` → apply with default `union` behavior, warn, do not refuse | FR-018 | `service.Apply`, via `MergeRuleSet.Lookup` for every node; appends to `ApplyResult.Warnings` (research.md D5-revised) |
+| `arc init`'s config-seed fetch failing for any reason → fall back to core-only defaults, never fail initialization | `specs/002-arc-init/spec.md` FR-017 | `config.Default` (research.md D5-revised) — no `error` return by construction |
 | Mid-run failure → no partial state | FR-015 | `service.Apply`, per-path `Store.Remove`/`File.Discard` against exactly the paths this run attempted (no `fsys.RemoveLocalRoot` — the graph root predates this run) |
 | Scalar merge conflict → first-writer wins, flagged, commit still proceeds | FR-013 | `core.Merge` (research.md D6, D7) |

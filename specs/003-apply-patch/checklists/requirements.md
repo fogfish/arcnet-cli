@@ -33,3 +33,4 @@
 
 - Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`
 - All 3 scope questions (kind/merge-behavior registration, index maintenance, conflict resolution) were resolved with the user during initial specification: domain-kind registration is in scope (User Story 3, FR-018–FR-020); local index maintenance and conflict resolution are explicitly out of scope (see spec.md "Out of Scope").
+- **Revision, post-plan (2026-07-02)**: FR-018 and User Story 3's Acceptance Scenario 2 were revised after `/speckit-plan` to change an unregistered node kind from a hard refusal to a warn-and-default-to-"union" fallback, plus new SC-008, per explicit user direction. Re-validated against the checklist above; no new [NEEDS CLARIFICATION] markers introduced, no implementation detail (the config download mechanism) leaked into spec.md — that detail lives in `plan.md`/`research.md` D5.

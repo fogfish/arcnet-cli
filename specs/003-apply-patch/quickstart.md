@@ -1,6 +1,6 @@
 # Quickstart: `arc apply`
 
-Validates spec.md's four user stories end-to-end against a real local graph and real `git`. No network access required.
+Validates spec.md's four user stories end-to-end against a real local graph and real `git`. `arc apply` itself needs no network access. `arc init` (Setup, below) makes one best-effort network call to seed `.arc/config.yml`'s defaults and always succeeds locally even if that call fails — see `specs/002-arc-init/spec.md` FR-017 and this feature's research.md D5 (revised).
 
 ## Prerequisites
 
@@ -131,11 +131,12 @@ $ arc apply note.patch.md
 ✅ Applied kolesnikov-2026-note: +1 source, +1 hypothesis (commit d4e5f6a)
 ```
 
-Without the `.arc/config.yml` edit, the same patch is refused:
+Without the `.arc/config.yml` edit, the same patch still applies — using the safe `union` default instead of `hypothesis`'s intended `validated-overwrite` behavior — and warns instead of refusing:
 
 ```sh
 $ arc apply note.patch.md
-❌ hypothesis is not a recognized node kind for this graph. Register it in .arc/config.yml first. Run `arc help apply` for guidance.
+✅ Applied kolesnikov-2026-note: +1 source, +1 hypothesis (commit d4e5f6a)
+🟧 hypothesis is not a recognized node kind for this graph — applied using the default "union" merge behavior
 ```
 
 ## Scenario 4 — Re-applying is a safe no-op (spec.md User Story 3, now User Story 4)

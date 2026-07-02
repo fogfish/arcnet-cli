@@ -60,4 +60,6 @@ func (MergeRuleSet) MarshalYAML() (any, error)
 func (*MergeRuleSet) UnmarshalYAML(*yaml.Node) error
 ```
 
-`MergeRuleSet` is `map[Kind]MergeOp`; `Union(other MergeRuleSet) MergeRuleSet` (a pure, non-mutating merge of two rule sets — `internal/app/config.Resolve` calls `core.CoreMergeRules.Union(loadedFromFile)`) is the one small method beyond the marshal pair.
+`MergeRuleSet` is `map[Kind]MergeOp`, with two methods beyond the marshal pair:
+- `Union(other MergeRuleSet) MergeRuleSet` — a pure, non-mutating merge of two rule sets, `self` authoritative on conflict (`internal/app/config.Resolve` calls `core.CoreMergeRules.Union(loadedFromFile)`).
+- `Lookup(kind Kind) (op MergeOp, ok bool)` — `ok=false` when `kind` is absent (research.md D5 revised); `internal/app/graph/service.Apply` uses this, not a raw map index, to decide between the kind's registered behavior and the safe `union` default-plus-warning fallback.
