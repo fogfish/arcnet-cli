@@ -24,6 +24,21 @@ import (
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
 
+// TestMain sets a fake git identity for the whole test binary. arc init
+// shells out to a real `git commit`, which fails with "Author identity
+// unknown" on any machine (including CI runners) that has no global
+// user.name/user.email configured — the tool itself intentionally does not
+// configure git identity (spec.md Assumptions), so the tests must supply
+// their own, hermetically, rather than depend on the environment's global
+// git config.
+func TestMain(m *testing.M) {
+	os.Setenv("GIT_AUTHOR_NAME", "arc-test")
+	os.Setenv("GIT_AUTHOR_EMAIL", "arc-test@example.com")
+	os.Setenv("GIT_COMMITTER_NAME", "arc-test")
+	os.Setenv("GIT_COMMITTER_EMAIL", "arc-test@example.com")
+	os.Exit(m.Run())
+}
+
 func sut(cmd *cobra.Command, args []string) (string, error) {
 	stdout := os.Stdout
 	r, w, _ := os.Pipe()
