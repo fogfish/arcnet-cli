@@ -26,9 +26,13 @@ Bootstrap `arc`, an empty Cobra CLI skeleton (`cmd/arc`), plus the three mandato
 
 **Performance Goals**: N/A — infrastructure/tooling feature, no runtime performance target beyond "builds and runs"
 
-**Constraints**: CI checks and release pipeline MUST require no live credentials/cloud access beyond what CI provisions (spec FR-013); Go version MUST be pinned, never floating (spec FR-011)
+**Constraints**: CI checks and release pipeline MUST require no live credentials/cloud access beyond what CI provisions (spec FR-013); Go version MUST be pinned, never floating (spec FR-011); `goreleaser/goreleaser-action`'s `version:` input MUST be pinned to a GoReleaser major version compatible with `.goreleaser.yaml`'s declared `version:` config schema — the action's own default resolution MUST NOT be relied upon (BUG-001)
 
 **Scale/Scope**: One root command, zero subcommands, three GitHub Actions workflows, one `.goreleaser.yaml`
+
+**Bugfix**: 2026-07-01 — BUG-001 Updated from bugfix patch (added the GoReleaser Action/config schema version-pinning constraint; the `build` workflow's release step was failing on every push to `main`)
+
+**Bugfix**: 2026-07-01 — BUG-002 Updated from bugfix patch: third-party Actions pinned in `.github/workflows/*` (`actions/checkout`, `actions/setup-go`, `shogo82148/actions-goveralls`, `dominikh/staticcheck-action`, `reecetech/version-increment`, `goreleaser/goreleaser-action`) SHOULD be periodically checked against GitHub's currently supported Actions runtime (Node version); a runner deprecation warning without a job failure is non-blocking and does not require an immediate fix if no newer, runtime-current version is yet published upstream
 
 ## Constitution Check
 
