@@ -41,9 +41,9 @@ Value types are immutable (constitution Principle IV) and carry no Cobra, `os/ex
 | `ID` | `string` | Basename, equal to filename without `.md` (CORE §6, AST §4) |
 | `Kind` | `Kind` | Mandatory |
 | `Attrs` | `map[string]any` | Front-matter scalars, excluding `kind` (AST §4); unrecognized keys preserved verbatim (AST invariant 5, spec FR-017) |
-| `Text` | `string` | Leading opaque prose block (`abstract`/`definition`/etc. per kind); empty when the kind has none |
-| `Notes` | `string` | Trailing opaque prose block, rendered after `Edges`/`Links` |
-| `HRefs` | `[]Link` | Inline links embedded in `Text`/`Notes`; never a source of navigable edges (AST invariant 3) |
+| `Text` | `string` | Leading prose block (`abstract`/`definition`/etc. per kind); empty when the kind has none. **Bracket-stripped**: any `[[Target]]`/`[[Target\|alias]]` markup originally embedded in the prose is removed and recorded in `HRefs` instead (research.md D3/D3b) — `Text` itself carries only the plain display substring |
+| `Notes` | `string` | Trailing prose block, rendered after `Edges`/`Links`; bracket-stripped exactly like `Text` (D3b) |
+| `HRefs` | `[]Link` | Inline links originally embedded in `Text`/`Notes`, extracted at parse time; never a source of navigable edges (AST invariant 3). `RenderNode` reconstructs the bracket markup back into the serialized `Text`/`Notes` from this list (research.md D3b) — `HRefs` is the sole record of "where a link goes" once parsed |
 | `Edges` | `[]Link` | Ungrouped structural edges, order-preserving |
 | `Links` | `map[string]LinkBlock` | Predicate-grouped structural edges |
 
