@@ -1,3 +1,11 @@
+//
+// Copyright (C) 2026 Dmitry Kolesnikov
+//
+// This file may be modified and distributed under the terms
+// of the MIT license.  See the LICENSE file for details.
+// https://github.com/fogfish/arcnet-cli
+//
+
 // Package mock is an in-memory fake implementing port.VCS with
 // configurable return values/errors and a call log, for
 // internal/app/ctrl/service unit tests.

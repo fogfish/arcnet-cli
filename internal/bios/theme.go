@@ -1,3 +1,11 @@
+//
+// Copyright (C) 2026 Dmitry Kolesnikov
+//
+// This file may be modified and distributed under the terms
+// of the MIT license.  See the LICENSE file for details.
+// https://github.com/fogfish/arcnet-cli
+//
+
 // Package bios is the shared kernel (ADR 002 DS-04, DS-05, DS-06) reused by
 // every command: output-mode resolution, the color schema, and progress
 // reporting.

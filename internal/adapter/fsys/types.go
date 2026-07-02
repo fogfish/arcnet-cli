@@ -1,3 +1,11 @@
+//
+// Copyright (C) 2026 Dmitry Kolesnikov
+//
+// This file may be modified and distributed under the terms
+// of the MIT license.  See the LICENSE file for details.
+// https://github.com/fogfish/arcnet-cli
+//
+
 // Package fsys is the shared, cross-use-case filesystem adapter (ADR 001's
 // application-level adapter tier). It is the only package in the entire
 // codebase permitted to call os's file/directory functions (constitution
