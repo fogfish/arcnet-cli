@@ -1,5 +1,11 @@
 # Changelog
 
+# 2026-07-03
+
+/speckit-specify `arc lint` — run the full CORE §14 checklist across every node and report violations with file path and line number for each: valid YAML front-matter and `kind` field; unique basenames (CORE §3.2); every `[[link]]` resolves to an existing basename; `source` citekey `id` equals its basename (CORE §6.2); `entity` four-word decoded Sowa `category` (CORE §9.2.1); derived nodes link back to at least one `source` (CORE §3.4); predicates are camelCase and registered in `_meta/predicates.md` (CORE §7.3); citations use a registered `cito:`-aligned predicate (CORE §8); each document is exactly one `graph(ingest):` commit (CORE §11.1); extension kind conformance per the kind's profile checklist and graph nodes does not have any active merge conflicts.
+
+/speckit-plan liner is own domain `internal/app/lint`. Also maintain same hierarchy in `cmd/arc/lint`. UX implementation and usability MUST BE according to ADR 002 UX Design System (002-ux-design-system.md). `arc lint` in the normal verbosity mode shows only nodes with issues. `arc lint -v` in the verbose node shows status for each node. In the end it shows the overall graph status.
+
 # 2026-07-02
 
 /speckit-specify `arc apply <patch.md>` — apply a patch file to the graph (CORE §12.3): parse the patch manifest (`kind: patch`, `document`, `published`, `stats`); check idempotency and skip with a clear message if `sources/<id>.md` is already tracked (CORE §11.2); for each H1/H2 node section reconstruct the node object (ARCNET-AST §4 ); **create** new node files when the basename does not exist; **merge** into existing files per the kind's declared merge operation — `none` for `source`, `union` for `entity`, `union first-writer` for `resource`, and per-profile operation for domain/extension kinds (CORE §10); derive and append timeline entries from the source's `published` date (CORE §9.4); produce exactly one git commit with the mandatory subject, stats, and `Source-Id:` trailer (CORE §11.3); update the local index cache (Phase 4) atomically within the same filesystem transaction
@@ -8,7 +14,7 @@ See specifications:
 * CORE https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-CORE.md
 * ARCNET-AST https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-AST.md
 
-/speckit-plan graph I/O is own domain `internal/app/graph`. Also maintain same hierarchy in `cmd/arc/graph`. Define the graph AST https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-AST.md as core domain (`internal/core`). Parse the patch using `github.com/yuin/goldmark` markdown parser into AST and then use AST to patch the graph itself. UX implementation and usability MUST BE according to ADR 002 UX Design System (002-ux0design-system.md). Establish YAML based config at `.arc/config.yml` (as part of `arc init`), this version of the config defines only merge rules per kind, the config management is implemented at `internal/app/config`. The default merge rules for all supported profiles is defined at `github.com/fogfish/arcnet-spec`. 
+/speckit-plan graph I/O is own domain `internal/app/graph`. Also maintain same hierarchy in `cmd/arc/graph`. Define the graph AST https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-AST.md as core domain (`internal/core`). Parse the patch using `github.com/yuin/goldmark` markdown parser into AST and then use AST to patch the graph itself. UX implementation and usability MUST BE according to ADR 002 UX Design System (002-ux-design-system.md). Establish YAML based config at `.arc/config.yml` (as part of `arc init`), this version of the config defines only merge rules per kind, the config management is implemented at `internal/app/config`. The default merge rules for all supported profiles is defined at `github.com/fogfish/arcnet-spec`. 
 
 ---
 
