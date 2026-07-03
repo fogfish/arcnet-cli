@@ -30,12 +30,12 @@
 
 **Purpose**: Promote `internal/app/ctrl/adapter/git` to the shared `internal/adapter/git`, since both `ctrl` and the new `graph` use-case need git access (mirrors `internal/adapter/fsys`'s existing precedent). No behavior change to `arc init`. **MUST be submitted as its own PR**, before the rest of this feature's tasks, per the constitution's Task List Requirements for this optional phase.
 
-- [ ] T001 [P] Move `internal/app/ctrl/adapter/git/git.go` to `internal/adapter/git/git.go`; update its package doc comment to describe it as the shared, cross-use-case git adapter (research.md D4), matching `internal/adapter/fsys`'s doc-comment style
-- [ ] T002 Move `internal/app/ctrl/adapter/git/git_test.go` to `internal/adapter/git/git_test.go`; update package name/imports (depends on T001)
-- [ ] T003 Update `cmd/arc/ctrl/init.go`'s import from `internal/app/ctrl/adapter/git` to `internal/adapter/git` (depends on T001)
-- [ ] T004 Add `IsTracked(ctx context.Context, dir, path string) (bool, error)` to `internal/adapter/git.Git`, wrapping `git ls-files --error-unmatch <path>` per contracts/vcs-port-contract.md (exit 0 → `(true, nil)`; git's own "not tracked" exit status → `(false, nil)`; any other failure → `(false, err)`) (depends on T001)
-- [ ] T005 [P] Add unit/integration test coverage for `IsTracked` in `internal/adapter/git/git_test.go` against a real `git` binary and `t.TempDir()`, covering tracked/untracked/error cases (depends on T004)
-- [ ] T006 Run `go build ./... && go test ./...` and confirm every existing `specs/002-arc-init` E2E/unit test still passes unchanged — this promotion has zero behavior change (depends on T002, T003)
+- [X] T001 [P] Move `internal/app/ctrl/adapter/git/git.go` to `internal/adapter/git/git.go`; update its package doc comment to describe it as the shared, cross-use-case git adapter (research.md D4), matching `internal/adapter/fsys`'s doc-comment style
+- [X] T002 Move `internal/app/ctrl/adapter/git/git_test.go` to `internal/adapter/git/git_test.go`; update package name/imports (depends on T001)
+- [X] T003 Update `cmd/arc/ctrl/init.go`'s import from `internal/app/ctrl/adapter/git` to `internal/adapter/git` (depends on T001)
+- [X] T004 Add `IsTracked(ctx context.Context, dir, path string) (bool, error)` to `internal/adapter/git.Git`, wrapping `git ls-files --error-unmatch <path>` per contracts/vcs-port-contract.md (exit 0 → `(true, nil)`; git's own "not tracked" exit status → `(false, nil)`; any other failure → `(false, err)`) (depends on T001)
+- [X] T005 [P] Add unit/integration test coverage for `IsTracked` in `internal/adapter/git/git_test.go` against a real `git` binary and `t.TempDir()`, covering tracked/untracked/error cases (depends on T004)
+- [X] T006 Run `go build ./... && go test ./...` and confirm every existing `specs/002-arc-init` E2E/unit test still passes unchanged — this promotion has zero behavior change (depends on T002, T003)
 
 **Checkpoint**: Git adapter promoted, `arc init` behavior unchanged — ready to build the rest of this feature on top
 
@@ -45,9 +45,9 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T007 Create the package skeleton: `internal/core/`, `internal/app/graph/{kernel,port,adapter/mock,service}/`, `internal/app/config/{kernel,port,adapter/http,adapter/mock,service}/`, `cmd/arc/graph/` directories per plan.md's Project Structure
-- [ ] T008 Add `github.com/yuin/goldmark`, `github.com/yuin/goldmark-meta`, `gopkg.in/yaml.v3` to `go.mod`/`go.sum` (`go get github.com/yuin/goldmark github.com/yuin/goldmark-meta gopkg.in/yaml.v3`) per plan.md Technical Context (research.md D3, D5)
-- [ ] T009 [P] Run `staticcheck ./...` and confirm it passes clean on the new (still-empty) package skeleton
+- [X] T007 Create the package skeleton: `internal/core/`, `internal/app/graph/{kernel,port,adapter/mock,service}/`, `internal/app/config/{kernel,port,adapter/http,adapter/mock,service}/`, `cmd/arc/graph/` directories per plan.md's Project Structure
+- [X] T008 Add `github.com/yuin/goldmark`, `github.com/yuin/goldmark-meta`, `gopkg.in/yaml.v3` to `go.mod`/`go.sum` (`go get github.com/yuin/goldmark github.com/yuin/goldmark-meta gopkg.in/yaml.v3`) per plan.md Technical Context (research.md D3, D5)
+- [X] T009 [P] Run `staticcheck ./...` and confirm it passes clean on the new (still-empty) package skeleton
 
 ---
 
@@ -59,33 +59,33 @@
 
 ### Phase 2a: Domain Model & Glossary (Principles II, V)
 
-- [ ] T010 Add the domain terms from spec.md Key Entities / data-model.md — Patch, Node Contribution, Source Node, Entity/Resource Node, Timeline Entry, Merge Behavior, Ingest Commit, Kind Registration — to [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary (Principle I obligation, plan.md Constitution Check row I)
-- [ ] T011 Verify no existing `internal/<domain>` package already defines a `Node`/`Link`/`Patch`/`MergeOp`-shaped type before introducing them in `internal/core` (none exist — this is the project's first `internal/core` package)
+- [X] T010 Add the domain terms from spec.md Key Entities / data-model.md — Patch, Node Contribution, Source Node, Entity/Resource Node, Timeline Entry, Merge Behavior, Ingest Commit, Kind Registration — to [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary (Principle I obligation, plan.md Constitution Check row I)
+- [X] T011 Verify no existing `internal/<domain>` package already defines a `Node`/`Link`/`Patch`/`MergeOp`-shaped type before introducing them in `internal/core` (none exist — this is the project's first `internal/core` package)
 
 ### Phase 2b: Command & Flag Contract Design (Principle IX)
 
-- [ ] T012 Confirm `arc apply <patch.md>`'s bare-verb grammar (ADR 002 DS-01, research.md D9) and single positional argument against contracts/cli-contract.md
-- [ ] T013 [P] Review contracts/cli-contract.md, contracts/ast-contract.md, contracts/vcs-port-contract.md, contracts/config-contract.md (already produced during `/speckit-plan`) for completeness against spec.md's functional requirements — no changes expected, this is a gate check
+- [X] T012 Confirm `arc apply <patch.md>`'s bare-verb grammar (ADR 002 DS-01, research.md D9) and single positional argument against contracts/cli-contract.md
+- [X] T013 [P] Review contracts/cli-contract.md, contracts/ast-contract.md, contracts/vcs-port-contract.md, contracts/config-contract.md (already produced during `/speckit-plan`) for completeness against spec.md's functional requirements — no changes expected, this is a gate check
 
 ### Phase 2c: External Integration & Adapter Design (Principle VII, if applicable)
 
-- [ ] T014 [P] Confirm the Phase 0-promoted `internal/adapter/git` is the sole git adapter before any new code references it, and confirm no existing adapter in the repository already covers HTTP fetch before creating `internal/app/config/adapter/http`
-- [ ] T015 Define `graph.port.VCS` (`internal/app/graph/port/vcs.go`, contracts/vcs-port-contract.md) and `config.port.Fetcher` (`internal/app/config/port/fetcher.go`, contracts/config-contract.md) interface shapes as the design gate before any adapter code is written
+- [X] T014 [P] Confirm the Phase 0-promoted `internal/adapter/git` is the sole git adapter before any new code references it, and confirm no existing adapter in the repository already covers HTTP fetch before creating `internal/app/config/adapter/http`
+- [X] T015 Define `graph.port.VCS` (`internal/app/graph/port/vcs.go`, contracts/vcs-port-contract.md) and `config.port.Fetcher` (`internal/app/config/port/fetcher.go`, contracts/config-contract.md) interface shapes as the design gate before any adapter code is written
 
 ### Phase 2d: E2E Acceptance Test Design (Principle VIII)
 
-- [ ] T016 [P] [US1] Write E2E tests in `cmd/arc/graph/apply_test.go` for spec.md US1's 4 acceptance scenarios (creates a new file for every patch-carried node; creates/extends the yearly and monthly timeline entries in chronological order; exactly one commit whose subject names the document and whose stats record per-kind counts; the command reports what was created) using the `sut()` helper — tests MUST compile and fail semantically (red phase)
-- [ ] T017 [P] [US2] Write E2E tests in `cmd/arc/graph/apply_test.go` for spec.md US2's 4 acceptance scenarios (re-introducing an existing entity unions its relations with no duplicate file; a previously-empty resource field gets filled; an already-set resource field is preserved on divergence; commit stats distinguish merged from created) — red phase
-- [ ] T018 [P] [US3] Write E2E tests in `cmd/arc/graph/apply_test.go` for spec.md US3's 3 acceptance scenarios (a registered domain kind is applied using its registered behavior; an unregistered kind is still applied — using the union default — with a warning, per FR-018; registering a kind removes the warning on the next apply) — red phase
-- [ ] T019 [P] [US4] Write E2E test in `cmd/arc/graph/apply_test.go` for spec.md US4's 1 acceptance scenario (re-applying an already-tracked document makes no changes and reports clearly) — red phase
-- [ ] T020 [P] Write E2E tests in `cmd/arc/graph/apply_test.go` for the Edge Cases tied to guard behavior: missing manifest field (FR-001/FR-002), malformed patch body structure (FR-002), target not an initialized graph (FR-014), and a merge conflict marker written while the commit still completes (FR-013) — per quickstart.md — red phase
-- [ ] T021 [P] Write E2E tests in `cmd/arc/ctrl/init_test.go` for `specs/002-arc-init/spec.md` FR-017: the config-seed fetch succeeds (seeded `.arc/config.yml` matches the fetched content) and the fetch fails/returns malformed content (seeded file falls back to `core.CoreMergeRules`, `arc init` still succeeds with exit code 0) — via a mock `Fetcher` injected at the wiring layer — red phase
+- [X] T016 [P] [US1] Write E2E tests in `cmd/arc/graph/apply_test.go` for spec.md US1's 4 acceptance scenarios (creates a new file for every patch-carried node; creates/extends the yearly and monthly timeline entries in chronological order; exactly one commit whose subject names the document and whose stats record per-kind counts; the command reports what was created) using the `sut()` helper — tests MUST compile and fail semantically (red phase)
+- [X] T017 [P] [US2] Write E2E tests in `cmd/arc/graph/apply_test.go` for spec.md US2's 4 acceptance scenarios (re-introducing an existing entity unions its relations with no duplicate file; a previously-empty resource field gets filled; an already-set resource field is preserved on divergence; commit stats distinguish merged from created) — red phase
+- [X] T018 [P] [US3] Write E2E tests in `cmd/arc/graph/apply_test.go` for spec.md US3's 3 acceptance scenarios (a registered domain kind is applied using its registered behavior; an unregistered kind is still applied — using the union default — with a warning, per FR-018; registering a kind removes the warning on the next apply) — red phase
+- [X] T019 [P] [US4] Write E2E test in `cmd/arc/graph/apply_test.go` for spec.md US4's 1 acceptance scenario (re-applying an already-tracked document makes no changes and reports clearly) — red phase
+- [X] T020 [P] Write E2E tests in `cmd/arc/graph/apply_test.go` for the Edge Cases tied to guard behavior: missing manifest field (FR-001/FR-002), malformed patch body structure (FR-002), target not an initialized graph (FR-014), and a merge conflict marker written while the commit still completes (FR-013) — per quickstart.md — red phase
+- [X] T021 [P] Write E2E tests in `cmd/arc/ctrl/init_test.go` for `specs/002-arc-init/spec.md` FR-017: the config-seed fetch succeeds (seeded `.arc/config.yml` matches the fetched content) and the fetch fails/returns malformed content (seeded file falls back to `core.CoreMergeRules`, `arc init` still succeeds with exit code 0) — via a mock `Fetcher` injected at the wiring layer — red phase
 
 > T016–T020 all target the same new file (`cmd/arc/graph/apply_test.go`) and are therefore sequential in practice despite each being scoped to one story (mirrors `specs/002-arc-init/tasks.md`'s T010–T013 note). T021 is a separate, existing file and is genuinely parallelizable with the others.
 
 ### Phase 2e: Configuration & Secrets Review (Principle XI, if applicable)
 
-- [ ] T022 Confirm `.arc/config.yml` is graph-root-scoped project configuration, not a secrets file, and that the config-seed fetch (research.md D5 revised) touches only a public, unauthenticated URL with no credential or secret material involved (plan.md Constitution Check row XI)
+- [X] T022 Confirm `.arc/config.yml` is graph-root-scoped project configuration, not a secrets file, and that the config-seed fetch (research.md D5 revised) touches only a public, unauthenticated URL with no credential or secret material involved (plan.md Constitution Check row XI)
 
 **Checkpoint**: All Phase 2 subsections complete — user story implementation can now begin
 
@@ -97,66 +97,66 @@
 
 ### `internal/core` — AST types and vocabulary
 
-- [ ] T023 [P] Implement `internal/core/ast.go`: `Kind`, `MergeOp` (+ constants `MergeNone`/`MergeUnion`/`MergeUnionFirstWriter`/`MergeAppend`/`MergeValidatedOverwrite`), `Link`, `LinkBlock`, `Node`, `Patch` per data-model.md
-- [ ] T024 [P] Unit tests for the plain value types' zero-value/shape behavior in `internal/core/ast_test.go` (depends on T023)
-- [ ] T025 [P] Implement `internal/core/rules.go`: `CoreMergeRules`, `KnownProfileMergeRules`, `MergeRuleSet` (+ `MarshalYAML`/`UnmarshalYAML`, `Union`, `Lookup`), `ConfigPath` per data-model.md
-- [ ] T026 [P] Unit tests for `MergeRuleSet.Union`/`.Lookup`/YAML round-trip in `internal/core/rules_test.go` (depends on T025)
-- [ ] T027 [P] Implement `internal/core/errors.go`: `faults.Type` sentinel constants `ErrManifestInvalid`, `ErrPatchStructure` per data-model.md
+- [X] T023 [P] Implement `internal/core/ast.go`: `Kind`, `MergeOp` (+ constants `MergeNone`/`MergeUnion`/`MergeUnionFirstWriter`/`MergeAppend`/`MergeValidatedOverwrite`), `Link`, `LinkBlock`, `Node`, `Patch` per data-model.md
+- [X] T024 [P] Unit tests for the plain value types' zero-value/shape behavior in `internal/core/ast_test.go` (depends on T023)
+- [X] T025 [P] Implement `internal/core/rules.go`: `CoreMergeRules`, `KnownProfileMergeRules`, `MergeRuleSet` (+ `MarshalYAML`/`UnmarshalYAML`, `Union`, `Lookup`), `ConfigPath` per data-model.md
+- [X] T026 [P] Unit tests for `MergeRuleSet.Union`/`.Lookup`/YAML round-trip in `internal/core/rules_test.go` (depends on T025)
+- [X] T027 [P] Implement `internal/core/errors.go`: `faults.Type` sentinel constants `ErrManifestInvalid`, `ErrPatchStructure` per data-model.md
 
 ### `internal/core` — Markdown parsing and rendering (goldmark, research.md D3/D3b)
 
-- [ ] T028 Implement `internal/core/markdown.go`'s `ParsePatch(r io.Reader) (Patch, error)`: goldmark + goldmark-meta front-matter parsing, H1-kind/H2-node section walk, fenced-yaml `Attrs` block, prose/edge/link population per research.md D3 (depends on T023, T027)
-- [ ] T029 Implement `internal/core/markdown.go`'s `ParseNode(r io.Reader) (Node, error)`: parses one on-disk graph node file (front-matter + body) per CORE §4/§9 (depends on T028)
-- [ ] T030 Implement the bracket-strip-on-parse logic (research.md D3/D3b) shared by `ParsePatch`/`ParseNode`: recognize `[[Target]]`/`[[Target|alias]]`/`[predicate:: [[Target]]]` embedded in prose (not a standalone list-item edge), append each as a `Link` to `HRefs`, and strip the bracket markup from the string stored in `Text`/`Notes` (depends on T029)
-- [ ] T031 [P] Unit tests for `ParsePatch`/`ParseNode` in `internal/core/markdown_test.go`: manifest validation (`ErrManifestInvalid`), body structure validation (`ErrPatchStructure`), fenced-yaml `Attrs` parsing, `Edges`/`Links` population, and bracket-strip-into-`HRefs` behavior (depends on T030)
-- [ ] T032 Implement `internal/core/markdown.go`'s `RenderNode(n Node) ([]byte, error)`: front-matter (sorted attribute keys) + `Text` + `Edges` + `Links` (edges first, then blocks sorted by `Title`) + `Notes`, per contracts/ast-contract.md (depends on T023)
-- [ ] T033 Implement `RenderNode`'s inline wikilink reconstruction (research.md D3b): walk `HRefs` in order, wrap the first eligible occurrence of each href's display substring (`Alias` if set, else `Target`) in brackets, enforcing (i) the match is not already inside brackets produced by an earlier href or pre-existing in the text, and (ii) the match starts and ends on a whitespace/text boundary, never mid-word; leave a href unlinked in prose (without dropping it from the data) when no eligible occurrence exists (depends on T032)
-- [ ] T034 [P] Table-driven unit tests for `RenderNode`'s reconstruction in `internal/core/markdown_test.go`: a repeated target name (only one occurrence linked), a target substring embedded mid-word (not linked), a target immediately preceded by whitespace (linked), and a target whose display text already sits inside existing brackets (not double-wrapped) — per plan.md Testing (depends on T033)
-- [ ] T035 [P] Round-trip unit tests in `internal/core/markdown_test.go`: `ParseNode` → `RenderNode` → `ParseNode` produces an equal `Node` for one representative fixture per core kind (`source`, `entity`, `resource`) (depends on T029, T033)
+- [X] T028 ✅ Fixed (BUG-003) Implement `internal/core/markdown.go`'s `ParsePatch(r io.Reader) (Patch, error)`: goldmark + goldmark-meta front-matter parsing, H1-kind/H2-node section walk, fenced-yaml `Attrs` block, prose/edge/link population per research.md D3 (depends on T023, T027) — `walkNodeBody` only recognized `## Label`-headed predicate blocks, never CORE §12.2's canonical `**Label**` bold-text form, and its trailing-content loop silently discarded any unrecognized list instead of erroring, together silently dropping declared edges; fixed by T088-T089
+- [X] T029 Implement `internal/core/markdown.go`'s `ParseNode(r io.Reader) (Node, error)`: parses one on-disk graph node file (front-matter + body) per CORE §4/§9 (depends on T028)
+- [X] T030 Implement the bracket-strip-on-parse logic (research.md D3/D3b) shared by `ParsePatch`/`ParseNode`: recognize `[[Target]]`/`[[Target|alias]]`/`[predicate:: [[Target]]]` embedded in prose (not a standalone list-item edge), append each as a `Link` to `HRefs`, and strip the bracket markup from the string stored in `Text`/`Notes` (depends on T029)
+- [X] T031 [P] ✅ Fixed (BUG-003) Unit tests for `ParsePatch`/`ParseNode` in `internal/core/markdown_test.go`: manifest validation (`ErrManifestInvalid`), body structure validation (`ErrPatchStructure`), fenced-yaml `Attrs` parsing, `Edges`/`Links` population, and bracket-strip-into-`HRefs` behavior (depends on T030) — no case exercised a node body with more than one predicate-grouped block, nor the CORE-canonical bold-label form, so this gap shipped undetected; fixed by T090
+- [X] T032 Implement `internal/core/markdown.go`'s `RenderNode(n Node) ([]byte, error)`: front-matter (sorted attribute keys) + `Text` + `Edges` + `Links` (edges first, then blocks sorted by `Title`) + `Notes`, per contracts/ast-contract.md (depends on T023)
+- [X] T033 Implement `RenderNode`'s inline wikilink reconstruction (research.md D3b): walk `HRefs` in order, wrap the first eligible occurrence of each href's display substring (`Alias` if set, else `Target`) in brackets, enforcing (i) the match is not already inside brackets produced by an earlier href or pre-existing in the text, and (ii) the match starts and ends on a whitespace/text boundary, never mid-word; leave a href unlinked in prose (without dropping it from the data) when no eligible occurrence exists (depends on T032)
+- [X] T034 [P] Table-driven unit tests for `RenderNode`'s reconstruction in `internal/core/markdown_test.go`: a repeated target name (only one occurrence linked), a target substring embedded mid-word (not linked), a target immediately preceded by whitespace (linked), and a target whose display text already sits inside existing brackets (not double-wrapped) — per plan.md Testing (depends on T033)
+- [X] T035 [P] Round-trip unit tests in `internal/core/markdown_test.go`: `ParseNode` → `RenderNode` → `ParseNode` produces an equal `Node` for one representative fixture per core kind (`source`, `entity`, `resource`) (depends on T029, T033)
 
 ### `internal/core` — Merge algebra (CORE §10, research.md D6/D7)
 
-- [ ] T036 Implement `internal/core/merge.go`'s `Merge(existing, incoming Node, op MergeOp, sourceID string) (merged Node, conflicts []string, err error)` for `MergeNone`/`MergeUnion`/`MergeUnionFirstWriter`/`MergeValidatedOverwrite` per research.md D6 (depends on T023)
-- [ ] T037 Implement the conflict-marker rendering (research.md D7): embed the VISION.md-format `<<<<<<< id` / value / `=======` / value / `>>>>>>> id` string into a conflicted scalar field's value, falling back to the literal token `"existing"` when the prior writer of `existing`'s value cannot be determined (depends on T036)
-- [ ] T038 [P] Table-driven unit tests for `Merge` in `internal/core/merge_test.go`: one case per `MergeOp` covering create-from-zero-`existing`, no-op (`none`), multi-valued-field union, first-writer scalar, empty-field-fill (`union-first-writer` only), and conflict-marker embedding (depends on T037)
+- [X] T036 [US1] ✅ Fixed (BUG-002, BUG-004) Implement `internal/core/merge.go`'s `Merge(existing, incoming Node, op MergeOp, sourceID string) (merged Node, conflicts []string, err error)` for `MergeNone`/`MergeUnion`/`MergeUnionFirstWriter`/`MergeValidatedOverwrite` per research.md D6 (depends on T023) — original completion omitted `MergeAppend` entirely, so it fell through to `default` and returned `ErrUnknownMergeOp` for any domain kind registered with `append` (FR-019), crashing `arc apply`; fixed by T084. Reopened again (BUG-004): `MergeUnion`'s scalar `Attrs`/`Text` handling flagged a false-positive conflict on nearly every re-application of an `entity` node carrying recomputed/regenerated scalar content; fixed by T092-T093
+- [X] T037 Implement the conflict-marker rendering (research.md D7): embed the VISION.md-format `<<<<<<< id` / value / `=======` / value / `>>>>>>> id` string into a conflicted scalar field's value, falling back to the literal token `"existing"` when the prior writer of `existing`'s value cannot be determined (depends on T036)
+- [X] T038 [P] ✅ Fixed (BUG-002, BUG-004) Table-driven unit tests for `Merge` in `internal/core/merge_test.go`: one case per `MergeOp` covering create-from-zero-`existing`, no-op (`none`), multi-valued-field union, first-writer scalar, empty-field-fill (`union-first-writer` only), and conflict-marker embedding (depends on T037) — despite "one case per `MergeOp`," no `MergeAppend` case existed, so this gap shipped with no failing test; fixed by T085. Reopened again (BUG-004): the "conflict-marker embedding" case for `MergeUnion` encoded the now-superseded behavior as expected/passing; fixed by T094
 
 ### `internal/core` — Timeline derivation (CORE §9.4, research.md D8)
 
-- [ ] T039 [P] Implement `internal/core/timeline.go`: `TimelinePeriods(published time.Time) (yearly, monthly string)`, `TimelineEntry(id, title string, authors []string, published time.Time) string` per research.md D8
-- [ ] T040 [P] Unit tests for `TimelinePeriods`/`TimelineEntry` in `internal/core/timeline_test.go` (depends on T039)
+- [X] T039 [P] Implement `internal/core/timeline.go`: `TimelinePeriods(published time.Time) (yearly, monthly string)`, `TimelineEntry(id, title string, authors []string, published time.Time) string` per research.md D8
+- [X] T040 [P] Unit tests for `TimelinePeriods`/`TimelineEntry` in `internal/core/timeline_test.go` (depends on T039)
 
 ### `internal/app/config` — `.arc/config.yml` load/save/resolve/default (research.md D5 revised)
 
-- [ ] T041 [P] Implement `internal/app/config/kernel/config.go`: `Config{MergeRules core.MergeRuleSet}` per data-model.md
-- [ ] T042 [P] Implement `internal/app/config/port/fetcher.go`: `Fetcher` interface (`Fetch(ctx, url) ([]byte, error)`) per contracts/config-contract.md
-- [ ] T043 Implement `internal/app/config/adapter/http/client.go`: stdlib `net/http`-backed `Fetcher`, `http.Client{Timeout: 3 * time.Second}`, no retries, any non-2xx response treated as a failure (depends on T042)
-- [ ] T044 [P] Integration test for the HTTP adapter in `internal/app/config/adapter/http/client_test.go` against `httptest.Server` (success, non-2xx status, timeout cases) (depends on T043)
-- [ ] T045 [P] Implement `internal/app/config/adapter/mock/mock.go`: fake `Fetcher` with configurable return values/errors, for `Default`'s unit tests (depends on T042)
-- [ ] T046 [P] Implement `internal/app/config/service/errors.go`: `faults.Safe1[string]` sentinel constants `ErrConfigMalformed`, `ErrConfigConflict` per data-model.md
-- [ ] T047 Implement `internal/app/config/service/config.go`'s `Load`/`Save`/`Resolve` against `fsys.Store` per contracts/config-contract.md (`Resolve`: absent file → `core.CoreMergeRules`; malformed → `ErrConfigMalformed`; present → `core.CoreMergeRules.Union(loaded)`) (depends on T041, T046)
-- [ ] T048 Implement `internal/app/config/service/config.go`'s `Default(ctx, fetcher) (kernel.Config, usedFallback bool)`: one fetch attempt, YAML-unmarshal on success, `core.CoreMergeRules` fallback on any failure (network error, non-2xx, timeout, malformed payload) — no `error` return, by construction (depends on T041, T042)
-- [ ] T049 [P] Unit tests for `Load`/`Save`/`Resolve` in `internal/app/config/service/config_test.go` against a fake `fsys.Store` (depends on T047)
-- [ ] T050 [P] Unit tests for `Default` in `internal/app/config/service/config_test.go` against `adapter/mock`'s `Fetcher`: fetch succeeds, fetch fails (network error), fetch returns non-2xx, fetch returns malformed YAML — each asserting `usedFallback` and the returned `Config` correctly (depends on T048, T045)
-- [ ] T051 Implement `internal/app/config/component.go`: primary port `Resolve(store)`, `Save(store, cfg)`, `Default(ctx, fetcher)` as thin delegators into `service` (depends on T047, T048)
-- [ ] T052 [P] Write `internal/app/config/README.md` documenting the `config` use-case per ADR 001's layout convention
+- [X] T041 [P] Implement `internal/app/config/kernel/config.go`: `Config{MergeRules core.MergeRuleSet}` per data-model.md
+- [X] T042 [P] Implement `internal/app/config/port/fetcher.go`: `Fetcher` interface (`Fetch(ctx, url) ([]byte, error)`) per contracts/config-contract.md
+- [X] T043 Implement `internal/app/config/adapter/http/client.go`: stdlib `net/http`-backed `Fetcher`, `http.Client{Timeout: 3 * time.Second}`, no retries, any non-2xx response treated as a failure (depends on T042)
+- [X] T044 [P] Integration test for the HTTP adapter in `internal/app/config/adapter/http/client_test.go` against `httptest.Server` (success, non-2xx status, timeout cases) (depends on T043)
+- [X] T045 [P] Implement `internal/app/config/adapter/mock/mock.go`: fake `Fetcher` with configurable return values/errors, for `Default`'s unit tests (depends on T042)
+- [X] T046 [P] Implement `internal/app/config/service/errors.go`: `faults.Safe1[string]` sentinel constants `ErrConfigMalformed`, `ErrConfigConflict` per data-model.md
+- [X] T047 Implement `internal/app/config/service/config.go`'s `Load`/`Save`/`Resolve` against `fsys.Store` per contracts/config-contract.md (`Resolve`: absent file → `core.CoreMergeRules`; malformed → `ErrConfigMalformed`; present → `core.CoreMergeRules.Union(loaded)`) (depends on T041, T046)
+- [X] T048 Implement `internal/app/config/service/config.go`'s `Default(ctx, fetcher) (kernel.Config, usedFallback bool)`: one fetch attempt, YAML-unmarshal on success, `core.CoreMergeRules` fallback on any failure (network error, non-2xx, timeout, malformed payload) — no `error` return, by construction (depends on T041, T042)
+- [X] T049 [P] Unit tests for `Load`/`Save`/`Resolve` in `internal/app/config/service/config_test.go` against a fake `fsys.Store` (depends on T047)
+- [X] T050 [P] Unit tests for `Default` in `internal/app/config/service/config_test.go` against `adapter/mock`'s `Fetcher`: fetch succeeds, fetch fails (network error), fetch returns non-2xx, fetch returns malformed YAML — each asserting `usedFallback` and the returned `Config` correctly (depends on T048, T045)
+- [X] T051 Implement `internal/app/config/component.go`: primary port `Resolve(store)`, `Save(store, cfg)`, `Default(ctx, fetcher)` as thin delegators into `service` (depends on T047, T048)
+- [X] T052 [P] Write `internal/app/config/README.md` documenting the `config` use-case per ADR 001's layout convention
 
 ### `internal/app/ctrl` — config-seed threading (research.md D5 revised)
 
-- [ ] T053 Extend `internal/app/ctrl/component.go`'s `Init` signature to accept `configSeed []byte`, threaded through into `service.Init` (depends on T007)
-- [ ] T054 Update `internal/app/ctrl/service/init.go`'s `writeLayout` call site to use a per-call copy of `kernel.DefaultLayout` with `MetaStubs[core.ConfigPath] = string(configSeed)` added (the package-level `DefaultLayout` itself stays static and config-free); extend `rollback` to also remove `core.ConfigPath` on a mid-run failure (depends on T053, T025)
-- [ ] T055 [P] Update `internal/app/ctrl/service/init_test.go`'s existing unit tests for the new `Init` signature (pass a fixed `configSeed` fixture); add a case asserting `.arc/config.yml` is written with exactly the passed-in content (depends on T054)
+- [X] T053 Extend `internal/app/ctrl/component.go`'s `Init` signature to accept `configSeed []byte`, threaded through into `service.Init` (depends on T007)
+- [X] T054 Update `internal/app/ctrl/service/init.go`'s `writeLayout` call site to use a per-call copy of `kernel.DefaultLayout` with `MetaStubs[core.ConfigPath] = string(configSeed)` added (the package-level `DefaultLayout` itself stays static and config-free); extend `rollback` to also remove `core.ConfigPath` on a mid-run failure (depends on T053, T025)
+- [X] T055 [P] Update `internal/app/ctrl/service/init_test.go`'s existing unit tests for the new `Init` signature (pass a fixed `configSeed` fixture); add a case asserting `.arc/config.yml` is written with exactly the passed-in content (depends on T054)
 
 ### `internal/app/graph` — scaffolding
 
-- [ ] T056 [P] Implement `internal/app/graph/kernel/apply.go`: `ApplyResult` per data-model.md
-- [ ] T057 [P] Implement `internal/app/graph/port/vcs.go`: `VCS` interface (`IsTracked`, `StageAll`, `Commit`) per contracts/vcs-port-contract.md
-- [ ] T058 [P] Implement `internal/app/graph/adapter/mock/mock.go`: in-memory fake `VCS` with configurable return values/errors and a call log, for service unit tests (depends on T057)
-- [ ] T059 [P] Implement `internal/app/graph/service/errors.go`: `faults.Safe1[string]` sentinel constants `ErrNotAGraph`, `ErrPatchRead`, `ErrNodeWrite` per data-model.md
-- [ ] T060 [P] Write `internal/app/graph/README.md` documenting the `graph` use-case per ADR 001's layout convention
+- [X] T056 [P] Implement `internal/app/graph/kernel/apply.go`: `ApplyResult` per data-model.md
+- [X] T057 [P] Implement `internal/app/graph/port/vcs.go`: `VCS` interface (`IsTracked`, `StageAll`, `Commit`) per contracts/vcs-port-contract.md
+- [X] T058 [P] Implement `internal/app/graph/adapter/mock/mock.go`: in-memory fake `VCS` with configurable return values/errors and a call log, for service unit tests (depends on T057)
+- [X] T059 [P] Implement `internal/app/graph/service/errors.go`: `faults.Safe1[string]` sentinel constants `ErrNotAGraph`, `ErrPatchRead`, `ErrNodeWrite` per data-model.md
+- [X] T060 [P] Write `internal/app/graph/README.md` documenting the `graph` use-case per ADR 001's layout convention
 
 ### Wiring layer — `arc init`'s config-seed composition
 
-- [ ] T061 Update `cmd/arc/ctrl/init.go`: construct the real `Fetcher` (`internal/app/config/adapter/http`), call `appconfig.Default(ctx, fetcher)`, marshal the resulting `kernel.Config` to YAML bytes, pass as `appctrl.Init`'s new `configSeed` argument; add the `"Fetching default configuration"` `--verbose` `Reporter` step and a `usedFallback`-conditional note, matching the existing verbose-only progress convention (depends on T043, T051, T053)
+- [X] T061 Update `cmd/arc/ctrl/init.go`: construct the real `Fetcher` (`internal/app/config/adapter/http`), call `appconfig.Default(ctx, fetcher)`, marshal the resulting `kernel.Config` to YAML bytes, pass as `appctrl.Init`'s new `configSeed` argument; add the `"Fetching default configuration"` `--verbose` `Reporter` step and a `usedFallback`-conditional note, matching the existing verbose-only progress convention (depends on T043, T051, T053)
 
 **Checkpoint**: Foundation ready — user story implementation can now proceed
 
@@ -172,13 +172,13 @@
 
 > E2E tests for this story were already written in Phase 2d (T016) and MUST currently be failing (red). Implementation below MUST turn them green with minimal test changes.
 
-- [ ] T062 [US1] Implement `internal/app/graph/service/apply.go`'s `Apply(ctx, mounter, vcs, rules, dir, patchPath)`: mount, guard `ErrNotAGraph` (`Store.Stat(".arc")`), read and parse the patch (`Store.Open` + `core.ParsePatch`, wrapping read failures as `ErrPatchRead`), and — for the all-new-content case — create every patch node via `core.Merge(zeroNode, incoming, op, patch.Document)` + `core.RenderNode` + `Store.Create` (`ErrNodeWrite`), reporting each step via `bios.Reporter` (depends on T028, T032, T036, T057, T059)
-- [ ] T063 [US1] Implement timeline derivation/write-back in `internal/app/graph/service/apply.go`: `core.TimelinePeriods` + `core.TimelineEntry`, read-or-create `timeline/yearly/<YYYY>.md`/`timeline/monthly/<YYYY-MM>.md` via `core.ParseNode` + chronological insertion + `core.RenderNode`, per research.md D8 (depends on T062, T039)
-- [ ] T064 [US1] Implement the commit step in `internal/app/graph/service/apply.go`: `port.VCS.StageAll` + `.Commit` with the CORE §11.3 subject/stats/`Source-Id:` trailer message; populate and return `kernel.ApplyResult{Document, Created, CommitHash, Timeline}` (depends on T063)
-- [ ] T065 [US1] Implement `internal/app/graph/component.go`: primary port `Apply(ctx, mounter, vcs, rules, dir, patchPath) (kernel.ApplyResult, error)` as a thin delegator into `service.Apply` (depends on T064)
-- [ ] T066 [US1] Implement `cmd/arc/graph/apply.go`: `NewApplyCmd() *cobra.Command` — calls `appconfig.Resolve(store)` then `appgraph.Apply`, wires `fsys.Local{}` and the real (promoted) git adapter, renders via `bios.Registry[kernel.ApplyResult]{Human: humanApplyPrinter{}}` per contracts/cli-contract.md (depends on T065, T051)
-- [ ] T067 [US1] Populate `Short`/`Long`/`Example` help text for `arc apply` per contracts/cli-contract.md's DS-11 shape (constitution Principle XII) in `cmd/arc/graph/apply.go`
-- [ ] T068 [US1] Register `graph.NewApplyCmd()` into `cmd/arc/root.go`'s command tree (depends on T066)
+- [X] T062 [US1] ✅ Fixed (BUG-001) Implement `internal/app/graph/service/apply.go`'s `Apply(ctx, mounter, vcs, rules, dir, patchPath)`: mount, guard `ErrNotAGraph` (`Store.Stat(".arc")`), read and parse the patch (`Store.Open` + `core.ParsePatch`, wrapping read failures as `ErrPatchRead`), and — for the all-new-content case — create every patch node via `core.Merge(zeroNode, incoming, op, patch.Document)` + `core.RenderNode` + `Store.Create` (`ErrNodeWrite`), reporting each step via `bios.Reporter` (depends on T028, T032, T036, T057, T059) — original completion never actually added the `bios.Reporter` parameter this task's own text requires; fixed by T079-T081
+- [X] T063 [US1] ✅ Fixed (BUG-001) Implement timeline derivation/write-back in `internal/app/graph/service/apply.go`: `core.TimelinePeriods` + `core.TimelineEntry`, read-or-create `timeline/yearly/<YYYY>.md`/`timeline/monthly/<YYYY-MM>.md` via `core.ParseNode` + chronological insertion + `core.RenderNode`, per research.md D8 (depends on T062, T039) — the `"Updating timeline"` Reporter label (data-model.md) was never wired; fixed by T080
+- [X] T064 [US1] ✅ Fixed (BUG-001) Implement the commit step in `internal/app/graph/service/apply.go`: `port.VCS.StageAll` + `.Commit` with the CORE §11.3 subject/stats/`Source-Id:` trailer message; populate and return `kernel.ApplyResult{Document, Created, CommitHash, Timeline}` (depends on T063) — the `"Committing"` Reporter label (data-model.md) was never wired; fixed by T080
+- [X] T065 [US1] ✅ Fixed (BUG-001) Implement `internal/app/graph/component.go`: primary port `Apply(ctx, mounter, vcs, rules, dir, patchPath) (kernel.ApplyResult, error)` as a thin delegator into `service.Apply` (depends on T064) — signature was missing the `reporter bios.Reporter` parameter T062 required; fixed by T079
+- [X] T066 [US1] ✅ Fixed (BUG-001) Implement `cmd/arc/graph/apply.go`: `NewApplyCmd() *cobra.Command` — calls `appconfig.Resolve(store)` then `appgraph.Apply`, wires `fsys.Local{}` and the real (promoted) git adapter, renders via `bios.Registry[kernel.ApplyResult]{Human: humanApplyPrinter{}}` per contracts/cli-contract.md (depends on T065, T051) — constructed its git adapter's own reporter unconditionally silent and never built/passed a `--verbose`-gated `bios.Reporter` into `appgraph.Apply`; fixed by T082
+- [X] T067 [US1] Populate `Short`/`Long`/`Example` help text for `arc apply` per contracts/cli-contract.md's DS-11 shape (constitution Principle XII) in `cmd/arc/graph/apply.go`
+- [X] T068 [US1] Register `graph.NewApplyCmd()` into `cmd/arc/root.go`'s command tree (depends on T066)
 
 **Checkpoint**: At this point, User Story 1's E2E tests (T016) pass and `arc apply` is fully functional and independently testable against a graph with no overlapping content
 
@@ -194,8 +194,8 @@
 
 > E2E tests for this story were already written in Phase 2d (T017) and MUST currently be failing (red).
 
-- [ ] T069 [US2] Extend `internal/app/graph/service/apply.go`'s per-node path (T062) to look up an existing node (`core.ParseNode` via `Store.Open`) before creating one, calling `core.Merge(existing, incoming, op, patch.Document)` instead of a bare create when the basename already exists on disk (spec FR-006) (depends on T062)
-- [ ] T070 [US2] Populate `ApplyResult.Merged` (as distinct from `Created`) and `ApplyResult.Conflicts` (relative paths of node files whose merge flagged a conflict marker) in `internal/app/graph/service/apply.go` (depends on T069, T037)
+- [X] T069 [US2] Extend `internal/app/graph/service/apply.go`'s per-node path (T062) to look up an existing node (`core.ParseNode` via `Store.Open`) before creating one, calling `core.Merge(existing, incoming, op, patch.Document)` instead of a bare create when the basename already exists on disk (spec FR-006) (depends on T062)
+- [X] T070 [US2] Populate `ApplyResult.Merged` (as distinct from `Created`) and `ApplyResult.Conflicts` (relative paths of node files whose merge flagged a conflict marker) in `internal/app/graph/service/apply.go` (depends on T069, T037)
 
 **Checkpoint**: User Stories 1 AND 2 both pass their E2E tests independently
 
@@ -211,9 +211,9 @@
 
 > E2E tests for this story were already written in Phase 2d (T018) and MUST currently be failing (red).
 
-- [ ] T071 [US3] Implement the kind-recognition step in `internal/app/graph/service/apply.go`: call `rules.Lookup(node.Kind)` before creating/merging each node; when `ok=false`, apply using `core.MergeUnion` and append a warning sentence to `ApplyResult.Warnings` naming the unrecognized kind (research.md D5-revised, spec FR-018) — the application is never refused on this basis (depends on T069, T025)
-- [ ] T072 [US3] Wire `cmd/arc/graph/apply.go` to print one `bios.SCHEMA.StatusWarn`/`IconWarn`-styled stderr line per `ApplyResult.Warnings` entry (suppressed under `--quiet`/`--json`), and include `warnings` in the `--json` output shape per contracts/cli-contract.md (depends on T066, T071)
-- [ ] T073 [US3] Implement the `PostRunE` conflict hint in `cmd/arc/graph/apply.go`: when `ApplyResult.Conflicts` is non-empty, print the ADR 002 DS-12 hint naming the conflicted file(s); suppressed under `--json`/`--quiet` (depends on T066, T070)
+- [X] T071 [US3] Implement the kind-recognition step in `internal/app/graph/service/apply.go`: call `rules.Lookup(node.Kind)` before creating/merging each node; when `ok=false`, apply using `core.MergeUnion` and append a warning sentence to `ApplyResult.Warnings` naming the unrecognized kind (research.md D5-revised, spec FR-018) — the application is never refused on this basis (depends on T069, T025)
+- [X] T072 [US3] Wire `cmd/arc/graph/apply.go` to print one `bios.SCHEMA.StatusWarn`/`IconWarn`-styled stderr line per `ApplyResult.Warnings` entry (suppressed under `--quiet`/`--json`), and include `warnings` in the `--json` output shape per contracts/cli-contract.md (depends on T066, T071)
+- [X] T073 [US3] Implement the `PostRunE` conflict hint in `cmd/arc/graph/apply.go`: when `ApplyResult.Conflicts` is non-empty, print the ADR 002 DS-12 hint naming the conflicted file(s); suppressed under `--json`/`--quiet` (depends on T066, T070)
 
 **Checkpoint**: User Stories 1, 2, AND 3 all pass their E2E tests independently
 
@@ -229,8 +229,8 @@
 
 > E2E test for this story was already written in Phase 2d (T019) and MUST currently be failing (red).
 
-- [ ] T074 [US4] Implement the idempotency guard in `internal/app/graph/service/apply.go`: `port.VCS.IsTracked(ctx, dir, "sources/<document>.md")`, checked immediately after the `ErrNotAGraph` guard and before any write; when tracked, return `kernel.ApplyResult{Document: patch.Document, Skipped: true}` with zero filesystem/git changes (spec FR-003) (depends on T062, T057)
-- [ ] T075 [US4] Implement `humanApplyPrinter`'s skip-path rendering in `cmd/arc/graph/apply.go`: `"✅ <document> is already tracked — nothing to do"` per contracts/cli-contract.md (depends on T066, T074)
+- [X] T074 [US4] Implement the idempotency guard in `internal/app/graph/service/apply.go`: `port.VCS.IsTracked(ctx, dir, "sources/<document>.md")`, checked immediately after the `ErrNotAGraph` guard and before any write; when tracked, return `kernel.ApplyResult{Document: patch.Document, Skipped: true}` with zero filesystem/git changes (spec FR-003) (depends on T062, T057)
+- [X] T075 [US4] Implement `humanApplyPrinter`'s skip-path rendering in `cmd/arc/graph/apply.go`: `"✅ <document> is already tracked — nothing to do"` per contracts/cli-contract.md (depends on T066, T074)
 
 **Checkpoint**: All four user stories pass their E2E tests independently — full feature complete
 
@@ -240,9 +240,63 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T076 [P] Update `README.md`'s quick-start example to mention `arc apply` (constitution Principle XII)
-- [ ] T077 [P] Manually run all 4 quickstart.md scenarios against the built binary and confirm expected output/exit codes
-- [ ] T078 [P] Add table-driven unit tests in `internal/app/graph/service/apply_test.go` covering every guard/path combination (not-a-graph, already-tracked, create, merge, conflict, unregistered-kind-warning) against `adapter/mock`'s `VCS` and fakes of `fsys.Mounter`/`fsys.Store`, asserting `errors.Is(err, service.ErrXxx)` where applicable (constitution Principle VI)
+- [X] T076 [P] Update `README.md`'s quick-start example to mention `arc apply` (constitution Principle XII)
+- [X] T077 [P] Manually run all 4 quickstart.md scenarios against the built binary and confirm expected output/exit codes
+- [X] T078 [P] Add table-driven unit tests in `internal/app/graph/service/apply_test.go` covering every guard/path combination (not-a-graph, already-tracked, create, merge, conflict, unregistered-kind-warning) against `adapter/mock`'s `VCS` and fakes of `fsys.Mounter`/`fsys.Store`, asserting `errors.Is(err, service.ErrXxx)` where applicable (constitution Principle VI)
+
+---
+
+## Bugfix: BUG-001 — `arc apply --verbose` reports no per-step or per-node detail
+
+**Purpose**: Fix `specs/003-apply-patch/bugs/BUG-001.md`. See `research.md` D9 Bugfix for the full revised decision, `data-model.md`'s Reporter events section for the updated table, and `contracts/cli-contract.md`'s stderr contract (unchanged — this fixes non-compliance with it, not the contract itself). Implements the new spec.md FR-021.
+
+- [X] T079 [US1] Add a `reporter bios.Reporter` parameter to `internal/app/graph/service.Apply` and `internal/app/graph/component.Apply` (both signatures gain the parameter in the same position, immediately after `vcs`); `service.Apply` calls `reporter.Start`/`.Done` around each of the five documented phases (data-model.md Reporter events) (depends on T062 reopened, T065 reopened)
+- [X] T080 [US1] Inside `service.Apply`'s `"Applying node contributions"` phase, call `reporter.Step(...)` once per node processed, naming the node's ID/title and its outcome (`"<id/title>: created"`, `"<id/title>: merged"`, or `"<id/title>: merged (conflict flagged)"`, per spec.md FR-021); wire equivalent `Start`/`Done` reporting around the `"Updating timeline"` and `"Committing"` phases (depends on T079, T063 reopened, T064 reopened)
+- [X] T081 [P] Add unit test coverage in `internal/app/graph/service/apply_test.go` asserting `reporter.Step` is called once per processed node with the expected `"<id/title>: <outcome>"` text, using a small in-package fake `bios.Reporter` recording calls (constitution Principle VI) (depends on T080)
+- [X] T082 [US1] Update `cmd/arc/graph/apply.go`: construct `reporter := bios.NewReporter(bios.Quiet, !bios.Verbose)` (matching `cmd/arc/ctrl/init.go`'s convention exactly) and pass it into `appgraph.Apply`, replacing the previous unconditionally-silent reporter passed only to the git adapter (depends on T066 reopened, T079)
+- [X] T083 [P] Add an E2E test in `cmd/arc/graph/apply_test.go` mirroring `cmd/arc/ctrl/init_test.go`'s `TestInitVerboseModeShowsGitProgress`: `arc apply --verbose` against a patch with 2+ nodes prints one line per node naming its title and status (created/merged), and default-mode output is unaffected (depends on T082)
+
+**Checkpoint**: BUG-001 resolved — `arc apply --verbose` reports per-phase progress and one line per processed node naming its title and outcome; default and `--quiet`/`--json` output are unchanged
+
+---
+
+## Bugfix: BUG-002 — `arc apply` crashes with "append is not a recognized merge operation"
+
+**Purpose**: Fix `specs/003-apply-patch/bugs/BUG-002.md`. See `research.md` D6 Bugfix for the full revised decision, `contracts/ast-contract.md`'s `Merge` documentation for the updated contract, and the new spec.md FR-022.
+
+- [X] T084 [US3] Add a `case MergeAppend` to `internal/core.Merge` (`internal/core/merge.go`), calling `mergeCore(existing, incoming, sourceID, fillEmpty=false, flagConflicts=false)` — identical machinery to `MergeUnion` (reusing the existing `unionLinks`/`unionScalarSlice` helpers for `Edges`/`HRefs`/`Links`/multi-valued `Attrs`), but never flagging a scalar field as a conflict, per spec.md FR-022/research.md D6 Bugfix (depends on T036 reopened)
+- [X] T085 [P] Add a `MergeAppend` case to the table-driven tests in `internal/core/merge_test.go`: multi-valued-field union behaves like `MergeUnion`, and a divergent scalar field is silently kept at `existing`'s value with zero entries in `conflicts` (constitution Principle VI, fulfills T038's original "one case per `MergeOp`" promise) (depends on T084, T038 reopened)
+- [X] T086 [P] Add a unit test in `internal/core/merge_test.go` (or extend an existing one) confirming `core.Merge` returns `ErrUnknownMergeOp` only for a genuinely unrecognized `MergeOp` string, not for any of the five documented values — guards against this exact class of regression recurring for a future `MergeOp` addition (depends on T084)
+- [X] T087 [US3] Add an E2E test in `cmd/arc/graph/apply_test.go`: register a domain kind with `mergeRules: <kind>: append` in `.arc/config.yml`, apply two patches that both contribute a node of that kind with different relations, and assert the second application succeeds (no crash) with the existing node's relations unioned with the new patch's contribution, no duplicate file created, and no conflict flagged (depends on T085)
+
+**Checkpoint**: BUG-002 resolved — a domain/extension kind registered with the `append` merge behavior applies and re-merges successfully, using the same union semantics as `union`, with no conflict-flagging
+
+---
+
+## Bugfix: BUG-003 — `arc apply` silently drops edges from patch node bodies
+
+**Purpose**: Fix `specs/003-apply-patch/bugs/BUG-003.md`. See `research.md` D3c for the full revised decision, `contracts/ast-contract.md`'s updated `Links`-recognition bullet, and the clarified spec.md FR-004.
+
+- [X] T088 [US1] Extend `internal/core/markdown.go`'s `walkNodeBody` to additionally recognize a **bold-label** predicate-grouped block — a `Paragraph` whose sole content is one bold-emphasis run (`**Label**`) immediately followed by a `List` — alongside the existing `## Label` H2-heading form (both remain permitted, per research.md D3c); reuse the existing `title`/`seq`/`linkBlockKey` construction for both forms (depends on T028 reopened)
+- [X] T089 [US1] Fix the compounding bug in `walkNodeBody`'s trailing-content loop: it must not silently advance past an unrecognized `List` — with T088 landed, the headed/labeled-blocks loop consumes every well-formed predicate-grouped block before the trailing loop runs, so no `List` should ordinarily reach it; add a defensive check (e.g. skip-and-warn or include as an ungrouped `Edges` entry, per implementer's judgment against research.md D3c's "provably exhaustive" framing) rather than silent, untraceable data loss if one somehow does (depends on T088)
+- [X] T090 [P] Add unit tests in `internal/core/markdown_test.go` parsing a node body with **three** predicate-grouped blocks in the CORE-canonical bold-label form (using this bug's own reported `Arcnet-spec` example as the fixture), asserting all three land in `Links` with no data loss; add a second case mixing bold-label and `##`-heading blocks in the same node body (depends on T089, T031 reopened)
+- [X] T091 [P] [US1] Add an E2E test in `cmd/arc/graph/apply_test.go` applying a patch shaped like `github.com/fogfish/arcnet-spec`'s own canonical example (bold labels, multiple predicate blocks per node), asserting every declared edge survives into the written node file (depends on T090)
+
+**Checkpoint**: BUG-003 resolved — a patch node body using CORE §12.2's canonical bold-label convention, this feature's own `## Label` heading convention, or a mix of both, has every predicate-grouped block captured with no data loss
+
+---
+
+## Bugfix: BUG-004 — `MergeUnion` flags false-positive conflicts on regenerated `entity` scalars/text
+
+**Purpose**: Fix `specs/003-apply-patch/bugs/BUG-004.md`. See `research.md` D6 Bugfix for the full revised decision, `contracts/ast-contract.md`'s updated `Merge` documentation, `data-model.md`'s updated `Conflicts` description, and the new spec.md FR-023/FR-024/SC-009.
+
+- [X] T092 [US2] In `internal/core/merge.go`, change `MergeUnion`'s scalar (non-list) `Attrs` handling to first-writer-wins with `conflicts` never populated for an `Attrs` key — the same no-flag treatment `MergeAppend`/`MergeValidatedOverwrite` already give their scalar `Attrs`, applied to `MergeUnion` specifically (not `MergeUnionFirstWriter`/`MergeValidatedOverwrite`, which are unchanged) — per spec.md FR-023/research.md D6 Bugfix (depends on T036 reopened)
+- [X] T093 [US2] In `internal/core/merge.go`, implement `mergeParagraphs(existing, incoming []string) []string`: split `Text` on blank-line paragraph boundaries, shingle each paragraph into overlapping 3-word n-grams, compare an incoming paragraph against every existing paragraph via Jaccard similarity (`|A∩B| / |A∪B|`), drop it if the best match is **> 0.8**, otherwise append it after the existing paragraphs in order; wire this into `MergeUnion`'s `Text` handling in place of `mergeScalarInto`, never populating `conflicts` for `"text"` — per spec.md FR-024/research.md D6 Bugfix (depends on T092)
+- [X] T094 [P] Add table-driven unit tests in `internal/core/merge_test.go`: `MergeUnion` with a divergent numeric `Attrs` value never appears in `conflicts` and keeps `existing`'s value (replacing the now-superseded "conflict-marker embedding" case for `MergeUnion`); and `mergeParagraphs` cases — identical paragraph (drop), near-duplicate paraphrase above the 0.8 threshold (drop), genuinely new paragraph below threshold (append), and multiple incoming paragraphs each evaluated independently (depends on T093, T038 reopened)
+- [X] T095 [P] Add a regression unit test in `internal/core/merge_test.go` confirming this fix's scope: `Notes` divergence under `MergeUnion` is still flagged (unchanged), and `MergeUnionFirstWriter`/`MergeValidatedOverwrite`/`MergeAppend`'s scalar `Attrs` behavior is unchanged — guards against the no-flag/paragraph-merge treatment silently over-applying beyond `MergeUnion` (depends on T093). Also updated `internal/app/graph/service/apply_test.go`'s `TestApplyFlagsConflict`/`TestApplyReportsStepConflictFlagged` (not originally listed here, found during implementation): both exercised the now-superseded entity/`MergeUnion` Text-conflict path and were switched to a `resource`/`MergeUnionFirstWriter` fixture, which this bugfix leaves untouched
+- [X] T096 [US2] Add an E2E test in `cmd/arc/graph/apply_test.go`: apply a patch to an already-ingested `entity` node whose `score-*`-style `Attrs` are given different numeric values and whose `Text` supplies one near-duplicate paraphrase paragraph plus one genuinely new paragraph, asserting the written node has no conflict markers, `ApplyResult.Conflicts` is empty, the first-written `Attrs` values are preserved, and the new paragraph is appended to `Text` (depends on T094)
+
+**Checkpoint**: BUG-004 resolved — re-applying a patch to a `union`-kind node with recomputed/regenerated scalar attributes or reworded body text produces zero false-positive conflicts, while a genuine `Notes` divergence (or a `union, first-writer` kind's already-populated scalar field) is still flagged per FR-013
 
 ---
 
@@ -252,24 +306,24 @@
 
 ### Design Phase Verification
 
-- [ ] TN01 [ARCHITECTURE.md](../../ARCHITECTURE.md) reflects architectural changes: `internal/core`, `internal/app/graph`, `internal/app/config`, the promoted `internal/adapter/git` directory-structure explanation (Principle I)
-- [ ] TN02 Domain concepts added to the [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary (Principle II)
-- [ ] TN03 Command/flag surface matches the Phase 2b design exactly: `arc apply <patch.md>`, DS-03 persistent flags, exit codes (Principle IX)
+- [X] TN01 [ARCHITECTURE.md](../../ARCHITECTURE.md) reflects architectural changes: `internal/core`, `internal/app/graph`, `internal/app/config`, the promoted `internal/adapter/git` directory-structure explanation (Principle I)
+- [X] TN02 Domain concepts added to the [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary (Principle II)
+- [X] TN03 Command/flag surface matches the Phase 2b design exactly: `arc apply <patch.md>`, DS-03 persistent flags, exit codes (Principle IX)
 
 ### Implementation Phase Verification (grouped by principle)
 
-- [ ] TN04 Major decisions recorded in [adrs/](../../adrs/) with correct numbering, if a new architectural pattern was introduced beyond what ADR 001/002 already cover (Principle I) — none expected for this feature; confirm during review
-- [ ] TN05 Domain logic uses ports (interfaces); `cmd/arc/graph`/`cmd/arc/ctrl` wiring and `internal/adapter/{git,fsys}`/`internal/app/config/adapter/http` adapters remain separated (Principle III)
-- [ ] TN06 Unit tests were written first, compiled, and failed semantically before implementation (Principle VI)
-- [ ] TN07 Unit and E2E tests use `github.com/fogfish/it/v2` exclusively — no `testify` or stdlib-only comparisons mixed in (Principle VI, [Mandatory Libraries & Tooling](../../.specify/memory/constitution.md#mandatory-libraries--tooling))
-- [ ] TN08 No Bash scripts were used for unit-level code correctness validation (Principle VI)
-- [ ] TN09 New external integrations (git subprocess, HTTP fetch, filesystem) follow the port/adapter pattern; no vendor SDK or `os.*`/`net/http` types leak through a port (Principle VII); the flagged, non-overridable HTTP fetch timeout (plan.md Complexity Tracking) is confirmed still documented, not silently dropped
-- [ ] TN10 Terminal output respects TTY detection, `NO_COLOR`, `--quiet`/`--verbose`, and uses `github.com/charmbracelet/lipgloss` for any styling, including the new `SCHEMA.StatusWarn` usage (Principle X)
-- [ ] TN11 Configuration precedence respected; `.arc/config.yml` is confirmed not a secrets file; the config-seed fetch touches no secret/credential material (Principle XI)
-- [ ] TN12 Help text (`Short`/`Long`/`Example`) populated for `arc apply` (Principle XII)
-- [ ] TN13 E2E tests from Phase 2d turned GREEN and changed minimally during implementation (Principle VIII)
-- [ ] TN14 All spec.md US1–US4 acceptance scenarios have a passing, colocated E2E test in `cmd/arc/graph/apply_test.go`; `specs/002-arc-init/spec.md` FR-017's two new scenarios pass in `cmd/arc/ctrl/init_test.go` (Principle VIII)
-- [ ] TN15 Release/versioning impact assessed: `arc apply` is a new command with a new, additive `--json` `ApplyResult` schema (no prior contract to break); `arc init`'s existing `--json` `InitResult` schema is unchanged — no major-version implication (Principle XIV)
+- [X] TN04 Major decisions recorded in [adrs/](../../adrs/) with correct numbering, if a new architectural pattern was introduced beyond what ADR 001/002 already cover (Principle I) — none expected for this feature; confirm during review
+- [X] TN05 Domain logic uses ports (interfaces); `cmd/arc/graph`/`cmd/arc/ctrl` wiring and `internal/adapter/{git,fsys}`/`internal/app/config/adapter/http` adapters remain separated (Principle III)
+- [X] TN06 Unit tests were written first, compiled, and failed semantically before implementation (Principle VI)
+- [X] TN07 Unit and E2E tests use `github.com/fogfish/it/v2` exclusively — no `testify` or stdlib-only comparisons mixed in (Principle VI, [Mandatory Libraries & Tooling](../../.specify/memory/constitution.md#mandatory-libraries--tooling))
+- [X] TN08 No Bash scripts were used for unit-level code correctness validation (Principle VI)
+- [X] TN09 New external integrations (git subprocess, HTTP fetch, filesystem) follow the port/adapter pattern; no vendor SDK or `os.*`/`net/http` types leak through a port (Principle VII); the flagged, non-overridable HTTP fetch timeout (plan.md Complexity Tracking) is confirmed still documented, not silently dropped
+- [X] TN10 ✅ Fixed (BUG-001) Terminal output respects TTY detection, `NO_COLOR`, `--quiet`/`--verbose`, and uses `github.com/charmbracelet/lipgloss` for any styling, including the new `SCHEMA.StatusWarn` usage (Principle X) — `arc apply --verbose` reported nothing (T062/T066's Reporter wiring was never completed); fixed by T079-T083
+- [X] TN11 Configuration precedence respected; `.arc/config.yml` is confirmed not a secrets file; the config-seed fetch touches no secret/credential material (Principle XI)
+- [X] TN12 Help text (`Short`/`Long`/`Example`) populated for `arc apply` (Principle XII)
+- [X] TN13 E2E tests from Phase 2d turned GREEN and changed minimally during implementation (Principle VIII)
+- [X] TN14 All spec.md US1–US4 acceptance scenarios have a passing, colocated E2E test in `cmd/arc/graph/apply_test.go`; `specs/002-arc-init/spec.md` FR-017's two new scenarios pass in `cmd/arc/ctrl/init_test.go` (Principle VIII)
+- [X] TN15 Release/versioning impact assessed: `arc apply` is a new command with a new, additive `--json` `ApplyResult` schema (no prior contract to break); `arc init`'s existing `--json` `InitResult` schema is unchanged — no major-version implication (Principle XIV)
 
 ---
 
@@ -358,3 +412,11 @@ Task: "Implement internal/app/graph/service/errors.go sentinel constants"
 - Phase 0 is included (optional in the template) because this feature promotes `internal/app/ctrl/adapter/git` to a shared package — a structural change to already-shipped `002-arc-init` code, independent of this feature's new behavior
 - User Stories 2, 3, and 4 are not fully file-independent from User Story 1 here (they extend `service/apply.go` and `cmd/arc/graph/apply.go` that US1 creates) — this reflects that all four stories exercise one shared `Apply` use-case, not four separate features; each remains independently *testable* via its own E2E test written in Phase 2d
 - This feature also touches already-shipped `internal/app/ctrl` code outside Phase 0 (T053-T055, T061 — the config-seed signature/wiring change): unlike the git-adapter promotion, this is a genuine behavior addition (`specs/002-arc-init/spec.md` FR-017) tightly coupled to this feature's own `.arc/config.yml` design, not a pure refactor, so it is scoped to Phase 2.5 rather than Phase 0
+
+**Bugfix**: 2026-07-03 — BUG-001: Reopened T062-T066 and TN10, then fixed (✅ marked) via new T079-T083, which thread a `bios.Reporter` through `service.Apply`/`component.Apply`, report each of the five documented phases, and — per the newly-added spec.md FR-021 — print one `Reporter.Step(...)` line per processed node naming its title and outcome under `--verbose`. Verified manually against the built binary and via new unit/E2E tests (`TestApplyReportsStepPerNode`, `TestApplyReportsStepConflictFlagged`, `TestApplyVerboseModeShowsPerNodeProgress`, `TestApplyDefaultModeShowsNoPerNodeProgress`). See the "Bugfix: BUG-001" section above.
+
+**Bugfix**: 2026-07-03 — BUG-002: Reopened T036 and T038, then fixed (✅ marked) via new T084-T087, which add the missing `case MergeAppend` to `internal/core.Merge` (identical to `MergeUnion`, never conflict-flagged), its table-driven unit tests, an `ErrUnknownMergeOp`-still-works regression test, and an E2E test for a domain kind registered with `append`. Added spec.md FR-022 defining `append`'s semantics for a non-timeline, domain-registered kind — the format's own fixed `timeline` index is unaffected (still never patch-carried, still built by D8's separate chronological logic). Verified manually against the built binary and via new unit/E2E tests (`TestMergeAppendUnionsEdgesAndMultiValuedAttrs`, `TestMergeAppendNeverFlagsScalarConflicts`, `TestMergeAllDocumentedOpsNeverReturnErrUnknownMergeOp`, `TestApplyAppendRegisteredKindUnionsAcrossPatches`). See the "Bugfix: BUG-002" section above.
+
+**Bugfix**: 2026-07-03 — BUG-003: Reopened T028 and T031, then fixed (✅ marked) via new T088-T091, which extend `walkNodeBody` to recognize CORE §12.2's canonical `**Label**` bold-text predicate-block convention alongside this feature's own `## Label` heading convention (research.md D3c), fix the compounding bug where an unrecognized trailing `List` was silently discarded instead of being folded into `Edges`, and fix a third, related gap found during implementation: the leading-paragraph consumption loop itself swallowed the *first* bold-label paragraph into `Text` before the block-recognition loop ever saw it, misclassifying its list as ungrouped bare edges. Clarified spec.md FR-004 to make the no-data-loss guarantee explicit regardless of body-formatting convention. Verified manually against the built binary using this bug's own exact reported `Arcnet-spec` example, and via new unit/E2E tests (`TestParsePatchBoldLabelBlocksNoDataLoss`, `TestParsePatchMixedBoldLabelAndHeadingBlocks`, `TestApplyBoldLabelPatchNoEdgeLoss`). See the "Bugfix: BUG-003" section above.
+
+**Bugfix**: 2026-07-03 — BUG-004: Reopened T036 and T038, then fixed (✅ marked) via new T092-T096, which make `MergeUnion`'s scalar `Attrs` first-writer-wins with no flag (spec.md FR-023) and reconcile `Text` paragraph-by-paragraph via 3-word-shingle Jaccard similarity at a `0.8` threshold instead of comparing it as one scalar (spec.md FR-024), so re-applying a patch to an `entity` node with recomputed `score-*`-style attributes or reworded body text no longer produces a false-positive conflict on nearly every merge. `Notes` and `MergeUnionFirstWriter`/`MergeValidatedOverwrite`/`MergeAppend`'s scalar handling are deliberately left unchanged (T095 guards this scope). During implementation, two pre-existing tests in `internal/app/graph/service/apply_test.go` (`TestApplyFlagsConflict`, `TestApplyReportsStepConflictFlagged`) were found to exercise the now-superseded entity/`MergeUnion` Text-conflict path and were switched to a `resource`/`MergeUnionFirstWriter` fixture instead. Verified via new unit/E2E tests (`TestMergeUnionScalarAttrsNeverFlagConflicts`, `TestMergeUnionTextAppendsGenuinelyNewParagraph`, `TestMergeUnionTextDropsNearDuplicateParagraph`, `TestMergeUnionTextEvaluatesEachIncomingParagraphIndependently`, `TestMergeUnionNotesStillFlagsConflicts`, `TestApplyMergeUnionNeverFlagsRegeneratedScalarsOrNearDuplicateText`) and `go test ./...`. See the "Bugfix: BUG-004" section above.

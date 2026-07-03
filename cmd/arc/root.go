@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/fogfish/arcnet-cli/cmd/arc/ctrl"
+	"github.com/fogfish/arcnet-cli/cmd/arc/graph"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
 
@@ -49,6 +50,7 @@ Report issues at https://github.com/fogfish/arcnet-cli/issues`,
 	flags.BoolVarP(&bios.Color, "color", "C", false, "Force-enable color (auto-detected otherwise)")
 
 	cmd.AddCommand(ctrl.NewInitCmd())
+	cmd.AddCommand(graph.NewApplyCmd())
 
 	return cmd
 }

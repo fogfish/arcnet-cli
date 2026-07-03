@@ -69,7 +69,7 @@ The domain value `component.go`'s `Apply` returns to `cmd/arc/graph`, rendered b
 | `Skipped` | `bool` | `true` when the idempotency check (FR-003) found the document already tracked; every other field is zero-valued in that case |
 | `Created` | `map[core.Kind]int` | Node counts by kind, newly created |
 | `Merged` | `map[core.Kind]int` | Node counts by kind, merged into existing nodes |
-| `Conflicts` | `[]string` | Relative paths of node files that received a conflict marker (FR-013), for the `PostRunE` hint (research.md D9) |
+| `Conflicts` | `[]string` | Relative paths of node files that received a conflict marker (FR-013), for the `PostRunE` hint (research.md D9). **Narrowed (BUG-004)**: a "union" kind's scalar `Attrs`/`Text` no longer produce a marker at all (FR-023/FR-024) — a node now lands here only via `notes` divergence or a `union, first-writer` kind's already-populated scalar `Attrs` |
 | `Warnings` | `[]string` | One human-readable sentence per node whose kind was not found in the resolved `MergeRuleSet` and was therefore applied using the default `union` behavior (spec FR-018, research.md D5-revised); empty when every kind was recognized |
 | `CommitHash` | `string` | Short hash of the single resulting commit; empty when `Skipped` |
 | `Timeline` | `[]string` | Period codes touched (`"2026"`, `"2026-04"`), for human/JSON output |
@@ -123,6 +123,8 @@ All reads/writes go through `fsys.Store`/`fsys.Mounter` (`internal/adapter/fsys`
 | `"Committing"` | `port.VCS.StageAll` + `.Commit` |
 
 Each label gets one `Start`/`Done` (or `Error`) pair (flat `Reporter`, ADR 002 DS-08 — sufficient at this scale, matching `arc init`'s precedent).
+
+**Bugfix (2026-07-03, BUG-001)**: within `"Applying node contributions"`'s `Start`/`Done` pair, `service.Apply` additionally calls `Reporter.Step(...)` once per node it processes, naming the node's ID/title and its outcome — `"<id/title>: created"`, `"<id/title>: merged"`, or `"<id/title>: merged (conflict flagged)"` — per spec.md FR-021. This uses `Reporter.Step`, an existing method on the `bios.Reporter` interface (already implemented by `stderrReporter`/`silentReporter`, first used by `arc init`'s own multi-line progress) — no interface change, only a new call site. `service.Apply`'s signature gains a `reporter bios.Reporter` parameter (threaded from `component.Apply`), constructed in `cmd/arc/graph/apply.go` via `bios.NewReporter(bios.Quiet, !bios.Verbose)`, matching `cmd/arc/ctrl/init.go`'s convention exactly (previously it was constructed as unconditionally silent, the bug this patch fixes).
 
 ## Error sentinels (`github.com/fogfish/faults`, research.md D10)
 

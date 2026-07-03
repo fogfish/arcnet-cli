@@ -88,7 +88,9 @@ cmd/
         ├── apply.go             # package graph: NewApplyCmd() *cobra.Command — arg parsing, calls
         │                        #   internal/app/config.Resolve then internal/app/graph.Apply,
         │                        #   renders via bios.Registry, prints Warnings (SCHEMA.StatusWarn),
-        │                        #   PostRunE conflict hint
+        │                        #   PostRunE conflict hint; constructs bios.NewReporter(Quiet, !Verbose)
+        │                        #   and passes it into appgraph.Apply (BUG-001 fix — previously always
+        │                        #   silent, so --verbose reported nothing)
         └── apply_test.go        # E2E tests, one per spec.md US1-US4 acceptance scenario, via sut()
 
 internal/
@@ -155,11 +157,12 @@ internal/
         ├── service/
         │   ├── apply.go            # Apply use-case: guards (FR-003/014/018), per-node create/merge via
         │   │                       #   core.Merge, timeline update via core.TimelinePeriods/TimelineEntry,
-        │   │                       #   commit via port.VCS
+        │   │                       #   commit via port.VCS; reports each phase (+ one Step per node) via
+        │   │                       #   a bios.Reporter parameter (BUG-001 fix, data-model.md Reporter events)
         │   ├── errors.go           # ErrNotAGraph, ErrPatchRead, ErrNodeWrite
         │   └── apply_test.go       # unit tests against adapter/mock + fakes of fsys.Mounter/Store
         ├── README.md
-        └── component.go            # primary port: Apply(ctx, mounter, vcs, rules, dir, patchPath)
+        └── component.go            # primary port: Apply(ctx, mounter, vcs, reporter, rules, dir, patchPath)
                                      #   (kernel.ApplyResult, error)
 
 ARCHITECTURE.md                   # + Directory Structure/Glossary updated (Principle I obligation above)
@@ -174,3 +177,13 @@ The `internal/app/ctrl/adapter/git` → `internal/adapter/git` promotion is prec
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
 | Principle VII: `internal/app/config/adapter/http`'s fetch timeout (fixed 3s) is not overridable by a flag or config value | `.arc/config.yml` does not exist yet at the moment this fetch runs — it is what is being seeded — so there is no config-value channel to read an override from without a chicken-and-egg problem, and `arc init` has no command-local flags today to attach one to | Adding a new `arc init --config-timeout` flag solely to satisfy this one sub-rule was rejected as scope creep the user did not ask for, and low-value given the fallback: a fetch that is merely slow and one that fails outright both resolve to the exact same safe, non-blocking outcome, so the timeout's precise value is low-stakes. A follow-up (e.g. an `ARC_CONFIG_TIMEOUT` environment variable, consistent with Principle XI's env-var convention) is the natural fix if 3s ever proves wrong in practice — noted in research.md D5 (revised) as a flagged, not silently accepted, gap. |
+
+## Bugfix Log
+
+**Bugfix**: 2026-07-03 — BUG-001: `arc apply --verbose` reported no progress at all — `cmd/arc/graph/apply.go` constructed its git adapter with an unconditionally silent `bios.Reporter`, and `internal/app/graph/service.Apply` never accepted one, so none of research.md D9's five documented Reporter phases were ever wired up, violating `contracts/cli-contract.md`'s stderr contract. See `research.md` D9 Bugfix for the full revised decision (adds a `reporter bios.Reporter` parameter to `service.Apply`/`component.Apply`, and — per the newly-added spec.md FR-021 — one `Reporter.Step(...)` line per processed node naming its ID/title and outcome), and `data-model.md`'s Reporter events section for the updated table. Reopened tasks: T062-T064, T066 (see `tasks.md`); new tasks T079-T083 added.
+
+**Bugfix**: 2026-07-03 — BUG-002: `arc apply` crashed with `ErrUnknownMergeOp` whenever a domain/extension kind registered with the `append` merge behavior (FR-019) needed re-merging — `internal/core.Merge`'s `switch` had no `case MergeAppend`. See `research.md` D6 Bugfix for the revised decision (append merges identically to union, never conflict-flagged) and the new spec.md FR-022. Reopened tasks: T036, T038 (see `tasks.md`); new tasks T084-T087 added.
+
+**Bugfix**: 2026-07-03 — BUG-003: `arc apply` silently dropped predicate-grouped edges from a patch node's body when the patch used CORE §12.2's canonical `**Label**` bold-text convention instead of this feature's own, non-canonical `## Label` heading convention — a spec conflict between `research.md` D3 and the upstream CORE spec it implements, compounded by an independent bug in `internal/core.walkNodeBody`'s trailing-content loop that silently discarded any unrecognized list rather than erroring. See `research.md` D3c for the revised decision (both forms now recognized; the discard bug fixed) and the clarified spec.md FR-004. Reopened tasks: T028, T031 (see `tasks.md`); new tasks T088-T091 added.
+
+**Bugfix**: 2026-07-03 — BUG-004: `MergeUnion` flagged a false-positive conflict on nearly every re-application of an already-ingested `entity` node, because its scalar-field policy (first-writer, flag any divergence) assumed a divergence is always a rare, genuine disagreement between two writers — not true for `entity`'s `score-*` attributes (recomputed by the ingest pipeline every run) or its `Text` (wholesale LLM-resynthesized prose, not a hand-edit). See `research.md` D6 Bugfix for the revised decision (a `union` kind's scalar `Attrs` become first-writer-wins with no flag; `Text` is reconciled paragraph-by-paragraph via shingle/Jaccard similarity instead of compared as one scalar) and the new spec.md FR-023/FR-024/SC-009. Reopened tasks: T036, T038 (see `tasks.md`); new tasks T092-T096 added.

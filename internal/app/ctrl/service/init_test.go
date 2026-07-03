@@ -38,22 +38,31 @@ func (e fakeDirEntry) IsDir() bool                { return false }
 func (e fakeDirEntry) Type() fs.FileMode          { return 0 }
 func (e fakeDirEntry) Info() (fs.FileInfo, error) { return fakeFileInfo(e), nil }
 
-type fakeFile struct{ name string }
+type fakeFile struct {
+	name    string
+	store   *fakeStore
+	content []byte
+}
 
-func (f *fakeFile) Write(p []byte) (int, error) { return len(p), nil }
-func (f *fakeFile) Close() error                { return nil }
-func (f *fakeFile) Stat() (fs.FileInfo, error)  { return fakeFileInfo{name: f.name}, nil }
-func (f *fakeFile) Discard() error              { return nil }
+func (f *fakeFile) Write(p []byte) (int, error) {
+	f.content = append(f.content, p...)
+	f.store.content[f.name] = f.content
+	return len(p), nil
+}
+func (f *fakeFile) Close() error               { return nil }
+func (f *fakeFile) Stat() (fs.FileInfo, error) { return fakeFileInfo{name: f.name}, nil }
+func (f *fakeFile) Discard() error             { return nil }
 
 type fakeStore struct {
 	existing  map[string]bool
 	written   map[string]bool
+	content   map[string][]byte
 	removed   []string
 	createErr error
 }
 
 func newFakeStore(existing ...string) *fakeStore {
-	s := &fakeStore{existing: map[string]bool{}, written: map[string]bool{}}
+	s := &fakeStore{existing: map[string]bool{}, written: map[string]bool{}, content: map[string][]byte{}}
 	for _, e := range existing {
 		s.existing[e] = true
 	}
@@ -87,7 +96,7 @@ func (s *fakeStore) Create(name string) (fsys.File, error) {
 		return nil, s.createErr
 	}
 	s.written[name] = true
-	return &fakeFile{name: name}, nil
+	return &fakeFile{name: name, store: s}, nil
 }
 
 func (s *fakeStore) Remove(name string) error {
@@ -123,7 +132,7 @@ func withStubbedResolve(t *testing.T, created bool, err error) {
 func TestInitGuardTargetIsFile(t *testing.T) {
 	withStubbedResolve(t, false, fsys.ErrRootNotDirectory.With(nil, "/target"))
 
-	_, err := Init(context.Background(), fakeMounter{store: newFakeStore()}, &mock.VCS{}, "/target")
+	_, err := Init(context.Background(), fakeMounter{store: newFakeStore()}, &mock.VCS{}, "/target", nil)
 
 	it.Then(t).Should(it.True(errors.Is(err, fsys.ErrRootNotDirectory)))
 }
@@ -132,7 +141,7 @@ func TestInitGuardGitUnavailable(t *testing.T) {
 	withStubbedResolve(t, false, nil)
 	vcs := &mock.VCS{IsAvailableErr: errors.New("no git")}
 
-	_, err := Init(context.Background(), fakeMounter{store: newFakeStore()}, vcs, "/target")
+	_, err := Init(context.Background(), fakeMounter{store: newFakeStore()}, vcs, "/target", nil)
 
 	it.Then(t).Should(it.True(errors.Is(err, ErrGitUnavailable)))
 }
@@ -141,7 +150,7 @@ func TestInitGuardAlreadyInitialized(t *testing.T) {
 	withStubbedResolve(t, false, nil)
 	store := newFakeStore(".arc")
 
-	_, err := Init(context.Background(), fakeMounter{store: store}, &mock.VCS{}, "/target")
+	_, err := Init(context.Background(), fakeMounter{store: store}, &mock.VCS{}, "/target", nil)
 
 	it.Then(t).Should(it.True(errors.Is(err, ErrAlreadyInitialized)))
 	it.Then(t).Should(it.Equal(0, len(store.written)))
@@ -151,7 +160,7 @@ func TestInitGuardTargetNotEmpty(t *testing.T) {
 	withStubbedResolve(t, false, nil)
 	store := newFakeStore("unrelated.txt")
 
-	_, err := Init(context.Background(), fakeMounter{store: store}, &mock.VCS{}, "/target")
+	_, err := Init(context.Background(), fakeMounter{store: store}, &mock.VCS{}, "/target", nil)
 
 	it.Then(t).Should(it.True(errors.Is(err, ErrTargetNotEmpty)))
 	it.Then(t).Should(it.Equal(0, len(store.written)))
@@ -162,7 +171,7 @@ func TestInitSuccessWritesLayoutAndCommits(t *testing.T) {
 	store := newFakeStore()
 	vcs := &mock.VCS{CommitHash: "abc123"}
 
-	result, err := Init(context.Background(), fakeMounter{store: store}, vcs, "/target")
+	result, err := Init(context.Background(), fakeMounter{store: store}, vcs, "/target", nil)
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal("abc123", result.CommitHash))
@@ -183,12 +192,26 @@ func TestInitRollsBackOnCommitFailureWithoutCreatedRoot(t *testing.T) {
 	store := newFakeStore()
 	vcs := &mock.VCS{CommitErr: errors.New("commit failed")}
 
-	_, err := Init(context.Background(), fakeMounter{store: store}, vcs, "/target")
+	_, err := Init(context.Background(), fakeMounter{store: store}, vcs, "/target", nil)
 
 	it.Then(t).ShouldNot(it.Nil(err))
 	it.Then(t).Should(it.Seq(store.removed).Contain(
-		"sources/.gitkeep", "_meta/predicates.md", ".arc/.gitkeep", ".gitignore",
+		"sources/.gitkeep", "_meta/predicates.md", ".arc/.gitkeep", ".gitignore", ".arc/config.yml",
 	))
+}
+
+func TestInitWritesConfigSeedVerbatim(t *testing.T) {
+	withStubbedResolve(t, false, nil)
+	store := newFakeStore()
+	vcs := &mock.VCS{CommitHash: "abc123"}
+	seed := []byte("mergeRules:\n  source: none\n")
+
+	_, err := Init(context.Background(), fakeMounter{store: store}, vcs, "/target", seed)
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.True(store.written[".arc/config.yml"])).
+		Should(it.Equal(string(seed), string(store.content[".arc/config.yml"])))
 }
 
 func TestInitRollsBackViaRemoveLocalRootWhenCreated(t *testing.T) {
@@ -205,7 +228,7 @@ func TestInitRollsBackViaRemoveLocalRootWhenCreated(t *testing.T) {
 	vcs := &mock.VCS{IsAvailableErr: errors.New("no git")}
 	store := newFakeStore()
 
-	_, err := Init(context.Background(), fakeMounter{store: store}, vcs, "/fresh-target")
+	_, err := Init(context.Background(), fakeMounter{store: store}, vcs, "/fresh-target", nil)
 
 	it.Then(t).ShouldNot(it.Nil(err))
 	it.Then(t).Should(it.Equal("/fresh-target", removedRoot))

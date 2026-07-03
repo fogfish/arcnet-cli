@@ -13,6 +13,7 @@ func ParseNode(r io.Reader) (Node, error)
 - `ParseNode` — CORE §4/§9. Parses one on-disk graph node file (front-matter + body) into a `Node`, used both to read an existing node before merging (research.md D6) and to read an existing timeline period file before inserting an entry (research.md D8).
 - Both preserve unrecognized front-matter attributes verbatim in `Attrs` (AST invariant 5).
 - Both **strip** `[[Target]]`/`[[Target|alias]]`/`[predicate:: [[Target]]]` bracket markup found inline inside `text`/`notes` prose out of the returned `Node.Text`/`.Notes`, recording each occurrence as a `Link` appended to `HRefs` instead, in the order encountered (research.md D3/D3b). Standalone list-item edges (`- predicate:: [[Target]]`, not embedded in a prose sentence) are unaffected — those populate `Edges`/`Links`, never `HRefs`.
+- A predicate-grouped body block (`Links`) is recognized in **either** of two forms (research.md D3c, BUG-003): a `**Label**` paragraph — CORE §12.2's canonical convention ("node bodies use bold labels, never headings") — or a `## Label` H2 heading (this feature's own, non-canonical but still-supported convention), each immediately followed by a list. Every such block, in either form, MUST be captured with no data loss, regardless of how many a node's body contains (spec FR-004).
 
 ## Serialization
 
@@ -31,8 +32,9 @@ func Merge(existing, incoming Node, op MergeOp, sourceID string) (merged Node, c
 ```
 
 - `existing` is the zero `Node` (`ID == ""`) when no node with `incoming`'s identity exists yet — the caller (`internal/app/graph/service.Apply`) treats that case as a plain create, never calling `Merge`.
-- Returns `conflicts` — the list of `Attrs` keys (or the literal `"text"`) whose value was flagged per research.md D6/D7; empty when nothing diverged.
+- Returns `conflicts` — the list of `Attrs` keys whose value was flagged per research.md D6/D7, plus the literal `"notes"` when `Notes` diverges; empty when nothing diverged. **Narrowed by BUG-004**: for a `union` kind, an `Attrs` key is only ever flagged via `MergeUnionFirstWriter`'s already-populated-scalar case (spec.md FR-013) — `MergeUnion`'s own scalar `Attrs` are first-writer-wins with no flag (spec.md FR-023), and the literal `"text"` is never returned at all, since `MergeUnion`'s `Text` field is reconciled paragraph-by-paragraph (spec.md FR-024, research.md D6 Bugfix — BUG-004) rather than compared as one scalar.
 - `Merge` performs no I/O; `service.Apply` is responsible for reading `existing` via `ParseNode` and writing `merged` via `RenderNode`.
+- `Merge` handles all five `MergeOp` values, including `MergeAppend` (spec.md FR-022, research.md D6 Bugfix — BUG-002): a domain/extension kind registered with `append` merges identically to `union`, but never flags a scalar conflict. `Merge` returns `ErrUnknownMergeOp` only for a genuinely unrecognized `MergeOp` string (e.g. a typo in `.arc/config.yml`), never for one of the five documented values.
 
 ## Timeline (CORE §9.4, research.md D8)
 

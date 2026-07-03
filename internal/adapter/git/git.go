@@ -6,12 +6,19 @@
 // https://github.com/fogfish/arcnet-cli
 //
 
-// Package git is the os/exec-backed real implementation of port.VCS.
+// Package git is the shared, cross-use-case os/exec-backed git adapter
+// (ADR 001's application-level adapter tier, promoted from
+// internal/app/ctrl/adapter/git per research.md D4, mirroring
+// internal/adapter/fsys's existing precedent). Its one concrete Git type
+// satisfies both internal/app/ctrl/port.VCS and internal/app/graph/port.VCS
+// structurally (ADR 001 port isolation rule 1) — no vendor/subprocess types
+// (exec.Cmd, exec.ExitError) leak through either.
 package git
 
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os/exec"
 	"strings"
 	"time"
@@ -26,6 +33,7 @@ const (
 	ErrGitInit     = faults.Type("git init failed")
 	ErrGitStage    = faults.Type("git add failed")
 	ErrGitCommit   = faults.Type("git commit failed")
+	ErrGitLsFiles  = faults.Type("git ls-files failed")
 )
 
 // execError captures combined stdout+stderr from a failed git subprocess
@@ -111,6 +119,29 @@ func (v VCS) Commit(ctx context.Context, dir, message string) (string, error) {
 
 	v.Reporter.Done(label, time.Since(start))
 	return strings.TrimSpace(string(out)), nil
+}
+
+// IsTracked reports whether path is already tracked by git in dir (CORE
+// §11.2's documented idempotency check), via `git ls-files
+// --error-unmatch <path>`. Exit 0 means tracked; git's own "not tracked"
+// exit status for --error-unmatch is an expected outcome, not an error, and
+// is reported as (false, nil) — only a genuine unexpected failure (git
+// missing, dir not a repository) is returned as (false, err).
+func (v VCS) IsTracked(ctx context.Context, dir, path string) (bool, error) {
+	_, err := run(ctx, dir, "ls-files", "--error-unmatch", path)
+	if err == nil {
+		return true, nil
+	}
+
+	var eerr execError
+	if errors.As(err, &eerr) {
+		var exitErr *exec.ExitError
+		if errors.As(eerr.err, &exitErr) && exitErr.ExitCode() == 1 {
+			return false, nil
+		}
+	}
+
+	return false, ErrGitLsFiles.With(err)
 }
 
 func run(ctx context.Context, dir string, args ...string) ([]byte, error) {
