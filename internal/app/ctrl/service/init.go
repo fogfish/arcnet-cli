@@ -18,6 +18,7 @@ import (
 	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
 	"github.com/fogfish/arcnet-cli/internal/app/ctrl/kernel"
 	"github.com/fogfish/arcnet-cli/internal/app/ctrl/port"
+	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
 const (
@@ -42,10 +43,11 @@ var (
 )
 
 // Init bootstraps a new, empty knowledge graph at dir: the canonical folder
-// layout, _meta/ registry stubs, .arc/ state directory, .gitignore, and
-// exactly one git commit. Any failure after the target has been resolved
-// leaves no partial graph state behind (FR-013).
-func Init(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, dir string) (kernel.InitResult, error) {
+// layout, _meta/ registry stubs, .arc/ state directory, .arc/config.yml
+// seeded with configSeed, .gitignore, and exactly one git commit. Any
+// failure after the target has been resolved leaves no partial graph state
+// behind (FR-013).
+func Init(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, dir string, configSeed []byte) (kernel.InitResult, error) {
 	created, err := resolveLocalRoot(dir)
 	if err != nil {
 		return kernel.InitResult{}, err
@@ -71,7 +73,14 @@ func Init(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, dir string) (
 		return kernel.InitResult{}, ErrGitUnavailable.With(err)
 	}
 
-	if err := writeLayout(store, kernel.DefaultLayout); err != nil {
+	layout := kernel.DefaultLayout
+	layout.MetaStubs = make(map[string]string, len(kernel.DefaultLayout.MetaStubs)+1)
+	for k, v := range kernel.DefaultLayout.MetaStubs {
+		layout.MetaStubs[k] = v
+	}
+	layout.MetaStubs[core.ConfigPath] = string(configSeed)
+
+	if err := writeLayout(store, layout); err != nil {
 		rollback(store, dir, created)
 		return kernel.InitResult{}, err
 	}
@@ -189,6 +198,7 @@ func rollback(store fsys.Store, dir string, created bool) {
 	for path := range kernel.DefaultLayout.MetaStubs {
 		_ = store.Remove(path)
 	}
+	_ = store.Remove(core.ConfigPath)
 	_ = store.Remove(arcStateMarker)
 	_ = store.Remove(gitignorePath)
 }

@@ -15,14 +15,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
+	"github.com/fogfish/arcnet-cli/internal/adapter/git"
+	appconfig "github.com/fogfish/arcnet-cli/internal/app/config"
+	confighttp "github.com/fogfish/arcnet-cli/internal/app/config/adapter/http"
+	configport "github.com/fogfish/arcnet-cli/internal/app/config/port"
 	appctrl "github.com/fogfish/arcnet-cli/internal/app/ctrl"
-	"github.com/fogfish/arcnet-cli/internal/app/ctrl/adapter/git"
 	"github.com/fogfish/arcnet-cli/internal/app/ctrl/kernel"
 	"github.com/fogfish/arcnet-cli/internal/bios"
+
+	"gopkg.in/yaml.v3"
 )
 
 func resolveInitDir(args []string) (string, error) {
@@ -31,6 +37,34 @@ func resolveInitDir(args []string) (string, error) {
 		dir = args[0]
 	}
 	return filepath.Abs(dir)
+}
+
+// newConfigFetcher is indirected through a package-level var (rather than
+// called as confighttp.New() directly) so unit tests can inject a mock
+// Fetcher at the wiring layer (specs/002-arc-init/spec.md FR-017), matching
+// internal/app/ctrl/service's resolveLocalRoot/removeLocalRoot precedent.
+var newConfigFetcher = func() configport.Fetcher { return confighttp.New() }
+
+// fetchConfigSeed resolves the content arc init seeds .arc/config.yml with:
+// one best-effort fetch of github.com/fogfish/arcnet-spec's canonical
+// config, falling back to the format's built-in merge rules on any failure
+// (specs/002-arc-init/spec.md FR-017, research.md D5 revised). Reported
+// under --verbose only, matching the existing progress convention.
+func fetchConfigSeed(ctx context.Context, reporter bios.Reporter) []byte {
+	const label = "Fetching default configuration"
+	start := time.Now()
+
+	cfg, usedFallback := appconfig.Default(ctx, newConfigFetcher())
+	reporter.Done(label, time.Since(start))
+	if usedFallback {
+		reporter.Step("Using built-in configuration — offline or unreachable")
+	}
+
+	raw, err := yaml.Marshal(cfg)
+	if err != nil {
+		return nil
+	}
+	return raw
 }
 
 type humanInitPrinter struct{}
@@ -82,7 +116,9 @@ See more info https://github.com/fogfish/arcnet-cli`,
 				ctx = context.Background()
 			}
 
-			result, err := appctrl.Init(ctx, fsys.Local{}, vcs, dir)
+			configSeed := fetchConfigSeed(ctx, reporter)
+
+			result, err := appctrl.Init(ctx, fsys.Local{}, vcs, dir, configSeed)
 			if err != nil {
 				return err
 			}

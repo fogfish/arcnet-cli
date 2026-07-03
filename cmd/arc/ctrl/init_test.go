@@ -11,6 +11,7 @@ package ctrl
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -21,6 +22,8 @@ import (
 	"github.com/fogfish/it/v2"
 	"github.com/spf13/cobra"
 
+	configmock "github.com/fogfish/arcnet-cli/internal/app/config/adapter/mock"
+	configport "github.com/fogfish/arcnet-cli/internal/app/config/port"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
 
@@ -30,13 +33,26 @@ import (
 // user.name/user.email configured — the tool itself intentionally does not
 // configure git identity (spec.md Assumptions), so the tests must supply
 // their own, hermetically, rather than depend on the environment's global
-// git config.
+// git config. It also stubs newConfigFetcher to a deterministic, offline
+// mock by default (constitution Principle VI: no real network call in go
+// test) — individual FR-017 tests override and restore it locally to
+// exercise the fetch-succeeds path.
 func TestMain(m *testing.M) {
 	os.Setenv("GIT_AUTHOR_NAME", "arc-test")
 	os.Setenv("GIT_AUTHOR_EMAIL", "arc-test@example.com")
 	os.Setenv("GIT_COMMITTER_NAME", "arc-test")
 	os.Setenv("GIT_COMMITTER_EMAIL", "arc-test@example.com")
+	newConfigFetcher = func() configport.Fetcher {
+		return configmock.Fetcher{Err: errors.New("network disabled in tests")}
+	}
 	os.Exit(m.Run())
+}
+
+func withStubbedConfigFetcher(t *testing.T, fetcher configport.Fetcher) {
+	t.Helper()
+	original := newConfigFetcher
+	newConfigFetcher = func() configport.Fetcher { return fetcher }
+	t.Cleanup(func() { newConfigFetcher = original })
 }
 
 func sut(cmd *cobra.Command, args []string) (string, error) {
@@ -353,4 +369,53 @@ func TestInitRefusesReInitialization(t *testing.T) {
 
 	after := gitOutput(t, dir, "log", "--oneline")
 	it.Then(t).Should(it.Equal(before, after))
+}
+
+// arc init <dir>
+// specs/002-arc-init/spec.md FR-017, fetch-succeeds path: the seeded
+// .arc/config.yml matches the fetched content.
+func TestInitConfigSeedFetchSucceeds(t *testing.T) {
+	withStubbedConfigFetcher(t, configmock.Fetcher{Body: []byte("mergeRules:\n  source: none\n  entity: union\n  resource: union-first-writer\n  hypothesis: validated-overwrite\n")})
+	dir := t.TempDir()
+
+	out, err := sut(NewInitCmd(), []string{dir})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	content, rerr := os.ReadFile(filepath.Join(dir, ".arc", "config.yml"))
+	it.Then(t).
+		Should(it.Nil(rerr)).
+		Should(it.String(string(content)).Contain("hypothesis"))
+}
+
+// arc init <dir>
+// specs/002-arc-init/spec.md FR-017, fetch-fails path: the seeded
+// .arc/config.yml falls back to core.CoreMergeRules and arc init still
+// succeeds with exit code 0.
+func TestInitConfigSeedFetchFailsFallsBack(t *testing.T) {
+	withStubbedConfigFetcher(t, configmock.Fetcher{Err: errors.New("network unreachable")})
+	dir := t.TempDir()
+
+	out, err := sut(NewInitCmd(), []string{dir})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	content, rerr := os.ReadFile(filepath.Join(dir, ".arc", "config.yml"))
+	it.Then(t).
+		Should(it.Nil(rerr)).
+		Should(it.String(string(content)).Contain("source: none")).
+		ShouldNot(it.String(string(content)).Contain("hypothesis"))
+}
+
+// arc init --verbose <dir>
+// specs/002-arc-init/spec.md FR-017, fetch-fails path additionally reports
+// the fallback note under --verbose (research.md D5 revised).
+func TestInitConfigSeedFetchFailsReportsFallbackUnderVerbose(t *testing.T) {
+	withStubbedConfigFetcher(t, configmock.Fetcher{Err: errors.New("network unreachable")})
+	dir := t.TempDir()
+	bios.Verbose = true
+	t.Cleanup(func() { bios.Verbose = false })
+
+	stdout, stderr, err := sutCaptureStderr(t, NewInitCmd(), []string{dir})
+
+	it.Then(t).ShouldNot(it.Error(stdout, err))
+	it.Then(t).Should(it.String(stderr).Contain("Using built-in configuration"))
 }

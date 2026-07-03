@@ -1,0 +1,440 @@
+//
+// Copyright (C) 2026 Dmitry Kolesnikov
+//
+// This file may be modified and distributed under the terms
+// of the MIT license.  See the LICENSE file for details.
+// https://github.com/fogfish/arcnet-cli
+//
+
+// Package service implements the graph use-case's business logic.
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
+	"github.com/fogfish/arcnet-cli/internal/app/graph/kernel"
+	"github.com/fogfish/arcnet-cli/internal/app/graph/port"
+	"github.com/fogfish/arcnet-cli/internal/bios"
+	"github.com/fogfish/arcnet-cli/internal/core"
+)
+
+var coreKindFolders = map[core.Kind]string{
+	"source":   "sources",
+	"entity":   "entities",
+	"resource": "resources",
+}
+
+func nodeFolder(kind core.Kind) string {
+	if folder, ok := coreKindFolders[kind]; ok {
+		return folder
+	}
+	s := string(kind)
+	if strings.HasSuffix(s, "s") {
+		return s
+	}
+	return s + "s"
+}
+
+func nodePath(node core.Node) string {
+	return nodeFolder(node.Kind) + "/" + node.ID + ".md"
+}
+
+// Reporter phase labels (data-model.md Reporter events, research.md D9,
+// BUG-001 revised).
+const (
+	labelReadingPatch  = "Reading patch file"
+	labelIdempotency   = "Checking idempotency"
+	labelApplyingNodes = "Applying node contributions"
+	labelUpdatingTL    = "Updating timeline"
+	labelCommitting    = "Committing"
+)
+
+// Apply mounts dir, parses the patch at patchPath, and — unless the
+// document is already tracked (FR-003) — creates or merges every node
+// section it carries per rules, updates the derived timeline, and produces
+// exactly one commit (CORE §11.3). Any failure before the commit leaves no
+// newly-created node file behind (FR-015, bounded to genuinely new files —
+// a pre-existing node overwritten by an in-progress merge is left at its
+// last-written state, recoverable via git, mirroring internal/app/ctrl's
+// own bounded rollback precedent). Progress is reported through reporter
+// (silent by default, --verbose-gated by the caller — BUG-001): one
+// Start/Done pair per phase, plus one Reporter.Step per node processed
+// inside "Applying node contributions", naming the node's ID and outcome
+// (spec.md FR-021).
+func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, rules core.MergeRuleSet, dir, patchPath string) (kernel.ApplyResult, error) {
+	store, err := mounter.Mount(dir)
+	if err != nil {
+		return kernel.ApplyResult{}, err
+	}
+
+	if err := guardIsGraph(store, dir); err != nil {
+		return kernel.ApplyResult{}, err
+	}
+
+	start := time.Now()
+	patch, err := readPatch(mounter, patchPath)
+	if err != nil {
+		reporter.Error(labelReadingPatch, err)
+		return kernel.ApplyResult{}, err
+	}
+	reporter.Done(labelReadingPatch, time.Since(start))
+
+	start = time.Now()
+	sourcePath := nodeFolder("source") + "/" + patch.Document + ".md"
+	tracked, err := vcs.IsTracked(ctx, dir, sourcePath)
+	if err != nil {
+		reporter.Error(labelIdempotency, err)
+		return kernel.ApplyResult{}, err
+	}
+	reporter.Done(labelIdempotency, time.Since(start))
+	if tracked {
+		return kernel.ApplyResult{Document: patch.Document, Skipped: true}, nil
+	}
+
+	result := kernel.ApplyResult{
+		Document:  patch.Document,
+		Created:   map[core.Kind]int{},
+		Merged:    map[core.Kind]int{},
+		Conflicts: []string{},
+		Warnings:  []string{},
+		Timeline:  []string{},
+	}
+
+	var createdPaths []string
+	var sourceNode core.Node
+
+	start = time.Now()
+	for _, node := range patch.Nodes {
+		op, ok := rules.Lookup(node.Kind)
+		if !ok {
+			op = core.MergeUnion
+			result.Warnings = append(result.Warnings, fmt.Sprintf(
+				"%s is not a recognized node kind for this graph — applied using the default \"union\" merge behavior", node.Kind))
+		}
+
+		path := nodePath(node)
+
+		existing, existed, err := readExistingNode(store, path)
+		if err != nil {
+			reporter.Error(labelApplyingNodes, err)
+			rollback(store, createdPaths)
+			return kernel.ApplyResult{}, err
+		}
+
+		merged := node
+		outcome := "created"
+		if existed {
+			var conflicts []string
+			merged, conflicts, err = core.Merge(existing, node, op, patch.Document)
+			if err != nil {
+				reporter.Error(labelApplyingNodes, err)
+				rollback(store, createdPaths)
+				return kernel.ApplyResult{}, err
+			}
+			result.Merged[node.Kind]++
+			outcome = "merged"
+			if len(conflicts) > 0 {
+				result.Conflicts = append(result.Conflicts, path)
+				outcome = "merged (conflict flagged)"
+			}
+		} else {
+			result.Created[node.Kind]++
+		}
+
+		if err := writeNode(store, path, merged); err != nil {
+			reporter.Error(labelApplyingNodes, err)
+			rollback(store, createdPaths)
+			return kernel.ApplyResult{}, err
+		}
+		if !existed {
+			createdPaths = append(createdPaths, path)
+		}
+
+		reporter.Step(fmt.Sprintf("%s: %s", node.ID, outcome))
+
+		if node.Kind == "source" && node.ID == patch.Document {
+			sourceNode = node
+		}
+	}
+	reporter.Done(labelApplyingNodes, time.Since(start))
+
+	start = time.Now()
+	timeline, err := applyTimeline(store, patch, sourceNode)
+	if err != nil {
+		reporter.Error(labelUpdatingTL, err)
+		rollback(store, createdPaths)
+		return kernel.ApplyResult{}, err
+	}
+	reporter.Done(labelUpdatingTL, time.Since(start))
+	result.Timeline = timeline
+
+	start = time.Now()
+	if err := vcs.StageAll(ctx, dir); err != nil {
+		reporter.Error(labelCommitting, err)
+		rollback(store, createdPaths)
+		return kernel.ApplyResult{}, err
+	}
+
+	hash, err := vcs.Commit(ctx, dir, buildCommitMessage(patch, result))
+	if err != nil {
+		reporter.Error(labelCommitting, err)
+		rollback(store, createdPaths)
+		return kernel.ApplyResult{}, err
+	}
+	reporter.Done(labelCommitting, time.Since(start))
+	result.CommitHash = hash
+
+	return result, nil
+}
+
+func guardIsGraph(store fsys.Store, dir string) error {
+	if _, err := store.Stat(".arc"); err != nil {
+		return ErrNotAGraph.With(err, dir)
+	}
+	return nil
+}
+
+// readPatch mounts a store rooted at patchPath's own containing directory,
+// rather than reading it through the graph-rooted store — a patch is a
+// parallel exchange file, never part of the graph itself (CORE §12.1), so
+// it may live anywhere on disk, including outside dir's tree, which an
+// fs.FS scoped to dir could never reach (fs.FS forbids both absolute paths
+// and ".." traversal).
+func readPatch(mounter fsys.Mounter, patchPath string) (core.Patch, error) {
+	store, err := mounter.Mount(filepath.Dir(patchPath))
+	if err != nil {
+		return core.Patch{}, ErrPatchRead.With(err, patchPath)
+	}
+
+	f, err := store.Open(filepath.Base(patchPath))
+	if err != nil {
+		return core.Patch{}, ErrPatchRead.With(err, patchPath)
+	}
+	defer f.Close()
+
+	patch, err := core.ParsePatch(f)
+	if err != nil {
+		return core.Patch{}, err
+	}
+	return patch, nil
+}
+
+func readExistingNode(store fsys.Store, path string) (core.Node, bool, error) {
+	f, err := store.Open(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return core.Node{}, false, nil
+		}
+		return core.Node{}, false, ErrNodeWrite.With(err, path)
+	}
+	defer f.Close()
+
+	node, err := core.ParseNode(f)
+	if err != nil {
+		return core.Node{}, false, ErrNodeWrite.With(err, path)
+	}
+	return node, true, nil
+}
+
+func writeNode(store fsys.Store, path string, node core.Node) error {
+	raw, err := core.RenderNode(node)
+	if err != nil {
+		return ErrNodeWrite.With(err, path)
+	}
+	return writeRaw(store, path, raw)
+}
+
+func writeRaw(store fsys.Store, path string, content []byte) error {
+	f, err := store.Create(path)
+	if err != nil {
+		return ErrNodeWrite.With(err, path)
+	}
+	if _, err := f.Write(content); err != nil {
+		_ = f.Discard()
+		return ErrNodeWrite.With(err, path)
+	}
+	if err := f.Close(); err != nil {
+		return ErrNodeWrite.With(err, path)
+	}
+	return nil
+}
+
+func rollback(store fsys.Store, paths []string) {
+	for _, p := range paths {
+		_ = store.Remove(p)
+	}
+}
+
+func buildCommitMessage(patch core.Patch, result kernel.ApplyResult) string {
+	subject := fmt.Sprintf("graph(ingest): %s — %s", patch.Document, patch.Title)
+
+	kinds := make([]core.Kind, 0, len(result.Created)+len(result.Merged))
+	seen := map[core.Kind]bool{}
+	for k := range result.Created {
+		if !seen[k] {
+			kinds = append(kinds, k)
+			seen[k] = true
+		}
+	}
+	for k := range result.Merged {
+		if !seen[k] {
+			kinds = append(kinds, k)
+			seen[k] = true
+		}
+	}
+	sort.Slice(kinds, func(i, j int) bool { return kinds[i] < kinds[j] })
+
+	stats := make([]string, 0, len(kinds))
+	for _, k := range kinds {
+		stats = append(stats, fmt.Sprintf("%s: +%d created, +%d merged", k, result.Created[k], result.Merged[k]))
+	}
+
+	var buf strings.Builder
+	buf.WriteString(subject)
+	buf.WriteString("\n\n")
+	buf.WriteString("Nodes: " + strings.Join(stats, ", ") + "\n")
+	if len(result.Timeline) > 0 {
+		buf.WriteString("Timeline: " + strings.Join(result.Timeline, ", ") + "\n")
+	}
+	buf.WriteString("Source-Id: " + patch.Document + "\n")
+
+	return buf.String()
+}
+
+type timelineEntry struct {
+	id        string
+	published time.Time
+	line      string
+}
+
+var timelineEntryPattern = regexp.MustCompile(`^- \[\[([^\]]+)\]\].* — (\d{4}-\d{2}-\d{2})$`)
+
+func parseTimelineEntries(content string) []timelineEntry {
+	var out []timelineEntry
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimRight(line, "\r")
+		m := timelineEntryPattern.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		t, err := time.Parse("2006-01-02", m[2])
+		if err != nil {
+			continue
+		}
+		out = append(out, timelineEntry{id: m[1], published: t, line: line})
+	}
+	return out
+}
+
+func attrStringSlice(v any) []string {
+	items, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		out = append(out, fmt.Sprint(item))
+	}
+	return out
+}
+
+// applyTimeline derives the yearly/monthly period files a patch's
+// published date touches and inserts one chronologically-ordered entry
+// into each, creating the period file if absent (CORE §9.4, research.md
+// D8). Re-inserting an already-present document id is a no-op (CORE §10
+// "append" — keyed for uniqueness).
+func applyTimeline(store fsys.Store, patch core.Patch, source core.Node) ([]string, error) {
+	yearly, monthly := core.TimelinePeriods(patch.Published)
+
+	title := patch.Title
+	if title == "" {
+		if t, ok := source.Attrs["title"].(string); ok {
+			title = t
+		}
+	}
+	authors := attrStringSlice(source.Attrs["authors"])
+
+	entry := timelineEntry{
+		id:        patch.Document,
+		published: patch.Published,
+		line:      core.TimelineEntry(patch.Document, title, authors, patch.Published),
+	}
+
+	yearlyPath := "timeline/yearly/" + yearly + ".md"
+	monthlyPath := "timeline/monthly/" + monthly + ".md"
+
+	if err := upsertTimelinePeriod(store, yearlyPath, yearly, "yearly", patch.Published.Format("2006"), entry); err != nil {
+		return nil, err
+	}
+	if err := upsertTimelinePeriod(store, monthlyPath, monthly, "monthly", patch.Published.Format("January 2006"), entry); err != nil {
+		return nil, err
+	}
+
+	return []string{yearly, monthly}, nil
+}
+
+func upsertTimelinePeriod(store fsys.Store, path, period, granularity, heading string, newEntry timelineEntry) error {
+	existing, err := readFileIfExists(store, path)
+	if err != nil {
+		return err
+	}
+
+	entries := parseTimelineEntries(existing)
+	for _, e := range entries {
+		if e.id == newEntry.id {
+			return nil
+		}
+	}
+
+	insertAt := len(entries)
+	for i, e := range entries {
+		if newEntry.published.Before(e.published) {
+			insertAt = i
+			break
+		}
+	}
+	entries = append(entries, timelineEntry{})
+	copy(entries[insertAt+1:], entries[insertAt:])
+	entries[insertAt] = newEntry
+
+	var buf strings.Builder
+	buf.WriteString("---\n")
+	buf.WriteString("kind: timeline\n")
+	buf.WriteString("period: " + period + "\n")
+	buf.WriteString("granularity: " + granularity + "\n")
+	buf.WriteString("---\n")
+	buf.WriteString("# " + heading + "\n\n")
+	for _, e := range entries {
+		buf.WriteString(e.line)
+		buf.WriteString("\n")
+	}
+
+	return writeRaw(store, path, []byte(buf.String()))
+}
+
+func readFileIfExists(store fsys.Store, path string) (string, error) {
+	f, err := store.Open(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", nil
+		}
+		return "", err
+	}
+	defer f.Close()
+
+	raw, err := io.ReadAll(f)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}

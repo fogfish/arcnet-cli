@@ -16,7 +16,7 @@ import (
 
 	"github.com/fogfish/it/v2"
 
-	"github.com/fogfish/arcnet-cli/internal/app/ctrl/adapter/git"
+	"github.com/fogfish/arcnet-cli/internal/adapter/git"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
 
@@ -52,6 +52,48 @@ func TestVCSInitStageCommit(t *testing.T) {
 	it.Then(t).
 		Should(it.Nil(err)).
 		ShouldNot(it.Equal("", hash))
+}
+
+func TestVCSIsTrackedTrue(t *testing.T) {
+	setGitIdentity(t)
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	it.Then(t).Should(it.Nil(vcs.Init(ctx, dir)))
+	writeFile(t, dir, "tracked.md", "content")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, dir)))
+	_, err := vcs.Commit(ctx, dir, "commit")
+	it.Then(t).Should(it.Nil(err))
+
+	tracked, err := vcs.IsTracked(ctx, dir, "tracked.md")
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.True(tracked))
+}
+
+func TestVCSIsTrackedFalse(t *testing.T) {
+	setGitIdentity(t)
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	it.Then(t).Should(it.Nil(vcs.Init(ctx, dir)))
+	writeFile(t, dir, "untracked.md", "content")
+
+	tracked, err := vcs.IsTracked(ctx, dir, "untracked.md")
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.True(!tracked))
+}
+
+func TestVCSIsTrackedError(t *testing.T) {
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	_, err := vcs.IsTracked(ctx, dir, "whatever.md")
+	it.Then(t).ShouldNot(it.Nil(err))
 }
 
 func writeFile(t *testing.T, dir, name, content string) {

@@ -42,7 +42,7 @@ var SCHEMA_COLOR = Schema{
 	StatusFail: lipgloss.NewStyle().Foreground(lipgloss.Color("1")),
 	Hint:       lipgloss.NewStyle().Faint(true),
 	IconOK:     "✅ ",
-	IconWarn:   "🟧 ",
+	IconWarn:   "  ",
 	IconFail:   "❌ ",
 }
 
