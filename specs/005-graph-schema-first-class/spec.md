@@ -8,6 +8,14 @@
 
 **Input**: User description: "Make a schema as a first class citizen of the graph. Instead of `_meta` and `.arc/config` a new folder `_schema` is defined. The folder contains subfolders: (a) `nodes/` contains a document per node kind (e.g. entity.md) and `predicates/` contains a documents per predicate (e.g. related.md). Each of them has `id` equal to file base name (equal to name of this entity) and `kind: schema`. The nodes document also contains a `merge` attribute. It substitude `.arc/config` behaviour. The schema is created by `arc init` for core specification (see https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-CORE.md). The schema is extended by `arc apply` when new node kind or predicate is discovered in the graph."
 
+## Clarifications
+
+### Session 2026-07-04
+
+- Q: Are `_schema/nodes/*.md` and `_schema/predicates/*.md` documents subject to `arc lint`'s ordinary per-kind content validation (e.g. required fields for that kind, source-citation-back rule), or are they exempt as schema/tooling metadata? → A: Exempt from ordinary lint — validated only against schema-document well-formedness (id/kind: schema, and merge for node-kind documents), not against the content rules that apply to ordinary graph nodes.
+- Q: Can a patch itself carry an explicit merge-behavior instruction for a newly discovered node kind, or does auto-discovery always assign the safe default, with customization only via a later direct edit of the schema document? → A: Always the safe default — a patch never carries a merge-behavior instruction; customizing a discovered kind's merge behavior is done only by directly editing its `_schema/nodes/<kind>.md` document afterward.
+- Q: Do `_schema/nodes/` and `_schema/predicates/` documents participate in `arc lint`'s existing whole-graph basename-uniqueness check (CORE §3.2), or do they occupy a separate namespace from ordinary content nodes? → A: Separate namespace — basenames are unique only within each `_schema/` subfolder; a schema document's basename coinciding with an ordinary content node's id elsewhere in the graph is not a conflict.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Bootstrap a graph with a first-class, versioned schema (Priority: P1)
@@ -67,6 +75,8 @@ A person maintaining a graph wants to know what node kinds and predicates exist 
 - What happens when initializing a graph that already has a `_schema/` folder (already initialized)? The tool refuses, consistent with existing already-initialized-graph protection — no schema content is lost or overwritten.
 - What happens when a patch reuses a node-kind name and a predicate name that are identical? Node kinds and predicates are tracked separately (`_schema/nodes/` vs. `_schema/predicates/`), so the same name may appear as both without conflict.
 - What happens when the same previously-unseen node kind or predicate appears more than once within a single patch application? Exactly one schema document is created for it, not one per occurrence.
+- What happens when a graph's content is validated (e.g., by `arc lint`)? A `_schema/` document is checked only against schema-document well-formedness (identity, schema marker, and — for node-kind documents — a stated merge behavior); the ordinary content rules that apply to source/entity/resource/domain-kind nodes (e.g., the source-citation-back requirement) do not apply to it.
+- What happens when a `_schema/` document's basename coincides with an ordinary content node's id elsewhere in the graph? This is not a conflict — schema documents occupy their own namespace, unique only within their own `_schema/nodes/` or `_schema/predicates/` subfolder, separate from the graph-wide basename-uniqueness check applied to ordinary content nodes.
 
 ## Requirements *(mandatory)*
 
@@ -74,18 +84,19 @@ A person maintaining a graph wants to know what node kinds and predicates exist 
 
 - **FR-001**: The tool MUST represent a graph's schema — its node kinds and predicates — as a `_schema/` folder containing versioned documents, replacing the previous `_meta/` folder and the merge-rule portion of `.arc/config` as the source of this information.
 - **FR-002**: The tool MUST organize `_schema/` into two subfolders: `nodes/`, holding one document per node kind, and `predicates/`, holding one document per predicate.
-- **FR-003**: Every schema document's identity MUST equal its own file's base name, and that base name MUST equal the name of the node kind or predicate it describes.
+- **FR-003**: Every schema document's identity MUST equal its own file's base name, and that base name MUST equal the name of the node kind or predicate it describes. This identity is unique only within its own `_schema/nodes/` or `_schema/predicates/` subfolder — schema documents occupy a separate namespace from ordinary content nodes and do not participate in the graph-wide basename-uniqueness check applied to those nodes.
 - **FR-004**: Every schema document MUST declare itself as a schema-kind document, distinguishing it from ordinary graph content nodes.
 - **FR-005**: Every node-kind schema document MUST additionally declare that kind's merge behavior.
 - **FR-006**: The tool MUST create and populate `_schema/` when initializing a new graph, seeding it with a document for every node kind and predicate defined by the core specification.
 - **FR-007**: When the core specification cannot be retrieved at initialization time, the tool MUST still succeed, seeding `_schema/` from built-in defaults instead, consistent with initialization's existing offline-first guarantee.
 - **FR-008**: The tool MUST NOT create a `_meta/` folder or a merge-rule section in `.arc/config` when initializing a new graph.
 - **FR-009**: When applying a patch, the tool MUST inspect every node kind and predicate the patch contributes and, for any one with no existing schema document, MUST create a new schema document for it in the appropriate subfolder.
-- **FR-010**: A node-kind schema document created this way MUST be assigned the safe default merge behavior when the patch gives no more specific instruction, consistent with the tool's existing unrecognized-kind handling.
+- **FR-010**: A node-kind schema document created this way MUST always be assigned the safe default merge behavior — a patch MUST NOT be able to specify a different merge behavior for a kind it introduces; customizing a discovered kind's merge behavior is only ever done afterward, by directly editing its schema document (FR-014), consistent with the tool's existing unrecognized-kind handling.
 - **FR-011**: The tool MUST NOT create a duplicate or overwrite an already-existing schema document for a node kind or predicate that is already registered.
 - **FR-012**: Schema documents created or extended while applying a patch MUST be included in that same patch application's single commit, not committed separately.
 - **FR-013**: Every capability that previously relied on `_meta/` or `.arc/config` to recognize node kinds, resolve merge behavior, or validate predicates MUST instead read that information from `_schema/`, with no loss of existing recognition, merge, or validation behavior.
 - **FR-014**: A node kind's merge behavior used by patch application MUST be read from that kind's `_schema/nodes/` document, so that editing the document changes future behavior for that kind.
+- **FR-015**: Content-validation checks that apply to ordinary graph nodes (e.g., a per-kind required-field rule or a source-citation-back requirement) MUST NOT apply to `_schema/` documents themselves; a schema document is validated only against schema-document well-formedness (identity, schema marker, and — for node-kind documents — a stated merge behavior).
 
 ### Key Entities
 
