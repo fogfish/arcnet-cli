@@ -12,8 +12,11 @@ cmd/arc/                    # sole primary (driving) adapter: Cobra command tree
 │   └── init.go              # `arc init` command: flag/arg parsing, calls internal/app/ctrl.Init,
 │                             #   seeded by internal/app/schema.Seed() — pure, no network access
 ├── graph/                  # Cobra wiring for the graph (graph I/O) domain
-│   └── apply.go             # `arc apply` command: flag/arg parsing, calls
-│                             #   internal/app/schema.Resolve then internal/app/graph.Apply
+│   ├── apply.go             # `arc apply` command: flag/arg parsing, calls
+│   │                         #   internal/app/schema.Resolve then internal/app/graph.Apply
+│   └── grep.go              # `arc grep` command: <pattern> arg, --kind/--tag/--attr local
+│                             #   flags, calls internal/app/graph.Grep, renders via
+│                             #   bios.Registry (highlight/truncate presentation only)
 └── lint/                   # Cobra wiring for the lint (graph conformance validation) domain
     └── lint.go               # `arc lint` command: flag/arg parsing, calls
                               #   internal/app/schema.Resolve then internal/app/lint.Lint
@@ -28,7 +31,18 @@ internal/
 │                             #   algebra, CORE §9.4 timeline-period derivation, and the
 │                             #   MergeRuleSet value type (Union/Lookup). No dependency on any
 │                             #   internal/app/<use-case> — ARCNET-CORE's actual declared kind/merge/
-│                             #   predicate defaults live in internal/app/schema instead.
+│                             #   predicate defaults live in internal/app/schema instead. Also holds
+│                             #   Filter{Kinds,Tags,Attrs,AttrPatterns}/Filter.Match(Node) — the
+│                             #   shared node-selection type every VISION.md Filtering-section
+│                             #   command consumes (specs/006-arc-grep-content-search, research.md D8).
+├── pkg/                     # NEW tier (ADR 001 "evolution of domain logic" phase 2): generic,
+│                             #   reusable domain services promoted out of internal/core once they
+│                             #   need stricter isolation. First occupant:
+│   └── grep/                  # domain-agnostic, dependency-free, fs.FS-based content-search
+│                               #   library — Search(ctx, fsys, pattern, Options) (Result, error);
+│                               #   no dependency on internal/core or internal/app/*, never imports
+│                               #   os (constitution Principle VII; specs/006-arc-grep-content-search,
+│                               #   research.md D2)
 ├── adapter/
 │   ├── fsys/                # shared, cross-use-case filesystem adapter (ADR 001 "phase 2" adapter
 │   │                         #   tier). The ONLY package permitted to call os's file/directory
@@ -51,13 +65,13 @@ internal/
     │   ├── service/            # use-case logic (Init)
     │   └── component.go        # primary port: Init(ctx, mounter, vcs, dir, schemaSeed) (kernel.InitResult, error)
     │
-    ├── config/                # second domain use-case: `.arc/config.yml` load/save — dormant,
-    │   │                       #   zero callers after specs/005-graph-schema-first-class shipped,
-    │   │                       #   kept alive for a future, unrelated configuration need (explicit
-    │   │                       #   user instruction, plan.md Complexity Tracking)
-    │   ├── kernel/             # domain value types (Config, ConfigPath) — Config is an empty
-    │   │                        #   struct pending that future need; the merge-rule field it once
-    │   │                        #   carried moved to internal/app/schema
+    ├── config/                # second domain use-case: `.arc/config.yml` load/save — gained its
+    │   │                       #   first real field (Grep) in specs/006-arc-grep-content-search,
+    │   │                       #   after sitting dormant (zero callers) since
+    │   │                       #   specs/005-graph-schema-first-class shipped
+    │   ├── kernel/             # domain value types (Config, ConfigPath); Config.Grep GrepConfig
+    │   │                        #   {Workers,MaxLineWidth} is its first real field — a zero/absent
+    │   │                        #   value resolves to the built-in default at the cmd/ wiring layer
     │   ├── service/             # use-case logic (Load, Save)
     │   └── component.go         # primary port: Load(store), Save(store, cfg)
     │
@@ -77,17 +91,22 @@ internal/
     │                             #   satisfies graph.port.SchemaRegistry structurally
     │
     ├── graph/                 # third domain use-case: graph mutation / graph I/O
-    │   ├── kernel/              # domain value types (ApplyResult)
+    │   ├── kernel/              # domain value types (ApplyResult, Match, GrepResult)
     │   ├── port/                 # graph-private secondary ports: VCS, and SchemaRegistry
     │   │                          #   (RegisterKind/RegisterPredicate — satisfied structurally by
     │   │                          #   internal/app/schema's Component, ADR 001 port isolation rule 1)
     │   ├── adapter/
     │   │   └── mock/             # in-memory fake VCS for service unit tests
-    │   ├── service/              # use-case logic (Apply) — the per-node loop's auto-discovery hook
-    │   │                          #   registers a previously-unseen kind/predicate into _schema/ in
-    │   │                          #   the same commit as the triggering patch (spec.md FR-012)
+    │   ├── service/              # use-case logic (Apply, Grep) — Apply's per-node loop's
+    │   │                          #   auto-discovery hook registers a previously-unseen
+    │   │                          #   kind/predicate into _schema/ in the same commit as the
+    │   │                          #   triggering patch (spec.md FR-012); Grep enumerates+parses
+    │   │                          #   every node file (excluding .arc/ and _schema/), builds a
+    │   │                          #   Filter-membership set, and delegates the actual line scan to
+    │   │                          #   internal/pkg/grep.Search (specs/006-arc-grep-content-search)
     │   └── component.go          # primary port: Apply(ctx, mounter, vcs, reporter, rules,
-    │                              #   predicates, schema, dir, patchPath) (kernel.ApplyResult, error)
+    │                              #   predicates, schema, dir, patchPath) (kernel.ApplyResult, error);
+    │                              #   Grep(ctx, mounter, filter, pattern, cfg, dir) (kernel.GrepResult, error)
     │
     └── lint/                  # fifth domain use-case: graph conformance validation (CORE §14)
         ├── kernel/              # domain value types (Rule, Violation, NodeStatus, LintResult, Sowa tables)
@@ -130,3 +149,6 @@ This project uses **bare top-level verbs** (`arc init`, `arc apply`, `arc list`,
 | **Lint Run** | One `arc lint` invocation: walks every node file in the graph, runs every applicable CORE §14 rule against it, and aggregates every violation found without stopping at the first one (spec FR-013). Strictly read-only — the first graph-inspecting command in this codebase that never writes to `fsys.Store` or git history. Schema Documents under `_schema/` are excluded from this walk entirely (spec FR-015). `internal/app/lint/kernel.LintResult`. |
 | **Checklist Rule** | One named CORE §14 conformance check (`internal/app/lint/kernel.Rule`), e.g. unique basenames, resolvable links, source citekey identity, entity Sowa category, registered predicates, one ingest commit per document, absence of merge-conflict markers. |
 | **Extension Profile Checklist** | `arc lint`'s CORE §10/§14 check for a non-built-in node kind: recognized (present in the resolved `core.MergeRuleSet`) vs. unrecognized, deliberately scoped to kind-recognition only — no per-kind field-schema declaration mechanism exists yet in this codebase (plan.md Complexity Tracking, `specs/004-arc-lint/research.md` D11; unaffected by `specs/005-graph-schema-first-class`, which adds kind/merge/predicate *recognition* storage, not field-level schema declaration). |
+| **Filter** | The optional, composable node-selection criteria (`Kinds` OR'd, `Tags`/`Attrs`/`AttrPatterns` AND'd) shared by every VISION.md Filtering-section command; a zero-value `Filter{}` matches every node. `internal/core.Filter`, `Filter.Match(Node) bool` (`specs/006-arc-grep-content-search`, research.md D8) — `arc grep` is the first command to consume it. |
+| **Match** | One reported occurrence of `arc grep`'s `<pattern>` on a single line within a single node's file: the node's `kind`/`id`, the 1-based line number, and the full matched line text. `internal/pkg/grep.Match` (path/line/text/byte-offsets, domain-agnostic) is mapped into `internal/app/graph/kernel.Match` (kind/id-labeled) for rendering. |
+| **Grep Run** | One `arc grep` invocation: enumerates and parses every node file (excluding `.arc/` and `_schema/`), narrows the scan to nodes passing a `Filter`, and reports every matching line across every scanned node in a single pass, never stopping at the first match. Strictly read-only, like `arc lint`. `internal/app/graph/kernel.GrepResult`, `internal/app/graph/service.Grep` (`specs/006-arc-grep-content-search`). |

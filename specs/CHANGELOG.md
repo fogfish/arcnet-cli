@@ -2,6 +2,24 @@
 
 # 2026-07-04
 
+/speckit-specify `arc grep [<filter>] <pattern>` — scan nodes matching the filter (see Filtering) for lines matching the regexp `<pattern>`; print `<kind>  <id>  <line-number>  <matched line>`, one match per output line; without a filter, scans every node file; suitable for piping to standard tools.
+
+/speckit-plan implement grap grep as part of `internal/app/graph` domain, also maintain same hierarchy in `cmd/arc/graph`. UX implementation and usability MUST BE according to ADR 002 UX Design System (002-ux-design-system.md). Use colors to highite matched text if color mode is enabled. If macthed line longer that 80 chars (configurable via `.arc/config`) the ellipse before and after to fit the match roughtly to one terminal line. 
+
+However, make a file-system grep utility as a reusable, performance optimized packaged at `internal/pkg/grep`. The utility must:
+* Use parallel walker of directory traversal.
+* Use parallel file processing.
+* Use a bounded worker pool (number of workes configurable via `.arc/config` default is 8) and close files after processed.
+* Use buffered reads (bufio.Reader).
+* Buffer reuse with sync.Pool (minimize memory allocation).
+* Be configured for particular file extension (*.md by default).
+* Literal search with bytes.Contains when possible.
+* Regex only when the query actually requires it.
+* Treat files as plain text within the lib.
+
+
+---
+
 /speckit-specify Make a schema as a first class citizen of the graph. Instead of `_meta` and `.arc/config` a new folder `_schema` is defined. The folder contains subfolders: (a) `nodes/` contains a document per node kind (e.g. entity.md) and `predicates/` contains a documents per predicate (e.g. related.md). Each of them has `id` equal to file base name (equal to name of this entity) and `kind: schema`. The nodes document also contains a `merge` attribute. It substitude `.arc/config` behaviour. The schema is created by `arc init` for core specification (see https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-CORE.md). The schema is extended by `arc apply` when new node kind or predicate is discovered in the graph. 
 
 /speckit-plan schema as own domain `internal/app/schema`. Remove "merge" configurability from `.arc/config` but keep the config infrastructure alive, just remove the github downloader, it is not relevant anymore. Integrate `schema` domain with `apply` and `init`. Isolate ALL ARCNET-CORE abstractions, definitions, const and invariants within `schema` domain. It MUST BE a single entity in the app that has dependencies to https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-CORE.md specification. 

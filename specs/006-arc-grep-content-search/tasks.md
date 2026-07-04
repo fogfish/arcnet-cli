@@ -29,9 +29,9 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create the package skeleton: `internal/pkg/grep/` directory, per plan.md's Project Structure (all other touched packages already exist)
-- [ ] T002 [P] Confirm no new third-party dependency is required — `go.mod` stays unchanged per plan.md Technical Context (`internal/pkg/grep` is stdlib-only, research.md D3)
-- [ ] T003 [P] Run `staticcheck ./...` and confirm it passes clean on the new (still-empty) `internal/pkg/grep` skeleton
+- [X] T001 Create the package skeleton: `internal/pkg/grep/` directory, per plan.md's Project Structure (all other touched packages already exist)
+- [X] T002 [P] Confirm no new third-party dependency is required — `go.mod` stays unchanged per plan.md Technical Context (`internal/pkg/grep` is stdlib-only, research.md D3)
+- [X] T003 [P] Run `staticcheck ./...` and confirm it passes clean on the new (still-empty) `internal/pkg/grep` skeleton
 
 ---
 
@@ -43,31 +43,31 @@
 
 ### Phase 2a: Domain Model & Glossary (Principles II, V)
 
-- [ ] T004 Add the domain terms from spec.md Key Entities / data-model.md — Filter, Match, Grep Run — to [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary (Principle I obligation, plan.md Constitution Check row I)
-- [ ] T005 Verify no existing `internal/<domain>` package already defines a `Filter`/node-selection type before introducing `internal/core.Filter` (research.md D8 — none exists; `arc grep` is the first Filtering-section command to ship)
+- [X] T004 Add the domain terms from spec.md Key Entities / data-model.md — Filter, Match, Grep Run — to [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary (Principle I obligation, plan.md Constitution Check row I)
+- [X] T005 Verify no existing `internal/<domain>` package already defines a `Filter`/node-selection type before introducing `internal/core.Filter` (research.md D8 — none exists; `arc grep` is the first Filtering-section command to ship)
 
 ### Phase 2b: Command & Flag Contract Design (Principle IX)
 
-- [ ] T006 Confirm `arc grep`'s bare-verb grammar, single positional `<pattern>` argument, and the three new local `--kind`/`--tag`/`--attr` flags against contracts/cli-contract.md (research.md D14 — no new persistent/global flag is introduced)
-- [ ] T007 [P] Review contracts/cli-contract.md (already produced during `/speckit-plan`) for completeness against spec.md's functional requirements — no changes expected, this is a gate check
+- [X] T006 Confirm `arc grep`'s bare-verb grammar, single positional `<pattern>` argument, and the three new local `--kind`/`--tag`/`--attr` flags against contracts/cli-contract.md (research.md D14 — no new persistent/global flag is introduced)
+- [X] T007 [P] Review contracts/cli-contract.md (already produced during `/speckit-plan`) for completeness against spec.md's functional requirements — no changes expected, this is a gate check
 
 ### Phase 2c: External Integration & Adapter Design (Principle VII, if applicable)
 
-- [ ] T008 [P] Confirm no existing package already provides an `fs.FS`-based, parallel content-search capability before creating `internal/pkg/grep` (research.md D2 — none exists; this is the first `internal/pkg/<lib>` occupant in the codebase)
-- [ ] T009 Define `internal/pkg/grep`'s public contract (`Match`, `Options`, `Result`, `Search`) per data-model.md as the design gate before any implementation code is written — confirm the signature depends only on stdlib `io/fs` (`fs.FS`/`fs.ReadDirFS`), never `os.*` (constitution Principle VII, research.md D2)
+- [X] T008 [P] Confirm no existing package already provides an `fs.FS`-based, parallel content-search capability before creating `internal/pkg/grep` (research.md D2 — none exists; this is the first `internal/pkg/<lib>` occupant in the codebase)
+- [X] T009 Define `internal/pkg/grep`'s public contract (`Match`, `Options`, `Result`, `Search`) per data-model.md as the design gate before any implementation code is written — confirm the signature depends only on stdlib `io/fs` (`fs.FS`/`fs.ReadDirFS`), never `os.*` (constitution Principle VII, research.md D2)
 
 ### Phase 2d: E2E Acceptance Test Design (Principle VIII)
 
-- [ ] T010 [P] [US1] Write E2E tests in `cmd/arc/graph/grep_test.go` for spec.md US1's 3 acceptance scenarios (every occurrence of a pattern is reported with `kind`/`id`/line across the whole graph with no filter; a pattern matching nothing produces no output and a non-zero exit; a node matching on more than one line reports each line separately) using the `sut()` helper — tests MUST compile and fail semantically (red phase)
-- [ ] T011 [P] [US2] Write E2E tests in `cmd/arc/graph/grep_test.go` for spec.md US2's 4 acceptance scenarios (`--kind` restricts to that kind; `--tag` restricts to that tag; combined `--kind`+`--attr` narrows further; a filter matching zero nodes produces no output and a non-zero exit) — red phase
-- [ ] T012 [P] [US3] Write E2E tests in `cmd/arc/graph/grep_test.go` for spec.md US3's 3 acceptance scenarios (output piped through a line-counting tool yields the exact match count with no extra lines; output piped through a field-extraction tool splits `kind`/`id`/`line`/text cleanly; a single matched line never spans more than one output line) — red phase
-- [ ] T013 [P] Write E2E tests in `cmd/arc/graph/grep_test.go` for the Edge Cases tied to guard/UX behavior: an invalid `<pattern>` regexp refuses with a clear error and no scan (FR-008), target not an initialized graph (FR-011), an unreadable/unparseable node file is excluded and does not abort the run (FR-012), and `--verbose` shows the full untruncated line while default mode may truncate a long match per quickstart.md Scenario 4 — red phase
+- [X] T010 [P] [US1] Write E2E tests in `cmd/arc/graph/grep_test.go` for spec.md US1's 3 acceptance scenarios (every occurrence of a pattern is reported with `kind`/`id`/line across the whole graph with no filter; a pattern matching nothing produces no output and a non-zero exit; a node matching on more than one line reports each line separately) using the `sut()` helper — tests MUST compile and fail semantically (red phase)
+- [X] T011 [P] [US2] Write E2E tests in `cmd/arc/graph/grep_test.go` for spec.md US2's 4 acceptance scenarios (`--kind` restricts to that kind; `--tag` restricts to that tag; combined `--kind`+`--attr` narrows further; a filter matching zero nodes produces no output and a non-zero exit) — red phase
+- [X] T012 [P] [US3] Write E2E tests in `cmd/arc/graph/grep_test.go` for spec.md US3's 3 acceptance scenarios (output piped through a line-counting tool yields the exact match count with no extra lines; output piped through a field-extraction tool splits `kind`/`id`/`line`/text cleanly; a single matched line never spans more than one output line) — red phase
+- [X] T013 [P] Write E2E tests in `cmd/arc/graph/grep_test.go` for the Edge Cases tied to guard/UX behavior: an invalid `<pattern>` regexp refuses with a clear error and no scan (FR-008), target not an initialized graph (FR-011), an unreadable/unparseable node file is excluded and does not abort the run (FR-012), and `--verbose` shows the full untruncated line while default mode may truncate a long match per quickstart.md Scenario 4 — red phase
 
 > T010–T013 all target the same new file (`cmd/arc/graph/grep_test.go`) and are therefore sequential in practice despite each being scoped to one story (mirrors `specs/004-arc-lint/tasks.md`'s T010–T013 note).
 
 ### Phase 2e: Configuration & Secrets Review (Principle XI, if applicable)
 
-- [ ] T014 Confirm the new `.arc/config.yml` fields (`grep.workers`, `grep.maxLineWidth`) follow the flag → env → project config → user config → system config precedence (they are project-config-only, no flag/env override introduced) and that no secret or credential material is involved (plan.md Constitution Check row XI, research.md D10)
+- [X] T014 Confirm the new `.arc/config.yml` fields (`grep.workers`, `grep.maxLineWidth`) follow the flag → env → project config → user config → system config precedence (they are project-config-only, no flag/env override introduced) and that no secret or credential material is involved (plan.md Constitution Check row XI, research.md D10)
 
 **Checkpoint**: All Phase 2 subsections complete — user story implementation can now begin
 
@@ -79,41 +79,41 @@
 
 ### `internal/core` — shared `Filter` type (research.md D8)
 
-- [ ] T015 [P] Implement `internal/core/filter.go`: `Filter{Kinds, Tags, Attrs, AttrPatterns}` and `Filter.Match(Node) bool` per data-model.md
-- [ ] T016 [P] Unit tests in `internal/core/filter_test.go`: `Kinds` OR semantics, `Tags` AND semantics (against `node.Attrs["tags"]`), `Attrs` exact-match AND (case-insensitive scalar, array membership), `AttrPatterns` regexp-match AND (scalar and array), zero-value `Filter{}` matches every node (depends on T015)
+- [X] T015 [P] Implement `internal/core/filter.go`: `Filter{Kinds, Tags, Attrs, AttrPatterns}` and `Filter.Match(Node) bool` per data-model.md
+- [X] T016 [P] Unit tests in `internal/core/filter_test.go`: `Kinds` OR semantics, `Tags` AND semantics (against `node.Attrs["tags"]`), `Attrs` exact-match AND (case-insensitive scalar, array membership), `AttrPatterns` regexp-match AND (scalar and array), zero-value `Filter{}` matches every node (depends on T015)
 
 ### `internal/pkg/grep` — reusable content-search library (research.md D2-D7)
 
-- [ ] T017 [P] Implement `internal/pkg/grep/grep.go`'s public shape: `Match`, `Options{Extension, Workers, Include}`, `Result{Matches, Unreadable}`, and the literal-vs-regex pattern classification (`regexp.QuoteMeta(pattern) == pattern`) per research.md D4
-- [ ] T018 Implement the bounded-pool parallel walker+scanner in `internal/pkg/grep/grep.go`: a channel-based semaphore sized `Options.Workers` (default 8) shared by directory-listing goroutines (one per subdirectory, via `fs.ReadDir`) and file-scanning goroutines (one per matched, `Include`-passing file), coordinated by one `sync.WaitGroup` (research.md D3, D7) (depends on T017)
-- [ ] T019 Implement buffered/pooled line scanning in `internal/pkg/grep/grep.go`: a `sync.Pool` of `*bufio.Reader`, `.Reset(f)` per file, `ReadBytes('\n')` line loop with 1-based line numbering, `.Reset(nil)` before returning to the pool, deferred `f.Close()` per file (research.md D5) (depends on T018)
-- [ ] T020 Implement `Search`'s result assembly in `internal/pkg/grep/grep.go`: per-file open/read failures collected into `Result.Unreadable` (scan continues), a hard `error` return only for an invalid `pattern` or a root-listing failure, and a final `sort.Slice` of `Matches` by `(Path, Line)` (research.md D6) (depends on T018, T019)
-- [ ] T021 [P] Unit tests in `internal/pkg/grep/grep_test.go` against `fstest.MapFS` (no real filesystem): literal vs. regex dispatch produce identical matches for a metacharacter-free pattern, a line matching more than once collapses to one `Match`, an unreadable file is recorded in `Unreadable` and the scan continues, an invalid pattern returns a hard error before any file is opened, `Matches` ordering is deterministic across repeated runs, and `-race` is clean with `Workers` > 1 (depends on T017, T018, T019, T020)
+- [X] T017 [P] Implement `internal/pkg/grep/grep.go`'s public shape: `Match`, `Options{Extension, Workers, Include}`, `Result{Matches, Unreadable}`, and the literal-vs-regex pattern classification (`regexp.QuoteMeta(pattern) == pattern`) per research.md D4
+- [X] T018 Implement the bounded-pool parallel walker+scanner in `internal/pkg/grep/grep.go`: a channel-based semaphore sized `Options.Workers` (default 8) shared by directory-listing goroutines (one per subdirectory, via `fs.ReadDir`) and file-scanning goroutines (one per matched, `Include`-passing file), coordinated by one `sync.WaitGroup` (research.md D3, D7) (depends on T017)
+- [X] T019 Implement buffered/pooled line scanning in `internal/pkg/grep/grep.go`: a `sync.Pool` of `*bufio.Reader`, `.Reset(f)` per file, `ReadBytes('\n')` line loop with 1-based line numbering, `.Reset(nil)` before returning to the pool, deferred `f.Close()` per file (research.md D5) (depends on T018)
+- [X] T020 Implement `Search`'s result assembly in `internal/pkg/grep/grep.go`: per-file open/read failures collected into `Result.Unreadable` (scan continues), a hard `error` return only for an invalid `pattern` or a root-listing failure, and a final `sort.Slice` of `Matches` by `(Path, Line)` (research.md D6) (depends on T018, T019)
+- [X] T021 [P] Unit tests in `internal/pkg/grep/grep_test.go` against `fstest.MapFS` (no real filesystem): literal vs. regex dispatch produce identical matches for a metacharacter-free pattern, a line matching more than once collapses to one `Match`, an unreadable file is recorded in `Unreadable` and the scan continues, an invalid pattern returns a hard error before any file is opened, `Matches` ordering is deterministic across repeated runs, and `-race` is clean with `Workers` > 1 (depends on T017, T018, T019, T020)
 
 ### `internal/app/graph/kernel` — value types
 
-- [ ] T022 [P] Implement `internal/app/graph/kernel/grep.go`: `Match{Kind, ID, Path, Line, Text, Start, End}` and `GrepResult{Root, Pattern, Matches, Unreadable}` per data-model.md
+- [X] T022 [P] Implement `internal/app/graph/kernel/grep.go`: `Match{Kind, ID, Path, Line, Text, Start, End}` and `GrepResult{Root, Pattern, Matches, Unreadable}` per data-model.md
 
 ### `internal/app/config` — first real `Config` field (research.md D10)
 
-- [ ] T023 [P] Extend `internal/app/config/kernel/config.go`: add `Config.Grep GrepConfig{Workers, MaxLineWidth}` per data-model.md
-- [ ] T024 [P] Unit tests in `internal/app/config/service/config_test.go`: `Grep.Workers`/`Grep.MaxLineWidth` round-trip through `Load`/`Save`, and an absent/zero value loads as the zero `GrepConfig{}` (defaulting happens at the `cmd/` wiring layer, not here) (depends on T023)
+- [X] T023 [P] Extend `internal/app/config/kernel/config.go`: add `Config.Grep GrepConfig{Workers, MaxLineWidth}` per data-model.md
+- [X] T024 [P] Unit tests in `internal/app/config/service/config_test.go`: `Grep.Workers`/`Grep.MaxLineWidth` round-trip through `Load`/`Save`, and an absent/zero value loads as the zero `GrepConfig{}` (defaulting happens at the `cmd/` wiring layer, not here) (depends on T023)
 
 ### `internal/bios` — `Schema.Match` (research.md D11)
 
-- [ ] T025 [P] Extend `internal/bios/theme.go`: add `Schema.Match lipgloss.Style`, a no-op in `SCHEMA_PLAIN`, a distinct bold/colored style in `SCHEMA_COLOR`
+- [X] T025 [P] Extend `internal/bios/theme.go`: add `Schema.Match lipgloss.Style`, a no-op in `SCHEMA_PLAIN`, a distinct bold/colored style in `SCHEMA_COLOR`
 
 ### `internal/app/graph/service` — errors and enumeration
 
-- [ ] T026 [P] Add `ErrInvalidPattern`, `ErrInvalidAttrFlag` `faults.Safe1[string]` sentinel constants to `internal/app/graph/service/errors.go` (extending the existing file)
-- [ ] T027 Implement the node-enumeration pass in `internal/app/graph/service/grep.go`: recursive `fsys.Store.ReadDir` excluding `.arc/` and `_schema/` (mirrors `internal/app/lint/service.walkNodeFiles`), parsing each remaining `*.md` via `core.ParseNode`; builds a `path → core.Node` index for `kind`/`id` labeling and a `Filter`-membership set simultaneously; an unreadable or unparseable file is recorded and excluded from the scan (research.md D9) (depends on T022)
-- [ ] T028 Implement `internal/app/graph/service.Grep(ctx, mounter, filter core.Filter, pattern string, cfg kernel.GrepConfig, dir string) (kernel.GrepResult, error)`: guard `ErrNotAGraph` (`Store.Stat(".arc")`), run T027's enumeration, build `grep.Options{Extension: ".md", Workers: cfg.Workers-or-default, Include: filter-membership lookup}`, call `internal/pkg/grep.Search`, map each `grep.Match` into `kernel.Match` via T027's index, merge `Unreadable` lists (depends on T015, T017–T020, T023, T026, T027)
-- [ ] T029 [P] Unit tests in `internal/app/graph/service/grep_test.go` against a fake `fsys.Mounter`/`fsys.Store`: not-a-graph guard refuses before scanning, an empty `Filter{}` scans every node, a populated `Filter` excludes non-matching nodes from the scan entirely, an unreadable/unparseable node is excluded and reported in `Unreadable`, an invalid pattern returns `ErrInvalidPattern` (depends on T028)
+- [X] T026 [P] Add `ErrInvalidPattern`, `ErrInvalidAttrFlag` `faults.Safe1[string]` sentinel constants to `internal/app/graph/service/errors.go` (extending the existing file)
+- [X] T027 Implement the node-enumeration pass in `internal/app/graph/service/grep.go`: recursive `fsys.Store.ReadDir` excluding `.arc/` and `_schema/` (mirrors `internal/app/lint/service.walkNodeFiles`), parsing each remaining `*.md` via `core.ParseNode`; builds a `path → core.Node` index for `kind`/`id` labeling and a `Filter`-membership set simultaneously; an unreadable or unparseable file is recorded and excluded from the scan (research.md D9) (depends on T022)
+- [X] T028 Implement `internal/app/graph/service.Grep(ctx, mounter, filter core.Filter, pattern string, cfg kernel.GrepConfig, dir string) (kernel.GrepResult, error)`: guard `ErrNotAGraph` (`Store.Stat(".arc")`), run T027's enumeration, build `grep.Options{Extension: ".md", Workers: cfg.Workers-or-default, Include: filter-membership lookup}`, call `internal/pkg/grep.Search`, map each `grep.Match` into `kernel.Match` via T027's index, merge `Unreadable` lists (depends on T015, T017–T020, T023, T026, T027)
+- [X] T029 [P] Unit tests in `internal/app/graph/service/grep_test.go` against a fake `fsys.Mounter`/`fsys.Store`: not-a-graph guard refuses before scanning, an empty `Filter{}` scans every node, a populated `Filter` excludes non-matching nodes from the scan entirely, an unreadable/unparseable node is excluded and reported in `Unreadable`, an invalid pattern returns `ErrInvalidPattern` (depends on T028)
 
 ### Wiring skeleton
 
-- [ ] T030 [P] Implement `internal/app/graph/component.go`'s `Grep(ctx, mounter, filter, pattern, cfg, dir) (kernel.GrepResult, error)` delegator, alongside the existing `Apply` (depends on T028)
-- [ ] T031 [P] Scaffold `cmd/arc/graph/grep.go`: `NewGrepCmd() *cobra.Command` with `Args: cobra.ExactArgs(1)`, a local `optsFilter{kind, tag, attr []string}` options struct (DS-02, research.md D14, empty `apply`/`build` stubs), and `RunE` returning a "not implemented" placeholder error (empty-but-compiling scaffold)
+- [X] T030 [P] Implement `internal/app/graph/component.go`'s `Grep(ctx, mounter, filter, pattern, cfg, dir) (kernel.GrepResult, error)` delegator, alongside the existing `Apply` (depends on T028)
+- [X] T031 [P] Scaffold `cmd/arc/graph/grep.go`: `NewGrepCmd() *cobra.Command` with `Args: cobra.ExactArgs(1)`, a local `optsFilter{kind, tag, attr []string}` options struct (DS-02, research.md D14, empty `apply`/`build` stubs), and `RunE` returning a "not implemented" placeholder error (empty-but-compiling scaffold)
 
 **Checkpoint**: Foundation ready — user story implementation can now proceed
 
@@ -129,15 +129,15 @@
 
 > E2E tests for this story were already written in Phase 2d (T010, T013) and MUST currently be failing (red). Implementation below MUST turn them green with minimal test changes.
 
-- [ ] T032 [US1] Implement `cmd/arc/graph/grep.go`'s real `RunE`: `filepath.Abs(".")`, `fsys.Local{}.Mount`, `internal/app/config.Load`, resolve `GrepConfig` defaults (`Workers <= 0` → `8`, `MaxLineWidth <= 0` → `80`), build `core.Filter{}` (empty when no filter flags given), call `appgraph.Grep` (depends on T030, T031)
-- [ ] T033 [US1] Implement the highlight/line-fitting transform in `cmd/arc/graph/grep.go`: wrap `Text[Start:End]` in `SCHEMA.Match.Render(...)` only when `bios.SCHEMA == bios.SCHEMA_COLOR`; when the line exceeds the resolved `MaxLineWidth`, ellipsis-fit a window centered on `[Start:End)` (research.md D11) (depends on T025)
-- [ ] T034 [US1] Implement `humanGrepPrinter` (the `bios.Registry`'s `Human` renderer) in `cmd/arc/graph/grep.go`: one row per match, `<kind>  <id>  <line>  <text>`, applying T033's transform, no header/footer/summary line, per contracts/cli-contract.md
-- [ ] T035 [US1] Implement `verboseGrepPrinter` (the `Verbose` renderer) in `cmd/arc/graph/grep.go`: identical row format, T033's highlight applied but truncation disabled — the full line is always shown (research.md D11)
-- [ ] T036 [US1] Construct `bios.Registry[kernel.GrepResult]{Human: humanGrepPrinter{...}, Verbose: verboseGrepPrinter{...}}` per-invocation (it needs the resolved `MaxLineWidth`) and resolve/print via `bios.ResolveMode()` in `cmd/arc/graph/grep.go`'s `RunE` (depends on T032, T034, T035)
-- [ ] T037 [US1] Implement the DS-07 exit-code contract in `cmd/arc/graph/grep.go`: after the result is printed, return `bios.ErrSilent` when `GrepResult.Matches` is empty (research.md D12); a genuine refusal (invalid pattern, not a graph) returns a real error before anything is printed
-- [ ] T038 [US1] Populate `Short`/`Long`/`Example` help text for `arc grep` per contracts/cli-contract.md's DS-11 shape (constitution Principle XII) in `cmd/arc/graph/grep.go`
-- [ ] T039 [US1] Register `graph.NewGrepCmd()` into `cmd/arc/root.go`'s command tree (depends on T032)
-- [ ] T040 [P] [US1] Add unit tests in `internal/app/graph/service/grep_test.go` covering spec User Story 1's acceptance scenarios specifically: no filter scans every node, every match is labeled with the correct `kind`/`id`, and a node matching on multiple lines produces one `kernel.Match` per line, in line order (constitution Principle VI) (depends on T028)
+- [X] T032 [US1] Implement `cmd/arc/graph/grep.go`'s real `RunE`: `filepath.Abs(".")`, `fsys.Local{}.Mount`, `internal/app/config.Load`, resolve `GrepConfig` defaults (`Workers <= 0` → `8`, `MaxLineWidth <= 0` → `80`), build `core.Filter{}` (empty when no filter flags given), call `appgraph.Grep` (depends on T030, T031)
+- [X] T033 [US1] Implement the highlight/line-fitting transform in `cmd/arc/graph/grep.go`: wrap `Text[Start:End]` in `SCHEMA.Match.Render(...)` only when `bios.SCHEMA == bios.SCHEMA_COLOR`; when the line exceeds the resolved `MaxLineWidth`, ellipsis-fit a window centered on `[Start:End)` (research.md D11) (depends on T025)
+- [X] T034 [US1] Implement `humanGrepPrinter` (the `bios.Registry`'s `Human` renderer) in `cmd/arc/graph/grep.go`: one row per match, `<kind>  <id>  <line>  <text>`, applying T033's transform, no header/footer/summary line, per contracts/cli-contract.md
+- [X] T035 [US1] Implement `verboseGrepPrinter` (the `Verbose` renderer) in `cmd/arc/graph/grep.go`: identical row format, T033's highlight applied but truncation disabled — the full line is always shown (research.md D11)
+- [X] T036 [US1] Construct `bios.Registry[kernel.GrepResult]{Human: humanGrepPrinter{...}, Verbose: verboseGrepPrinter{...}}` per-invocation (it needs the resolved `MaxLineWidth`) and resolve/print via `bios.ResolveMode()` in `cmd/arc/graph/grep.go`'s `RunE` (depends on T032, T034, T035)
+- [X] T037 [US1] Implement the DS-07 exit-code contract in `cmd/arc/graph/grep.go`: after the result is printed, return `bios.ErrSilent` when `GrepResult.Matches` is empty (research.md D12); a genuine refusal (invalid pattern, not a graph) returns a real error before anything is printed
+- [X] T038 [US1] Populate `Short`/`Long`/`Example` help text for `arc grep` per contracts/cli-contract.md's DS-11 shape (constitution Principle XII) in `cmd/arc/graph/grep.go`
+- [X] T039 [US1] Register `graph.NewGrepCmd()` into `cmd/arc/root.go`'s command tree (depends on T032)
+- [X] T040 [P] [US1] Add unit tests in `internal/app/graph/service/grep_test.go` covering spec User Story 1's acceptance scenarios specifically: no filter scans every node, every match is labeled with the correct `kind`/`id`, and a node matching on multiple lines produces one `kernel.Match` per line, in line order (constitution Principle VI) (depends on T028)
 
 **Checkpoint**: At this point, User Story 1's E2E tests (T010, T013) pass and `arc grep` is fully functional and independently testable for the unfiltered case
 
@@ -153,11 +153,11 @@
 
 > E2E test for this story was already written in Phase 2d (T011) and MUST currently be failing (red) until this phase's flag wiring lands.
 
-- [ ] T041 [US2] Implement `optsFilter.apply(cmd *cobra.Command)` in `cmd/arc/graph/grep.go`: register `--kind`, `--tag`, `--attr` as repeatable `StringArrayVar` local flags (DS-02) (depends on T031)
-- [ ] T042 [US2] Implement `optsFilter.build() (core.Filter, error)` in `cmd/arc/graph/grep.go`: parse each `--attr` value as `name=value` (→ `Filter.Attrs`) or `name~=pattern` (→ `Filter.AttrPatterns`), returning `ErrInvalidAttrFlag` for a value matching neither shape; assemble `core.Filter{Kinds, Tags, Attrs, AttrPatterns}` (depends on T026, T041)
-- [ ] T043 [US2] Wire `optsFilter.build()`'s result into `RunE`, replacing T032's empty `core.Filter{}` with the parsed filter before calling `appgraph.Grep` (depends on T032, T042)
-- [ ] T044 [P] [US2] Add unit tests in `internal/core/filter_test.go` covering combined `Kinds`+`Tags`+`Attrs`+`AttrPatterns` AND-across-groups composition and a filter matching zero nodes (constitution Principle VI) (depends on T015)
-- [ ] T045 [P] [US2] Add unit tests in `cmd/arc/graph/grep_test.go` (or a colocated `_test.go` for `optsFilter`) covering `--attr` parsing: a valid `name=value`, a valid `name~=pattern`, and a malformed value returning `ErrInvalidAttrFlag` (depends on T042)
+- [X] T041 [US2] Implement `optsFilter.apply(cmd *cobra.Command)` in `cmd/arc/graph/grep.go`: register `--kind`, `--tag`, `--attr` as repeatable `StringArrayVar` local flags (DS-02) (depends on T031)
+- [X] T042 [US2] Implement `optsFilter.build() (core.Filter, error)` in `cmd/arc/graph/grep.go`: parse each `--attr` value as `name=value` (→ `Filter.Attrs`) or `name~=pattern` (→ `Filter.AttrPatterns`), returning `ErrInvalidAttrFlag` for a value matching neither shape; assemble `core.Filter{Kinds, Tags, Attrs, AttrPatterns}` (depends on T026, T041)
+- [X] T043 [US2] Wire `optsFilter.build()`'s result into `RunE`, replacing T032's empty `core.Filter{}` with the parsed filter before calling `appgraph.Grep` (depends on T032, T042)
+- [X] T044 [P] [US2] Add unit tests in `internal/core/filter_test.go` covering combined `Kinds`+`Tags`+`Attrs`+`AttrPatterns` AND-across-groups composition and a filter matching zero nodes (constitution Principle VI) (depends on T015)
+- [X] T045 [P] [US2] Add unit tests in `cmd/arc/graph/grep_test.go` (or a colocated `_test.go` for `optsFilter`) covering `--attr` parsing: a valid `name=value`, a valid `name~=pattern`, and a malformed value returning `ErrInvalidAttrFlag` (depends on T042)
 
 **Checkpoint**: User Stories 1 AND 2 both pass their E2E tests independently
 
@@ -173,9 +173,9 @@
 
 > E2E test for this story was already written in Phase 2d (T012) and MUST currently be failing (red) until this phase verifies/hardens the exact output shape Phase 3 already produces.
 
-- [ ] T046 [US3] Verify `humanGrepPrinter`/`verboseGrepPrinter` (T034/T035) emit zero non-match lines to `stdout` — no summary/count line (unlike `arc lint`'s summary line; spec FR-007 forbids one here) — adjust if T012's E2E test reveals extra output (depends on T034, T035)
-- [ ] T047 [US3] Verify `grep.Search`'s `Result.Matches` ordering (T020) is stable and identical across repeated runs against the same graph, including when `Options.Workers` > 1 (depends on T020)
-- [ ] T048 [P] [US3] Add unit tests confirming `SCHEMA_PLAIN` output (simulating piped/non-TTY) is the full, untruncated, unstyled line in every case — i.e. T033's truncation/highlight transform never fires when `bios.SCHEMA == bios.SCHEMA_PLAIN` (research.md D11, spec FR-006/FR-007) (depends on T033)
+- [X] T046 [US3] Verify `humanGrepPrinter`/`verboseGrepPrinter` (T034/T035) emit zero non-match lines to `stdout` — no summary/count line (unlike `arc lint`'s summary line; spec FR-007 forbids one here) — adjust if T012's E2E test reveals extra output (depends on T034, T035)
+- [X] T047 [US3] Verify `grep.Search`'s `Result.Matches` ordering (T020) is stable and identical across repeated runs against the same graph, including when `Options.Workers` > 1 (depends on T020)
+- [X] T048 [P] [US3] Add unit tests confirming `SCHEMA_PLAIN` output (simulating piped/non-TTY) is the full, untruncated, unstyled line in every case — i.e. T033's truncation/highlight transform never fires when `bios.SCHEMA == bios.SCHEMA_PLAIN` (research.md D11, spec FR-006/FR-007) (depends on T033)
 
 **Checkpoint**: User Stories 1, 2, AND 3 all pass their E2E tests independently — feature complete
 
@@ -185,9 +185,9 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T049 [P] Update `README.md`'s quick-start example to mention `arc grep` (constitution Principle XII)
-- [ ] T050 [P] Manually run all quickstart.md scenarios (1-4, plus the config and read-only verification sections) against the built binary and confirm expected output, highlighting, truncation, and exit codes
-- [ ] T051 [P] Add table-driven unit tests in `internal/pkg/grep/grep_test.go` covering `Options.Workers` configurability (1, 8, 32) and `Options.Extension` configurability (`.md` default vs. a custom extension) end-to-end against `fstest.MapFS`
+- [X] T049 [P] Update `README.md`'s quick-start example to mention `arc grep` (constitution Principle XII)
+- [X] T050 [P] Manually run all quickstart.md scenarios (1-4, plus the config and read-only verification sections) against the built binary and confirm expected output, highlighting, truncation, and exit codes
+- [X] T051 [P] Add table-driven unit tests in `internal/pkg/grep/grep_test.go` covering `Options.Workers` configurability (1, 8, 32) and `Options.Extension` configurability (`.md` default vs. a custom extension) end-to-end against `fstest.MapFS`
 
 ---
 
@@ -197,24 +197,24 @@
 
 ### Design Phase Verification
 
-- [ ] TN01 [ARCHITECTURE.md](../../ARCHITECTURE.md) reflects architectural changes: `internal/pkg/grep` (first occupant of that tier), `internal/core.Filter`, and `internal/app/graph`'s new `Grep` member (Principle I)
-- [ ] TN02 Domain concepts added to the [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary (Principle II)
-- [ ] TN03 Command/flag surface matches the Phase 2b design exactly: `arc grep <pattern>`, `--kind`/`--tag`/`--attr`, exit codes (Principle IX)
+- [X] TN01 [ARCHITECTURE.md](../../ARCHITECTURE.md) reflects architectural changes: `internal/pkg/grep` (first occupant of that tier), `internal/core.Filter`, and `internal/app/graph`'s new `Grep` member (Principle I)
+- [X] TN02 Domain concepts added to the [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary (Principle II)
+- [X] TN03 Command/flag surface matches the Phase 2b design exactly: `arc grep <pattern>`, `--kind`/`--tag`/`--attr`, exit codes (Principle IX)
 
 ### Implementation Phase Verification (grouped by principle)
 
-- [ ] TN04 Major decisions recorded in [adrs/](../../adrs/) with correct numbering, if a new architectural pattern was introduced beyond what ADR 001/002 already cover (Principle I) — none expected; `internal/pkg` is already documented in ADR 001's own domain-evolution model, confirm during review
-- [ ] TN05 Domain logic uses ports (interfaces) where needed; `cmd/arc/graph` wiring, `internal/pkg/grep`, and `internal/app/graph/service` remain separated; no port was declared where none is needed (research.md D13) (Principle III)
-- [ ] TN06 Unit tests were written first, compiled, and failed semantically before implementation (Principle VI)
-- [ ] TN07 Unit and E2E tests use `github.com/fogfish/it/v2` exclusively — no `testify` or stdlib-only comparisons mixed in (Principle VI, [Mandatory Libraries & Tooling](../../.specify/memory/constitution.md#mandatory-libraries--tooling))
-- [ ] TN08 No Bash scripts were used for unit-level code correctness validation (Principle VI)
-- [ ] TN09 `internal/pkg/grep` contains zero `os.*` filesystem calls — verified by inspection/grep of the package, confirming it depends only on stdlib `io/fs` (Principle VII, research.md D2)
-- [ ] TN10 Terminal output respects TTY detection, `NO_COLOR`, `--quiet`/`--verbose`, and uses `github.com/charmbracelet/lipgloss` for the new `Schema.Match` style (Principle X)
-- [ ] TN11 Configuration precedence respected for the new `grep.workers`/`grep.maxLineWidth` fields; no secrets logged or involved (Principle XI)
-- [ ] TN12 Help text (`Short`/`Long`/`Example`) populated for `arc grep` (Principle XII)
-- [ ] TN13 E2E tests from Phase 2d turned GREEN and changed minimally during implementation (Principle VIII)
-- [ ] TN14 All spec.md US1–US3 acceptance scenarios have a passing, colocated E2E test in `cmd/arc/graph/grep_test.go` (Principle VIII)
-- [ ] TN15 Release/versioning impact assessed: `arc grep` is a new command with a new, additive `--json` `GrepResult` schema; `kernel.ApplyResult`'s existing `--json` contract is untouched; no major-version implication (Principle XIV)
+- [X] TN04 Major decisions recorded in [adrs/](../../adrs/) with correct numbering, if a new architectural pattern was introduced beyond what ADR 001/002 already cover (Principle I) — none expected; `internal/pkg` is already documented in ADR 001's own domain-evolution model, confirm during review
+- [X] TN05 Domain logic uses ports (interfaces) where needed; `cmd/arc/graph` wiring, `internal/pkg/grep`, and `internal/app/graph/service` remain separated; no port was declared where none is needed (research.md D13) (Principle III)
+- [X] TN06 Unit tests were written first, compiled, and failed semantically before implementation (Principle VI)
+- [X] TN07 Unit and E2E tests use `github.com/fogfish/it/v2` exclusively — no `testify` or stdlib-only comparisons mixed in (Principle VI, [Mandatory Libraries & Tooling](../../.specify/memory/constitution.md#mandatory-libraries--tooling))
+- [X] TN08 No Bash scripts were used for unit-level code correctness validation (Principle VI)
+- [X] TN09 `internal/pkg/grep` contains zero `os.*` filesystem calls — verified by inspection/grep of the package, confirming it depends only on stdlib `io/fs` (Principle VII, research.md D2)
+- [X] TN10 Terminal output respects TTY detection, `NO_COLOR`, `--quiet`/`--verbose`, and uses `github.com/charmbracelet/lipgloss` for the new `Schema.Match` style (Principle X)
+- [X] TN11 Configuration precedence respected for the new `grep.workers`/`grep.maxLineWidth` fields; no secrets logged or involved (Principle XI)
+- [X] TN12 Help text (`Short`/`Long`/`Example`) populated for `arc grep` (Principle XII)
+- [X] TN13 E2E tests from Phase 2d turned GREEN and changed minimally during implementation (Principle VIII)
+- [X] TN14 All spec.md US1–US3 acceptance scenarios have a passing, colocated E2E test in `cmd/arc/graph/grep_test.go` (Principle VIII)
+- [X] TN15 Release/versioning impact assessed: `arc grep` is a new command with a new, additive `--json` `GrepResult` schema; `kernel.ApplyResult`'s existing `--json` contract is untouched; no major-version implication (Principle XIV)
 
 ---
 

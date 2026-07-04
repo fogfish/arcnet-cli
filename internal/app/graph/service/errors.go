@@ -11,7 +11,9 @@ package service
 import "github.com/fogfish/faults"
 
 const (
-	ErrNotAGraph = faults.Safe1[string]("%s is not an initialized graph")
-	ErrPatchRead = faults.Safe1[string]("failed to read patch file %s")
-	ErrNodeWrite = faults.Safe1[string]("failed to write %s")
+	ErrNotAGraph       = faults.Safe1[string]("%s is not an initialized graph")
+	ErrPatchRead       = faults.Safe1[string]("failed to read patch file %s")
+	ErrNodeWrite       = faults.Safe1[string]("failed to write %s")
+	ErrInvalidPattern  = faults.Safe1[string]("%s is not a valid pattern")
+	ErrInvalidAttrFlag = faults.Safe1[string]("--attr %s must be name=value or name~=pattern")
 )
