@@ -5,40 +5,40 @@
 class ArcnetCli < Formula
   desc "CLI for Knowledge Graph"
   homepage "https://github.com/fogfish/arcnet-cli"
-  version "0.0.7"
+  version "0.0.8"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/fogfish/arcnet-cli/releases/download/0.0.7/arc_0.0.7_darwin_amd64"
-      sha256 "a5c12f60cfc55ab951739be79e3b0952abfc22d864134749ce29369e998af257"
+      url "https://github.com/fogfish/arcnet-cli/releases/download/0.0.8/arc_0.0.8_darwin_amd64"
+      sha256 "fc0b9cbcff0fa6d08de921b7a4223ba870df9b595740388fee1c6cdd1b5034a8"
 
       define_method(:install) do
-        bin.install "arc_0.0.7_darwin_amd64" => "arc"
+        bin.install "arc_0.0.8_darwin_amd64" => "arc"
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/fogfish/arcnet-cli/releases/download/0.0.7/arc_0.0.7_darwin_arm64"
-      sha256 "173bc77b75f47c85988e44157e812668c960a1f8c6c2f06c7365dbda1b6a349d"
+      url "https://github.com/fogfish/arcnet-cli/releases/download/0.0.8/arc_0.0.8_darwin_arm64"
+      sha256 "82a21d3e047c51fa2bfdaa2067af1234d6d83fd5b5f985a25f8270f130b23ea7"
 
       define_method(:install) do
-        bin.install "arc_0.0.7_darwin_arm64" => "arc"
+        bin.install "arc_0.0.8_darwin_arm64" => "arc"
       end
     end
   end
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/fogfish/arcnet-cli/releases/download/0.0.7/arc_0.0.7_linux_amd64"
-      sha256 "967b496bc107338bd3ee11c96b36a7d53a356f93c448a3d2ebf633fa715f6722"
+      url "https://github.com/fogfish/arcnet-cli/releases/download/0.0.8/arc_0.0.8_linux_amd64"
+      sha256 "244acbf6e88545659c1efcb94a301c37baeb387fe762b9c48e12687534adf2f0"
       define_method(:install) do
-        bin.install "arc_0.0.7_linux_amd64" => "arc"
+        bin.install "arc_0.0.8_linux_amd64" => "arc"
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/fogfish/arcnet-cli/releases/download/0.0.7/arc_0.0.7_linux_arm64"
-      sha256 "d8865ef31e132c1809682bfd93f5c186abed778edb67ecb15fbd4ba21108dc13"
+      url "https://github.com/fogfish/arcnet-cli/releases/download/0.0.8/arc_0.0.8_linux_arm64"
+      sha256 "7f2935f0c6f5762788b6d14a2f19935b3cc561376367cae805650a64feedf76f"
       define_method(:install) do
-        bin.install "arc_0.0.7_linux_arm64" => "arc"
+        bin.install "arc_0.0.8_linux_arm64" => "arc"
       end
     end
   end
