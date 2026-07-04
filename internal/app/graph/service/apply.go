@@ -34,6 +34,14 @@ var coreKindFolders = map[core.Kind]string{
 	"resource": "resources",
 }
 
+// nodeFolder is never called with kind == "timeline": Apply's per-node loop
+// intercepts a patch-carried "timeline"-kind section before this function
+// is ever consulted, folding it into applyTimeline's own two-tier
+// timeline/yearly|monthly layout instead (research.md D8b revised,
+// BUG-005/BUG-006) — timeline period files use applyTimeline's own
+// specialized bullet-list rendering, not core.RenderNode's generic
+// serialization, so this generic per-kind folder derivation could never
+// produce a compatible file for that kind even if it recognized it.
 func nodeFolder(kind core.Kind) string {
 	if folder, ok := coreKindFolders[kind]; ok {
 		return folder
@@ -112,9 +120,27 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 
 	var createdPaths []string
 	var sourceNode core.Node
+	var timelinePeriodsFromPatch []string
 
 	start = time.Now()
 	for _, node := range patch.Nodes {
+		// timeline is a format-reserved index kind (CORE §12.2); a real
+		// extraction pipeline may still emit one explicitly alongside a
+		// document's own contribution (e.g. as a self-describing period
+		// annotation) — it is never written as a generic node file, both
+		// because applyTimeline's period files use its own specialized
+		// bullet-list rendering (incompatible with core.RenderNode's
+		// generic serialization) and because the plain per-kind folder
+		// derivation below has no way to reproduce applyTimeline's
+		// yearly/monthly layout. Its declared period id is instead folded
+		// into applyTimeline's own derivation further below (research.md
+		// D8b revised, BUG-005/BUG-006).
+		if node.Kind == "timeline" {
+			timelinePeriodsFromPatch = append(timelinePeriodsFromPatch, node.ID)
+			reporter.Step(fmt.Sprintf("%s: folded into timeline index", node.ID))
+			continue
+		}
+
 		op, ok := rules.Lookup(node.Kind)
 		if !ok {
 			op = core.MergeUnion
@@ -169,7 +195,7 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 	reporter.Done(labelApplyingNodes, time.Since(start))
 
 	start = time.Now()
-	timeline, err := applyTimeline(store, patch, sourceNode)
+	timeline, err := applyTimeline(store, patch, sourceNode, timelinePeriodsFromPatch)
 	if err != nil {
 		reporter.Error(labelUpdatingTL, err)
 		rollback(store, createdPaths)
@@ -348,12 +374,40 @@ func attrStringSlice(v any) []string {
 	return out
 }
 
+var (
+	monthlyPeriodPattern = regexp.MustCompile(`^\d{4}-\d{2}$`)
+	yearlyPeriodPattern  = regexp.MustCompile(`^\d{4}$`)
+)
+
+// periodGranularity reports the on-disk path, front-matter granularity,
+// and heading for period (CORE §9.4: monthly periods are "YYYY-MM", yearly
+// periods are "YYYY"). ok is false when period matches neither shape.
+func periodGranularity(period string) (path, granularity, heading string, ok bool) {
+	if monthlyPeriodPattern.MatchString(period) {
+		t, err := time.Parse("2006-01", period)
+		if err != nil {
+			return "", "", "", false
+		}
+		return "timeline/monthly/" + period + ".md", "monthly", t.Format("January 2006"), true
+	}
+	if yearlyPeriodPattern.MatchString(period) {
+		return "timeline/yearly/" + period + ".md", "yearly", period, true
+	}
+	return "", "", "", false
+}
+
 // applyTimeline derives the yearly/monthly period files a patch's
-// published date touches and inserts one chronologically-ordered entry
+// published date touches, plus any additional period a patch-carried
+// "timeline"-kind section itself declares (extraPeriods — research.md D8b
+// revised, BUG-005/BUG-006), and inserts one chronologically-ordered entry
 // into each, creating the period file if absent (CORE §9.4, research.md
-// D8). Re-inserting an already-present document id is a no-op (CORE §10
-// "append" — keyed for uniqueness).
-func applyTimeline(store fsys.Store, patch core.Patch, source core.Node) ([]string, error) {
+// D8). A monthly-only extra period MUST also touch its yearly rollup
+// (e.g. "2026-07" implies "2026"), so a partial declaration never leaves
+// the yearly index out of sync with the monthly one. Re-inserting an
+// already-present document id is a no-op (CORE §10 "append" — keyed for
+// uniqueness), so declaring a period that coincides with the one already
+// derived from patch.Published is harmless.
+func applyTimeline(store fsys.Store, patch core.Patch, source core.Node, extraPeriods []string) ([]string, error) {
 	yearly, monthly := core.TimelinePeriods(patch.Published)
 
 	title := patch.Title
@@ -370,17 +424,39 @@ func applyTimeline(store fsys.Store, patch core.Patch, source core.Node) ([]stri
 		line:      core.TimelineEntry(patch.Document, title, authors, patch.Published),
 	}
 
-	yearlyPath := "timeline/yearly/" + yearly + ".md"
-	monthlyPath := "timeline/monthly/" + monthly + ".md"
+	touched := []string{yearly, monthly}
+	seen := map[string]bool{yearly: true, monthly: true}
 
-	if err := upsertTimelinePeriod(store, yearlyPath, yearly, "yearly", patch.Published.Format("2006"), entry); err != nil {
-		return nil, err
+	var extras []string
+	addExtra := func(p string) {
+		if !seen[p] {
+			extras = append(extras, p)
+			seen[p] = true
+		}
 	}
-	if err := upsertTimelinePeriod(store, monthlyPath, monthly, "monthly", patch.Published.Format("January 2006"), entry); err != nil {
-		return nil, err
+	for _, p := range extraPeriods {
+		switch {
+		case monthlyPeriodPattern.MatchString(p):
+			addExtra(p)
+			addExtra(p[:4]) // cascade: a monthly-only declaration also touches its yearly rollup
+		case yearlyPeriodPattern.MatchString(p):
+			addExtra(p)
+		}
+	}
+	sort.Strings(extras)
+	touched = append(touched, extras...)
+
+	for _, period := range touched {
+		path, granularity, heading, ok := periodGranularity(period)
+		if !ok {
+			continue
+		}
+		if err := upsertTimelinePeriod(store, path, period, granularity, heading, entry); err != nil {
+			return nil, err
+		}
 	}
 
-	return []string{yearly, monthly}, nil
+	return touched, nil
 }
 
 func upsertTimelinePeriod(store fsys.Store, path, period, granularity, heading string, newEntry timelineEntry) error {
@@ -410,7 +486,11 @@ func upsertTimelinePeriod(store fsys.Store, path, period, granularity, heading s
 	var buf strings.Builder
 	buf.WriteString("---\n")
 	buf.WriteString("kind: timeline\n")
-	buf.WriteString("period: " + period + "\n")
+	// period is explicitly quoted so it always decodes as a YAML string —
+	// a bare 4-digit yearly value (e.g. "2026") would otherwise decode as
+	// an integer, breaking internal/core.deriveNodeID's period fallback
+	// for any generic reader (research.md D8 Bugfix, BUG-007).
+	buf.WriteString("period: \"" + period + "\"\n")
 	buf.WriteString("granularity: " + granularity + "\n")
 	buf.WriteString("---\n")
 	buf.WriteString("# " + heading + "\n\n")

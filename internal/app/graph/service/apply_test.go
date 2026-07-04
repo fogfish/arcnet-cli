@@ -380,6 +380,29 @@ func TestApplyTimelineEntriesCreated(t *testing.T) {
 	it.Then(t).Should(it.String(string(store.files["timeline/monthly/2026-04.md"])).Contain("foo-2026-x"))
 }
 
+// BUG-007: a yearly timeline period file's bare, numeric-looking `period`
+// value (e.g. "2026") must round-trip through the generic
+// core.ParseNode, not just this feature's own bespoke
+// parseTimelineEntries scan — an unquoted YAML scalar would otherwise
+// decode as an integer, breaking core.deriveNodeID's period fallback.
+func TestApplyYearlyTimelinePeriodFileParsesViaCoreParseNode(t *testing.T) {
+	store := newGraphStore()
+	store.files["patch.md"] = []byte(minimalSourcePatch)
+	vcs := &graphmock.VCS{CommitHash: "abc123"}
+
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), core.CoreMergeRules, "/graph", "/patch.md")
+	it.Then(t).Should(it.Nil(err))
+
+	yearly := store.files["timeline/yearly/2026.md"]
+	it.Then(t).Should(it.True(len(yearly) > 0))
+
+	node, err := core.ParseNode(bytes.NewReader(yearly))
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(core.Kind("timeline"), node.Kind)).
+		Should(it.Equal("2026", node.ID))
+}
+
 // BUG-001 / spec.md FR-021: one Reporter.Step line per processed node,
 // naming its ID and outcome.
 func TestApplyReportsStepPerNode(t *testing.T) {

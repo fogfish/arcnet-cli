@@ -34,6 +34,7 @@ const (
 	ErrGitStage    = faults.Type("git add failed")
 	ErrGitCommit   = faults.Type("git commit failed")
 	ErrGitLsFiles  = faults.Type("git ls-files failed")
+	ErrGitLog      = faults.Type("git log failed")
 )
 
 // execError captures combined stdout+stderr from a failed git subprocess
@@ -142,6 +143,24 @@ func (v VCS) IsTracked(ctx context.Context, dir, path string) (bool, error) {
 	}
 
 	return false, ErrGitLsFiles.With(err)
+}
+
+// CommitsMatching returns the hashes of every commit reachable from any ref
+// (`--all`) whose message contains needle, matched literally (`--fixed-
+// strings`, so a citekey containing regex metacharacters is never
+// misinterpreted as a pattern) — internal/app/lint's CORE §11.1 "one
+// ingest commit per document" check (research.md D12).
+func (v VCS) CommitsMatching(ctx context.Context, dir, needle string) ([]string, error) {
+	out, err := run(ctx, dir, "log", "--all", "--fixed-strings", "--grep="+needle, "--format=%H")
+	if err != nil {
+		return nil, ErrGitLog.With(err)
+	}
+
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed == "" {
+		return nil, nil
+	}
+	return strings.Split(trimmed, "\n"), nil
 }
 
 func run(ctx context.Context, dir string, args ...string) ([]byte, error) {

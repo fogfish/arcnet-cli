@@ -144,7 +144,6 @@ func mergeParagraphs(existing, incoming []string) []string {
 
 func paragraphAlreadyPresent(incoming []string, existingShingles [][]string) bool {
 	for _, es := range existingShingles {
-		fmt.Printf("==> %v\n", jaccardSimilarity(es, incoming))
 		if jaccardSimilarity(es, incoming) > paragraphSimilarityThreshold {
 			return true
 		}

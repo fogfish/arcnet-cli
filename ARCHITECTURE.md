@@ -11,9 +11,12 @@ cmd/arc/                    # sole primary (driving) adapter: Cobra command tree
 ├── ctrl/                   # Cobra wiring for the ctrl (graph management) domain
 │   └── init.go              # `arc init` command: flag/arg parsing, calls internal/app/ctrl.Init,
 │                             #   composes internal/app/config.Default's config-seed fetch
-└── graph/                  # Cobra wiring for the graph (graph I/O) domain
-    └── apply.go             # `arc apply` command: flag/arg parsing, calls
-                              #   internal/app/config.Resolve then internal/app/graph.Apply
+├── graph/                  # Cobra wiring for the graph (graph I/O) domain
+│   └── apply.go             # `arc apply` command: flag/arg parsing, calls
+│                             #   internal/app/config.Resolve then internal/app/graph.Apply
+└── lint/                   # Cobra wiring for the lint (graph conformance validation) domain
+    └── lint.go               # `arc lint` command: flag/arg parsing, calls
+                              #   internal/app/config.Resolve then internal/app/lint.Lint
 
 internal/
 ├── bios/                    # shared kernel (ADR 002 DS-04/05/06) — output modes, color schema,
@@ -33,8 +36,10 @@ internal/
 │   └── git/                 # shared, cross-use-case git adapter (ADR 001 "phase 2" adapter tier,
 │                             #   promoted from internal/app/ctrl/adapter/git once a second use-case
 │                             #   needed git access, research.md D4 in specs/003-apply-patch/). The
-│                             #   one concrete Git type satisfies both ctrl.port.VCS and
-│                             #   graph.port.VCS structurally (ADR 001 port isolation rule 1).
+│                             #   one concrete Git type satisfies ctrl.port.VCS, graph.port.VCS, AND
+│                             #   lint.port.VCS structurally (ADR 001 port isolation rule 1) — its
+│                             #   CommitsMatching method (specs/004-arc-lint/research.md D12) is the
+│                             #   one addition lint needed, read-only (git log, never a write).
 └── app/
     ├── ctrl/                 # first domain use-case: graph management / control plane
     │   ├── kernel/            # domain value types (GraphRoot, ArcNetCoreLayout, InitResult)
@@ -53,13 +58,23 @@ internal/
     │   ├── service/             # use-case logic (Load, Save, Resolve, Default)
     │   └── component.go         # primary port: Resolve(store), Save(store, cfg), Default(ctx, fetcher)
     │
-    └── graph/                 # third domain use-case: graph mutation / graph I/O
-        ├── kernel/              # domain value types (ApplyResult)
-        ├── port/                 # graph-private secondary port (VCS) — narrower than ctrl's
+    ├── graph/                 # third domain use-case: graph mutation / graph I/O
+    │   ├── kernel/              # domain value types (ApplyResult)
+    │   ├── port/                 # graph-private secondary port (VCS) — narrower than ctrl's
+    │   ├── adapter/
+    │   │   └── mock/             # in-memory fake VCS for service unit tests
+    │   ├── service/              # use-case logic (Apply)
+    │   └── component.go          # primary port: Apply(ctx, mounter, vcs, rules, dir, patchPath) (kernel.ApplyResult, error)
+    │
+    └── lint/                  # fourth domain use-case: graph conformance validation (CORE §14)
+        ├── kernel/              # domain value types (Rule, Violation, NodeStatus, LintResult, Sowa tables)
+        ├── port/                 # lint-private secondary port (VCS) — narrowest of the three port.VCS
         ├── adapter/
         │   └── mock/             # in-memory fake VCS for service unit tests
-        ├── service/              # use-case logic (Apply)
-        └── component.go          # primary port: Apply(ctx, mounter, vcs, rules, dir, patchPath) (kernel.ApplyResult, error)
+        ├── service/              # use-case logic (Lint): enumeration, raw-text line locator, one
+        │                          #   checker per CORE §14 rule — strictly read-only, never writes
+        │                          #   to fsys.Store and never commits
+        └── component.go          # primary port: Lint(ctx, mounter, vcs, reporter, rules, dir) (kernel.LintResult, error)
 ```
 
 `internal/app/ctrl` is the first `internal/` package in this codebase, so ADR 001's `componentX` layout (`kernel/`, `port/`, `adapter/`, `service/`, `component.go`) now takes full effect. `internal/bios` and `internal/adapter/fsys` are deliberately shared, not use-case-private, since every future command needs an output/color/reporter kernel and every future graph-root-mounting command needs the same filesystem mount contract (research.md D3/D5 in `specs/002-arc-init/`). `internal/core` is the project's first core-domain package (ADR 001's own evolution model): the graph AST and its canonical Markdown serialization are a model invariant shared by every future graph-reading command, not an `apply`-specific concern, so they live below the use-case layer. `internal/adapter/git` is the first adapter promoted to the shared tier once a second use-case (`graph`) needed the same capability `ctrl` already had (research.md D4 in `specs/003-apply-patch/`), mirroring `internal/adapter/fsys`'s precedent.
@@ -85,3 +100,8 @@ This project uses **bare top-level verbs** (`arc init`, `arc apply`, `arc list`,
 | **Merge Behavior** | The `internal/core.MergeOp` (`none`, `union`, `union-first-writer`, `append`, `validated-overwrite`) a node's kind is registered against, determining how `internal/core.Merge` reconciles an incoming contribution with an existing node. |
 | **Ingest Commit** | The single git commit `arc apply` produces per invocation, subject naming the applied document, with per-kind created/merged stats and a `Source-Id:` trailer (CORE §11.3). |
 | **Kind Registration** | An entry in `.arc/config.yml`'s `mergeRules` map associating a domain-specific node kind with a `Merge Behavior`, beyond CORE's fixed kinds. An unregistered kind still applies, using the safe `union` default, with a warning (spec FR-018). |
+| **Violation** | One failed CORE §14 checklist rule, produced by `arc lint`: the rule that fired, the file and line (or "not applicable"), a human-readable message, and — for violations spanning more than one file (e.g. a basename collision) — every related path. `internal/app/lint/kernel.Violation`. |
+| **Lint Run** | One `arc lint` invocation: walks every node file in the graph, runs every applicable CORE §14 rule against it, and aggregates every violation found without stopping at the first one (spec FR-013). Strictly read-only — the first graph-inspecting command in this codebase that never writes to `fsys.Store` or git history. `internal/app/lint/kernel.LintResult`. |
+| **Checklist Rule** | One named CORE §14 conformance check (`internal/app/lint/kernel.Rule`), e.g. unique basenames, resolvable links, source citekey identity, entity Sowa category, registered predicates, one ingest commit per document, absence of merge-conflict markers. |
+| **Predicate Registry** | `_meta/predicates.md`'s parsed contents: a bullet list of inline-code-span predicate names (CORE §7.3), consumed by `arc lint` to flag unregistered or non-camelCase predicates. An absent file means every predicate is unregistered, not a lint failure of its own. |
+| **Extension Profile Checklist** | `arc lint`'s CORE §10/§14 check for a non-built-in node kind: recognized (present in the resolved `core.MergeRuleSet`) vs. unrecognized, deliberately scoped to kind-recognition only — no per-kind field-schema declaration mechanism exists yet in this codebase (plan.md Complexity Tracking, `specs/004-arc-lint/research.md` D11). |

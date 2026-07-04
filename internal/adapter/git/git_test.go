@@ -12,6 +12,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fogfish/it/v2"
@@ -94,6 +95,66 @@ func TestVCSIsTrackedError(t *testing.T) {
 
 	_, err := vcs.IsTracked(ctx, dir, "whatever.md")
 	it.Then(t).ShouldNot(it.Nil(err))
+}
+
+func TestVCSCommitsMatchingZeroMatches(t *testing.T) {
+	setGitIdentity(t)
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	it.Then(t).Should(it.Nil(vcs.Init(ctx, dir)))
+	writeFile(t, dir, "file.md", "content")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, dir)))
+	_, err := vcs.Commit(ctx, dir, "graph(ingest): foo-2026-x — A Test Document\n\nSource-Id: foo-2026-x\n")
+	it.Then(t).Should(it.Nil(err))
+
+	hashes, err := vcs.CommitsMatching(ctx, dir, "Source-Id: bar-2026-y")
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.Equal(0, len(hashes)))
+}
+
+func TestVCSCommitsMatchingExactlyOneMatch(t *testing.T) {
+	setGitIdentity(t)
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	it.Then(t).Should(it.Nil(vcs.Init(ctx, dir)))
+	writeFile(t, dir, "file.md", "content")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, dir)))
+	hash, err := vcs.Commit(ctx, dir, "graph(ingest): foo-2026-x — A Test Document\n\nSource-Id: foo-2026-x\n")
+	it.Then(t).Should(it.Nil(err))
+
+	hashes, err := vcs.CommitsMatching(ctx, dir, "Source-Id: foo-2026-x")
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.Equal(1, len(hashes)))
+	it.Then(t).Should(it.True(strings.HasPrefix(hashes[0], hash) || strings.HasPrefix(hash, hashes[0])))
+}
+
+func TestVCSCommitsMatchingMoreThanOneMatch(t *testing.T) {
+	setGitIdentity(t)
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	it.Then(t).Should(it.Nil(vcs.Init(ctx, dir)))
+	writeFile(t, dir, "file1.md", "content1")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, dir)))
+	_, err := vcs.Commit(ctx, dir, "graph(ingest): foo-2026-x — A Test Document\n\nSource-Id: foo-2026-x\n")
+	it.Then(t).Should(it.Nil(err))
+
+	writeFile(t, dir, "file2.md", "content2")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, dir)))
+	_, err = vcs.Commit(ctx, dir, "graph(ingest): foo-2026-x — A Test Document (re-ingest)\n\nSource-Id: foo-2026-x\n")
+	it.Then(t).Should(it.Nil(err))
+
+	hashes, err := vcs.CommitsMatching(ctx, dir, "Source-Id: foo-2026-x")
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.Equal(2, len(hashes)))
 }
 
 func writeFile(t *testing.T, dir, name, content string) {
