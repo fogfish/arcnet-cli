@@ -651,16 +651,19 @@ func renderFrontMatter(n Node) ([]byte, error) {
 		return nil, err
 	}
 
-	// AST §4: the identity field (id/title) MAY be repeated in attrs "for
+	// AST §4: the identity field (id) MAY be repeated in attrs "for
 	// convenience" — it is not mandatory there, since a node's true
 	// identity is its filename. But ParseNode has no filename parameter
 	// (ast-contract.md), so it can only recover a node's ID from the
 	// front matter itself: guarantee an explicit "id" survives whenever
-	// neither "id" nor "title" is already present, so every node this
-	// package renders remains parseable by ParseNode.
-	_, hasID := n.Attrs["id"]
-	_, hasTitle := n.Attrs["title"]
-	if !hasID && !hasTitle {
+	// it is not already present, so every node this package renders
+	// remains parseable by ParseNode. "title" is a separate, human-
+	// readable attribute (e.g. a source's citation title) and is never a
+	// substitute for "id" — a node's title and its citekey/identity
+	// commonly differ, so treating title-present as id-present here
+	// silently dropped the real id (source-kind nodes hit this in
+	// practice: their patch yaml fence always carries "title").
+	if _, hasID := n.Attrs["id"]; !hasID {
 		if err := appendYAMLPair(root, "id", n.ID); err != nil {
 			return nil, err
 		}
