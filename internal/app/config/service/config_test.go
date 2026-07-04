@@ -10,7 +10,6 @@ package service_test
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"io/fs"
 	"testing"
@@ -19,10 +18,8 @@ import (
 	"github.com/fogfish/it/v2"
 
 	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
-	configmock "github.com/fogfish/arcnet-cli/internal/app/config/adapter/mock"
 	"github.com/fogfish/arcnet-cli/internal/app/config/kernel"
 	"github.com/fogfish/arcnet-cli/internal/app/config/service"
-	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
 type fakeFileInfo struct{ name string }
@@ -87,91 +84,43 @@ func (s *fakeStore) Create(name string) (fsys.File, error) {
 
 func (s *fakeStore) Remove(name string) error { return nil }
 
-func TestResolveAbsentFileReturnsCoreRulesOnly(t *testing.T) {
+func TestLoadAbsentFileReturnsZeroConfig(t *testing.T) {
 	store := newFakeStore(nil)
 
-	rules, err := service.Resolve(store)
+	cfg, err := service.Load(store)
 
-	it.Then(t).Should(it.Nil(err))
-	op, ok := rules.Lookup("source")
 	it.Then(t).
-		Should(it.True(ok)).
-		Should(it.Equal(core.MergeNone, op))
-	_, ok = rules.Lookup("hypothesis")
-	it.Then(t).Should(it.True(!ok))
+		Should(it.Nil(err)).
+		Should(it.Equal(kernel.Config{}, cfg))
 }
 
-func TestResolveMalformedFile(t *testing.T) {
-	store := newFakeStore(map[string]string{core.ConfigPath: "not: [valid: yaml"})
+func TestLoadMalformedFile(t *testing.T) {
+	store := newFakeStore(map[string]string{kernel.ConfigPath: "not: [valid: yaml"})
 
-	_, err := service.Resolve(store)
+	_, err := service.Load(store)
 
 	it.Then(t).Should(it.True(errors.Is(err, service.ErrConfigMalformed)))
 }
 
-func TestResolveUnionsRegisteredKind(t *testing.T) {
-	store := newFakeStore(map[string]string{core.ConfigPath: "mergeRules:\n  hypothesis: validated-overwrite\n"})
-
-	rules, err := service.Resolve(store)
-
-	it.Then(t).Should(it.Nil(err))
-	op, ok := rules.Lookup("hypothesis")
-	it.Then(t).
-		Should(it.True(ok)).
-		Should(it.Equal(core.MergeValidatedOverwrite, op))
-	sourceOp, _ := rules.Lookup("source")
-	it.Then(t).Should(it.Equal(core.MergeNone, sourceOp))
-}
-
 func TestSaveWritesYAML(t *testing.T) {
 	store := newFakeStore(nil)
-	cfg := kernel.Config{MergeRules: core.MergeRuleSet{"hypothesis": core.MergeValidatedOverwrite}}
+	cfg := kernel.Config{}
 
 	err := service.Save(store, cfg)
 
 	it.Then(t).Should(it.Nil(err))
-	it.Then(t).Should(it.String(store.written[core.ConfigPath]).Contain("hypothesis"))
+	_, ok := store.written[kernel.ConfigPath]
+	it.Then(t).Should(it.True(ok))
 }
 
-func TestDefaultFetchSucceeds(t *testing.T) {
-	fetcher := configmock.Fetcher{Body: []byte("mergeRules:\n  source: none\n  entity: union\n")}
+func TestSaveThenLoadRoundTrips(t *testing.T) {
+	store := newFakeStore(nil)
+	it.Then(t).Should(it.Nil(service.Save(store, kernel.Config{})))
 
-	cfg, usedFallback := service.Default(context.Background(), fetcher)
+	store.files = map[string]string{kernel.ConfigPath: store.written[kernel.ConfigPath]}
+	cfg, err := service.Load(store)
 
-	it.Then(t).Should(it.True(!usedFallback))
-	op, ok := cfg.MergeRules.Lookup("entity")
 	it.Then(t).
-		Should(it.True(ok)).
-		Should(it.Equal(core.MergeUnion, op))
-}
-
-func TestDefaultFetchNetworkError(t *testing.T) {
-	fetcher := configmock.Fetcher{Err: errors.New("network unreachable")}
-
-	cfg, usedFallback := service.Default(context.Background(), fetcher)
-
-	it.Then(t).Should(it.True(usedFallback))
-	op, _ := cfg.MergeRules.Lookup("source")
-	it.Then(t).Should(it.Equal(core.MergeNone, op))
-}
-
-func TestDefaultFetchMalformedYAML(t *testing.T) {
-	fetcher := configmock.Fetcher{Body: []byte("not: [valid: yaml")}
-
-	cfg, usedFallback := service.Default(context.Background(), fetcher)
-
-	it.Then(t).Should(it.True(usedFallback))
-	it.Then(t).Should(it.True(cfg.MergeRules != nil))
-}
-
-func TestDefaultFetchEmptyMergeRules(t *testing.T) {
-	fetcher := configmock.Fetcher{Body: []byte("title: unrelated\n")}
-
-	cfg, usedFallback := service.Default(context.Background(), fetcher)
-
-	it.Then(t).Should(it.True(usedFallback))
-	op, ok := cfg.MergeRules.Lookup("source")
-	it.Then(t).
-		Should(it.True(ok)).
-		Should(it.Equal(core.MergeNone, op))
+		Should(it.Nil(err)).
+		Should(it.Equal(kernel.Config{}, cfg))
 }

@@ -11,7 +11,6 @@ package ctrl
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -22,8 +21,6 @@ import (
 	"github.com/fogfish/it/v2"
 	"github.com/spf13/cobra"
 
-	configmock "github.com/fogfish/arcnet-cli/internal/app/config/adapter/mock"
-	configport "github.com/fogfish/arcnet-cli/internal/app/config/port"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
 
@@ -33,26 +30,13 @@ import (
 // user.name/user.email configured — the tool itself intentionally does not
 // configure git identity (spec.md Assumptions), so the tests must supply
 // their own, hermetically, rather than depend on the environment's global
-// git config. It also stubs newConfigFetcher to a deterministic, offline
-// mock by default (constitution Principle VI: no real network call in go
-// test) — individual FR-017 tests override and restore it locally to
-// exercise the fetch-succeeds path.
+// git config.
 func TestMain(m *testing.M) {
 	os.Setenv("GIT_AUTHOR_NAME", "arc-test")
 	os.Setenv("GIT_AUTHOR_EMAIL", "arc-test@example.com")
 	os.Setenv("GIT_COMMITTER_NAME", "arc-test")
 	os.Setenv("GIT_COMMITTER_EMAIL", "arc-test@example.com")
-	newConfigFetcher = func() configport.Fetcher {
-		return configmock.Fetcher{Err: errors.New("network disabled in tests")}
-	}
 	os.Exit(m.Run())
-}
-
-func withStubbedConfigFetcher(t *testing.T, fetcher configport.Fetcher) {
-	t.Helper()
-	original := newConfigFetcher
-	newConfigFetcher = func() configport.Fetcher { return fetcher }
-	t.Cleanup(func() { newConfigFetcher = original })
 }
 
 func sut(cmd *cobra.Command, args []string) (string, error) {
@@ -143,11 +127,13 @@ func TestInitCurrentDirectoryCreatesLayout(t *testing.T) {
 		ShouldNot(it.Error(out, err)).
 		Should(it.String(out).Contain(dir))
 
-	for _, folder := range []string{"sources", "entities", "resources", filepath.Join("timeline", "yearly"), filepath.Join("timeline", "monthly"), "_meta"} {
+	for _, folder := range []string{"sources", "entities", "resources", filepath.Join("timeline", "yearly"), filepath.Join("timeline", "monthly"), filepath.Join("_schema", "nodes"), filepath.Join("_schema", "predicates")} {
 		assertIsDir(t, filepath.Join(dir, folder))
 	}
-	assertIsFile(t, filepath.Join(dir, "_meta", "predicates.md"))
-	assertIsFile(t, filepath.Join(dir, "_meta", "aliases.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "nodes", "entity.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "related.md"))
+	_, metaErr := os.Stat(filepath.Join(dir, "_meta"))
+	it.Then(t).Should(it.True(os.IsNotExist(metaErr)))
 	assertIsDir(t, filepath.Join(dir, ".arc"))
 
 	gitignore, rerr := os.ReadFile(filepath.Join(dir, ".gitignore"))
@@ -205,8 +191,54 @@ func TestInitCurrentDirectoryFoldersInHistory(t *testing.T) {
 		Should(it.String(tracked).Contain("resources/.gitkeep")).
 		Should(it.String(tracked).Contain("timeline/yearly/.gitkeep")).
 		Should(it.String(tracked).Contain("timeline/monthly/.gitkeep")).
-		Should(it.String(tracked).Contain("_meta/predicates.md")).
-		Should(it.String(tracked).Contain("_meta/aliases.md"))
+		Should(it.String(tracked).Contain("_schema/nodes/entity.md")).
+		Should(it.String(tracked).Contain("_schema/predicates/related.md"))
+}
+
+// arc init
+// Scenario 1 from spec.md US1: every core kind/predicate is seeded as its
+// own readable document, with the expected id/kind/merge shape
+func TestInitSeedsAllCoreKindsAndPredicates(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	for _, name := range []string{"source", "entity", "resource", "timeline"} {
+		assertIsFile(t, filepath.Join(dir, "_schema", "nodes", name+".md"))
+	}
+	for _, name := range []string{
+		"mentions", "mentionedIn", "cites", "isCitedBy", "broader", "narrower",
+		"isPartOf", "hasPart", "requires", "replaces", "isReplacedBy", "conformsTo", "related",
+	} {
+		assertIsFile(t, filepath.Join(dir, "_schema", "predicates", name+".md"))
+	}
+
+	entity, rerr := os.ReadFile(filepath.Join(dir, "_schema", "nodes", "entity.md"))
+	it.Then(t).
+		Should(it.Nil(rerr)).
+		Should(it.String(string(entity)).Contain("kind: schema")).
+		Should(it.String(string(entity)).Contain("merge: union"))
+
+	related, rerr := os.ReadFile(filepath.Join(dir, "_schema", "predicates", "related.md"))
+	it.Then(t).
+		Should(it.Nil(rerr)).
+		Should(it.String(string(related)).Contain("kind: schema"))
+}
+
+// arc init
+// Scenario 5 from spec.md US1: initialization succeeds with no network
+// access at all — there is no fetch to fail (research.md D5)
+func TestInitSucceedsWithNoNetworkAccess(t *testing.T) {
+	dir := t.TempDir()
+	emptyProxy := "http://localhost:1"
+	t.Setenv("HTTP_PROXY", emptyProxy)
+	t.Setenv("HTTPS_PROXY", emptyProxy)
+
+	out, err := sut(NewInitCmd(), []string{dir})
+	it.Then(t).ShouldNot(it.Error(out, err))
+	assertIsFile(t, filepath.Join(dir, "_schema", "nodes", "entity.md"))
 }
 
 // arc init <target-file>
@@ -280,7 +312,7 @@ func TestInitJSONOutput(t *testing.T) {
 		Should(it.Equal(dir, payload.Path)).
 		ShouldNot(it.Equal("", payload.Commit)).
 		Should(it.LessOrEqual(len(payload.Commit), 12)).
-		Should(it.Seq(payload.FoldersCreated).Contain("sources", "entities", "resources", "_meta"))
+		Should(it.Seq(payload.FoldersCreated).Contain("sources", "entities", "resources", "_schema/nodes", "_schema/predicates"))
 }
 
 // arc init <dir>
@@ -371,51 +403,3 @@ func TestInitRefusesReInitialization(t *testing.T) {
 	it.Then(t).Should(it.Equal(before, after))
 }
 
-// arc init <dir>
-// specs/002-arc-init/spec.md FR-017, fetch-succeeds path: the seeded
-// .arc/config.yml matches the fetched content.
-func TestInitConfigSeedFetchSucceeds(t *testing.T) {
-	withStubbedConfigFetcher(t, configmock.Fetcher{Body: []byte("mergeRules:\n  source: none\n  entity: union\n  resource: union-first-writer\n  hypothesis: validated-overwrite\n")})
-	dir := t.TempDir()
-
-	out, err := sut(NewInitCmd(), []string{dir})
-	it.Then(t).ShouldNot(it.Error(out, err))
-
-	content, rerr := os.ReadFile(filepath.Join(dir, ".arc", "config.yml"))
-	it.Then(t).
-		Should(it.Nil(rerr)).
-		Should(it.String(string(content)).Contain("hypothesis"))
-}
-
-// arc init <dir>
-// specs/002-arc-init/spec.md FR-017, fetch-fails path: the seeded
-// .arc/config.yml falls back to core.CoreMergeRules and arc init still
-// succeeds with exit code 0.
-func TestInitConfigSeedFetchFailsFallsBack(t *testing.T) {
-	withStubbedConfigFetcher(t, configmock.Fetcher{Err: errors.New("network unreachable")})
-	dir := t.TempDir()
-
-	out, err := sut(NewInitCmd(), []string{dir})
-	it.Then(t).ShouldNot(it.Error(out, err))
-
-	content, rerr := os.ReadFile(filepath.Join(dir, ".arc", "config.yml"))
-	it.Then(t).
-		Should(it.Nil(rerr)).
-		Should(it.String(string(content)).Contain("source: none")).
-		ShouldNot(it.String(string(content)).Contain("hypothesis"))
-}
-
-// arc init --verbose <dir>
-// specs/002-arc-init/spec.md FR-017, fetch-fails path additionally reports
-// the fallback note under --verbose (research.md D5 revised).
-func TestInitConfigSeedFetchFailsReportsFallbackUnderVerbose(t *testing.T) {
-	withStubbedConfigFetcher(t, configmock.Fetcher{Err: errors.New("network unreachable")})
-	dir := t.TempDir()
-	bios.Verbose = true
-	t.Cleanup(func() { bios.Verbose = false })
-
-	stdout, stderr, err := sutCaptureStderr(t, NewInitCmd(), []string{dir})
-
-	it.Then(t).ShouldNot(it.Error(stdout, err))
-	it.Then(t).Should(it.String(stderr).Contain("Using built-in configuration"))
-}

@@ -21,20 +21,14 @@ func TestDefaultLayoutFolders(t *testing.T) {
 	it.Then(t).
 		Should(it.Seq(kernel.DefaultLayout.Folders).Contain(
 			"sources", "entities", "resources",
-			"timeline/yearly", "timeline/monthly", "_meta",
+			"timeline/yearly", "timeline/monthly",
+			"_schema/nodes", "_schema/predicates",
 		)).
-		Should(it.Equal(6, len(kernel.DefaultLayout.Folders)))
+		Should(it.Equal(7, len(kernel.DefaultLayout.Folders)))
 }
 
-func TestDefaultLayoutMetaStubs(t *testing.T) {
-	it.Then(t).
-		Should(it.Equal(2, len(kernel.DefaultLayout.MetaStubs)))
-
-	_, hasPredicates := kernel.DefaultLayout.MetaStubs["_meta/predicates.md"]
-	_, hasAliases := kernel.DefaultLayout.MetaStubs["_meta/aliases.md"]
-	it.Then(t).
-		Should(it.True(hasPredicates)).
-		Should(it.True(hasAliases))
+func TestDefaultLayoutSeedFilesEmptyByDefault(t *testing.T) {
+	it.Then(t).Should(it.Equal(0, len(kernel.DefaultLayout.SeedFiles)))
 }
 
 func TestInitResultJSONShape(t *testing.T) {

@@ -57,6 +57,30 @@ func nodePath(node core.Node) string {
 	return nodeFolder(node.Kind) + "/" + node.ID + ".md"
 }
 
+// distinctPredicates collects every distinct predicate name node declares:
+// every Links block key, plus every non-empty Link.Predicate in Edges
+// (research.md D4). HRefs are excluded — those are citation-type
+// predicates, a separate vocabulary this feature does not seed.
+func distinctPredicates(node core.Node) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(name string) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+
+	for key := range node.Links {
+		add(key)
+	}
+	for _, l := range node.Edges {
+		add(l.Predicate)
+	}
+	return out
+}
+
 // Reporter phase labels (data-model.md Reporter events, research.md D9,
 // BUG-001 revised).
 const (
@@ -79,7 +103,7 @@ const (
 // Start/Done pair per phase, plus one Reporter.Step per node processed
 // inside "Applying node contributions", naming the node's ID and outcome
 // (spec.md FR-021).
-func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, rules core.MergeRuleSet, dir, patchPath string) (kernel.ApplyResult, error) {
+func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, rules core.MergeRuleSet, predicates map[string]bool, schema port.SchemaRegistry, dir, patchPath string) (kernel.ApplyResult, error) {
 	store, err := mounter.Mount(dir)
 	if err != nil {
 		return kernel.ApplyResult{}, err
@@ -146,6 +170,11 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 			op = core.MergeUnion
 			result.Warnings = append(result.Warnings, fmt.Sprintf(
 				"%s is not a recognized node kind for this graph — applied using the default \"union\" merge behavior", node.Kind))
+			if _, err := schema.RegisterKind(store, node.Kind); err != nil {
+				reporter.Error(labelApplyingNodes, err)
+				rollback(store, createdPaths)
+				return kernel.ApplyResult{}, err
+			}
 		}
 
 		path := nodePath(node)
@@ -175,6 +204,17 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 			}
 		} else {
 			result.Created[node.Kind]++
+		}
+
+		for _, name := range distinctPredicates(merged) {
+			if predicates[name] {
+				continue
+			}
+			if _, err := schema.RegisterPredicate(store, name); err != nil {
+				reporter.Error(labelApplyingNodes, err)
+				rollback(store, createdPaths)
+				return kernel.ApplyResult{}, err
+			}
 		}
 
 		if err := writeNode(store, path, merged); err != nil {

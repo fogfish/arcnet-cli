@@ -32,12 +32,6 @@ const (
 	labelCheckingHistory    = "Checking commit history"
 )
 
-// excludedMetaFiles are support files, never nodes (research.md D2).
-var excludedMetaFiles = map[string]bool{
-	"_meta/predicates.md": true,
-	"_meta/aliases.md":    true,
-}
-
 // parsedNode is one successfully-parsed node file, carrying both its
 // structural core.Node and its raw bytes (for line-locating violations).
 type parsedNode struct {
@@ -50,7 +44,7 @@ type parsedNode struct {
 // Lint mounts dir, walks every node file, and checks it against the full
 // CORE §14 conformance checklist, never stopping at the first violation
 // found (spec FR-013). It never writes to the graph (spec FR-014).
-func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, rules core.MergeRuleSet, dir string) (kernel.LintResult, error) {
+func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, rules core.MergeRuleSet, predicates map[string]bool, dir string) (kernel.LintResult, error) {
 	store, err := mounter.Mount(dir)
 	if err != nil {
 		return kernel.LintResult{}, err
@@ -121,14 +115,9 @@ func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios
 	reporter.Done(labelCheckingBasenames, time.Since(start))
 
 	start = time.Now()
-	registry, err := parsePredicateRegistry(store)
-	if err != nil {
-		reporter.Error(labelCheckingPredicates, err)
-		return kernel.LintResult{}, err
-	}
 	for _, p := range parsed {
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkPredicateCase(p.Node, p.Path, p.Raw)...)
-		fileViolations[p.Path] = append(fileViolations[p.Path], checkPredicateRegistered(p.Node, p.Path, p.Raw, registry)...)
+		fileViolations[p.Path] = append(fileViolations[p.Path], checkPredicateRegistered(p.Node, p.Path, p.Raw, predicates)...)
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkCitationPredicate(p.Node, p.Path, p.Raw)...)
 	}
 	reporter.Done(labelCheckingPredicates, time.Since(start))
@@ -185,8 +174,10 @@ func basenameOf(path string) string {
 }
 
 // walkNodeFiles recursively walks store from its root, collecting every
-// *.md file except anything under .arc/ and the two _meta registry stubs
-// (research.md D2), in deterministic (sorted) order.
+// *.md file except anything under .arc/ or _schema/ (research.md D6,
+// spec.md FR-015, Clarifications Q1/Q3 — schema documents are exempt from
+// ordinary content rules and never enter the basename-uniqueness index), in
+// deterministic (sorted) order.
 func walkNodeFiles(store fsys.Store) ([]string, error) {
 	var out []string
 	var walk func(dir string) error
@@ -201,7 +192,7 @@ func walkNodeFiles(store fsys.Store) ([]string, error) {
 				full = dir + "/" + e.Name()
 			}
 			if e.IsDir() {
-				if full == ".arc" {
+				if full == ".arc" || full == "_schema" {
 					continue
 				}
 				if err := walk(full); err != nil {
@@ -209,7 +200,7 @@ func walkNodeFiles(store fsys.Store) ([]string, error) {
 				}
 				continue
 			}
-			if !strings.HasSuffix(full, ".md") || excludedMetaFiles[full] {
+			if !strings.HasSuffix(full, ".md") {
 				continue
 			}
 			out = append(out, full)

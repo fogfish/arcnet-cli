@@ -10,6 +10,7 @@ package graph
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -97,15 +98,20 @@ func runGit(t *testing.T, dir string, args ...string) string {
 // initGraph builds a minimal, real, git-committed graph root — equivalent
 // to arc init's own layout — without depending on cmd/arc/ctrl (which
 // would otherwise perform a real network config-seed fetch cmd/arc/graph's
-// tests must not depend on).
+// tests must not depend on). _schema/nodes/ is pre-seeded with the four
+// core kinds, matching arc init's own real output.
 func initGraph(t *testing.T, dir string) {
 	t.Helper()
-	for _, folder := range []string{"sources", "entities", "resources", "timeline/yearly", "timeline/monthly", "_meta"} {
+	for _, folder := range []string{"sources", "entities", "resources", "timeline/yearly", "timeline/monthly", "_schema/nodes", "_schema/predicates"} {
 		it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, folder), 0o755)))
 	}
 	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, ".arc"), 0o755)))
 	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(dir, ".arc", ".gitkeep"), nil, 0o644)))
 	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(".arc/\n"), 0o644)))
+
+	for name, op := range map[string]string{"source": "none", "entity": "union", "resource": "union-first-writer", "timeline": "append"} {
+		seedSchemaNode(t, dir, name, op)
+	}
 
 	runGit(t, dir, "init")
 	runGit(t, dir, "add", "-A")
@@ -124,9 +130,15 @@ func seedNode(t *testing.T, dir, relPath, content string) {
 	runGit(t, dir, "commit", "-m", "seed: "+relPath)
 }
 
-func writeConfig(t *testing.T, dir, content string) {
+// seedSchemaNode writes _schema/nodes/<kind>.md directly, registering kind
+// with merge behavior op — equivalent to a prior arc apply's auto-discovery
+// or a hand-edit (spec.md US2/US3), without writing a git commit of its own.
+func seedSchemaNode(t *testing.T, dir, kind, op string) {
 	t.Helper()
-	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(dir, ".arc", "config.yml"), []byte(content), 0o644)))
+	full := filepath.Join(dir, "_schema", "nodes", kind+".md")
+	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Dir(full), 0o755)))
+	content := "---\nid: " + kind + "\nkind: schema\nmerge: " + op + "\n---\n# " + kind + "\n"
+	it.Then(t).Should(it.Nil(os.WriteFile(full, []byte(content), 0o644)))
 }
 
 func writePatchFile(t *testing.T, dir, name, content string) string {
@@ -581,7 +593,7 @@ A conclusion distilled from sources.
 func TestApplyRegisteredKindUsesRegisteredBehaviorNoWarning(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	writeConfig(t, dir, "mergeRules:\n  hypothesis: validated-overwrite\n")
+	seedSchemaNode(t, dir, "hypothesis", "validated-overwrite")
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "note.patch.md", notePatchWithHypothesis)
 
@@ -608,6 +620,74 @@ func TestApplyUnregisteredKindWarnsAndDefaultsUnion(t *testing.T) {
 	assertIsFile(t, filepath.Join(dir, "hypothesis", "Forward Secrecy Requires Ephemeral Keys.md"))
 }
 
+// arc apply note.patch.md
+// Scenario 1 from spec.md US2: a patch introducing an unregistered kind
+// creates its schema document, applies successfully using the union
+// default, and the new schema document lands in the same commit as the
+// triggering patch.
+func TestApplyUnregisteredKindCreatesSchemaDocumentInSameCommit(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "note.patch.md", notePatchWithHypothesis)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	assertIsFile(t, filepath.Join(dir, "_schema", "nodes", "hypothesis.md"))
+	content := readFile(t, filepath.Join(dir, "_schema", "nodes", "hypothesis.md"))
+	it.Then(t).Should(it.String(content).Contain("merge: union"))
+
+	stat := runGit(t, dir, "show", "--stat", "HEAD")
+	it.Then(t).
+		Should(it.String(stat).Contain("_schema/nodes/hypothesis.md")).
+		Should(it.String(stat).Contain("Forward Secrecy Requires Ephemeral Keys.md"))
+}
+
+// arc apply tls13.patch.md
+// Scenario 2 from spec.md US2: a patch introducing an unregistered
+// predicate creates its schema document, in the same commit.
+func TestApplyUnregisteredPredicateCreatesSchemaDocumentInSameCommit(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "mentions.md"))
+
+	stat := runGit(t, dir, "show", "--stat", "HEAD")
+	it.Then(t).
+		Should(it.String(stat).Contain("_schema/predicates/mentions.md")).
+		Should(it.String(stat).Contain("sources/rescorla-2026-tls13.md"))
+}
+
+// arc apply note.patch.md, then note2.patch.md
+// Scenario 3 from spec.md US2: an already-registered kind is left
+// unchanged, not duplicated, on a second apply that reuses it.
+func TestApplyRegisteredKindContentNotDuplicated(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch1 := writePatchFile(t, dir, "note.patch.md", notePatchWithHypothesis)
+	_, err := sut(NewApplyCmd(), []string{patch1})
+	it.Then(t).Should(it.Nil(err))
+
+	before := readFile(t, filepath.Join(dir, "_schema", "nodes", "hypothesis.md"))
+
+	secondPatch := strings.ReplaceAll(strings.ReplaceAll(notePatchWithHypothesis,
+		"kolesnikov-2026-note", "kolesnikov-2026-note2"),
+		"Forward Secrecy Requires Ephemeral Keys", "Handshake Latency Bound By RTT")
+	patch2 := writePatchFile(t, dir, "note2.patch.md", secondPatch)
+	_, err = sut(NewApplyCmd(), []string{patch2})
+	it.Then(t).Should(it.Nil(err))
+
+	after := readFile(t, filepath.Join(dir, "_schema", "nodes", "hypothesis.md"))
+	it.Then(t).Should(it.Equal(before, after))
+}
+
 // arc apply note.patch.md (re-registered)
 // Scenario 3 from spec.md US3: registering a kind removes the warning on
 // the next apply (of a different document, since the same document is
@@ -622,7 +702,7 @@ func TestApplyRegisteringKindRemovesWarningOnNextApply(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.String(stderr1).Contain("hypothesis"))
 
-	writeConfig(t, dir, "mergeRules:\n  hypothesis: validated-overwrite\n")
+	seedSchemaNode(t, dir, "hypothesis", "validated-overwrite")
 	secondPatch := strings.ReplaceAll(strings.ReplaceAll(notePatchWithHypothesis,
 		"kolesnikov-2026-note", "kolesnikov-2026-note2"),
 		"Forward Secrecy Requires Ephemeral Keys", "Handshake Latency Bound By RTT")
@@ -631,6 +711,79 @@ func TestApplyRegisteringKindRemovesWarningOnNextApply(t *testing.T) {
 	_, stderr2, err := sutCaptureStderr(t, NewApplyCmd(), []string{patch2})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).ShouldNot(it.String(stderr2).Contain("not a recognized node kind"))
+}
+
+const hypothesisSeedConfirmed = `---
+kind: hypothesis
+title: A Test Hypothesis
+status: confirmed
+---
+# A Test Hypothesis
+
+A conclusion distilled from sources.
+`
+
+const patchDivergesHypothesisStatusTemplate = `---
+kind: patch
+document: %s
+published: 2026-05-02
+title: "%s"
+---
+# Source
+
+## %s
+` + "```yaml" + `
+title: "%s"
+published: "2026-05-02"
+` + "```" + `
+
+A short note.
+
+# Hypothesis
+
+## A Test Hypothesis
+` + "```yaml\nstatus: draft\n```" + `
+
+A conclusion distilled from sources.
+`
+
+// arc apply
+// Scenario 3 from spec.md US3: hand-editing a registered kind's
+// _schema/nodes/<kind>.md merge value changes the behavior a later arc
+// apply invocation actually uses — union silently keeps the existing
+// scalar field (no conflict), but after a hand-edit to
+// union-first-writer the identical divergence is flagged.
+func TestApplyHandEditedMergeValueChangesLaterApplyBehavior(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedSchemaNode(t, dir, "hypothesis", "union")
+	seedNode(t, dir, "hypothesis/A Test Hypothesis.md", hypothesisSeedConfirmed)
+	chdir(t, dir)
+
+	unionPatch := fmt.Sprintf(patchDivergesHypothesisStatusTemplate, "kolesnikov-2026-first", "First Note", "kolesnikov-2026-first", "First Note")
+	patch1 := writePatchFile(t, dir, "first.patch.md", unionPatch)
+
+	out1, err := sut(NewApplyCmd(), []string{patch1})
+	it.Then(t).ShouldNot(it.Error(out1, err))
+
+	content := readFile(t, filepath.Join(dir, "hypothesis", "A Test Hypothesis.md"))
+	it.Then(t).
+		ShouldNot(it.String(content).Contain("<<<<<<<")).
+		Should(it.String(content).Contain("confirmed"))
+
+	seedSchemaNode(t, dir, "hypothesis", "union-first-writer")
+
+	unionFirstWriterPatch := fmt.Sprintf(patchDivergesHypothesisStatusTemplate, "kolesnikov-2026-second", "Second Note", "kolesnikov-2026-second", "Second Note")
+	patch2 := writePatchFile(t, dir, "second.patch.md", unionFirstWriterPatch)
+
+	out2, err := sut(NewApplyCmd(), []string{patch2})
+	it.Then(t).ShouldNot(it.Error(out2, err))
+
+	content = readFile(t, filepath.Join(dir, "hypothesis", "A Test Hypothesis.md"))
+	it.Then(t).
+		Should(it.String(content).Contain("<<<<<<< existing")).
+		Should(it.String(content).Contain("confirmed")).
+		Should(it.String(content).Contain("draft"))
 }
 
 // arc apply tls13.patch.md (twice)
@@ -927,7 +1080,7 @@ An event log.
 func TestApplyAppendRegisteredKindUnionsAcrossPatches(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	writeConfig(t, dir, "mergeRules:\n  logentry: append\n")
+	seedSchemaNode(t, dir, "logentry", "append")
 	chdir(t, dir)
 	patch1 := writePatchFile(t, dir, "deploy1.patch.md", deployEvent1Patch)
 	patch2 := writePatchFile(t, dir, "deploy2.patch.md", deployEvent2Patch)

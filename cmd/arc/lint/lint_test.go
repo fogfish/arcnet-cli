@@ -72,12 +72,16 @@ func runGit(t *testing.T, dir string, args ...string) string {
 // to arc init's own layout — without depending on cmd/arc/ctrl.
 func initGraph(t *testing.T, dir string) {
 	t.Helper()
-	for _, folder := range []string{"sources", "entities", "resources", "timeline/yearly", "timeline/monthly", "_meta"} {
+	for _, folder := range []string{"sources", "entities", "resources", "timeline/yearly", "timeline/monthly", "_schema/nodes", "_schema/predicates"} {
 		it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, folder), 0o755)))
 	}
 	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, ".arc"), 0o755)))
 	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(dir, ".arc", ".gitkeep"), nil, 0o644)))
 	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(".arc/\n"), 0o644)))
+
+	for name, op := range map[string]string{"source": "none", "entity": "union", "resource": "union-first-writer", "timeline": "append"} {
+		writeNode(t, dir, "_schema/nodes/"+name+".md", "---\nid: "+name+"\nkind: schema\nmerge: "+op+"\n---\n# "+name+"\n")
+	}
 
 	runGit(t, dir, "init")
 	runGit(t, dir, "add", "-A")
@@ -91,9 +95,9 @@ func writeNode(t *testing.T, dir, relPath, content string) {
 	it.Then(t).Should(it.Nil(os.WriteFile(full, []byte(content), 0o644)))
 }
 
-func writePredicates(t *testing.T, dir, content string) {
+func registerPredicate(t *testing.T, dir, name string) {
 	t.Helper()
-	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(dir, "_meta", "predicates.md"), []byte(content), 0o644)))
+	writeNode(t, dir, "_schema/predicates/"+name+".md", "---\nid: "+name+"\nkind: schema\n---\n# "+name+"\n")
 }
 
 // ingestSource writes a source node and commits it with the exact
@@ -111,8 +115,6 @@ func commitAll(t *testing.T, dir, message string) {
 	runGit(t, dir, "add", "-A")
 	runGit(t, dir, "commit", "-m", message)
 }
-
-const predicatesRegistry = "# Predicates\n\n- `mentions` — a document mentions an entity or resource\n"
 
 const conformantSource = `---
 kind: source
@@ -150,7 +152,7 @@ A test entity.
 func buildConformantGraph(t *testing.T, dir string) {
 	t.Helper()
 	initGraph(t, dir)
-	writePredicates(t, dir, predicatesRegistry)
+	registerPredicate(t, dir, "mentions")
 	commitAll(t, dir, "seed: predicates registry")
 	ingestSource(t, dir, "foo-2026-x", "A Test Document", conformantSource)
 	writeNode(t, dir, "entities/Widget.md", conformantEntity)
@@ -169,6 +171,44 @@ func TestLintConformantGraphPassesCleanly(t *testing.T) {
 	it.Then(t).
 		Should(it.Nil(err)).
 		Should(it.String(out).Contain("2 nodes checked, 2 passing, 0 failing"))
+}
+
+// arc lint
+// spec.md Clarifications Q1/Q3, FR-015: a freshly initialized graph's
+// _schema/ documents never appear in arc lint's checked-node count or
+// violation list.
+func TestLintExcludesSchemaDocumentsFromCheckedCount(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.String(out).Contain("2 nodes checked, 2 passing, 0 failing")).
+		ShouldNot(it.String(out).Contain("_schema"))
+}
+
+// arc lint
+// spec.md Clarifications Q3: an ordinary content node sharing a basename
+// with a schema document (e.g. entities/hypothesis.md vs.
+// _schema/nodes/hypothesis.md) is not reported as a basename collision.
+func TestLintSchemaBasenameDoesNotCollideWithContentNode(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	registerPredicate(t, dir, "related")
+	writeNode(t, dir, "_schema/nodes/hypothesis.md", "---\nid: hypothesis\nkind: schema\nmerge: union\n---\n# hypothesis\n")
+	writeNode(t, dir, "entities/hypothesis.md", "---\nkind: entity\ntitle: hypothesis\ncategory: [independent, abstract, occurrent, script]\n---\n# hypothesis\n\nA namesake entity, unrelated to the schema kind of the same name.\n\n## Mentions\n- mentions:: [[foo-2026-x]]\n")
+	commitAll(t, dir, "seed: hypothesis entity and schema doc")
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("uniqueBasename")).
+		Should(it.String(out).Contain("3 nodes checked, 3 passing, 0 failing"))
 }
 
 // arc lint

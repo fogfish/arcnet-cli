@@ -9,55 +9,12 @@
 package service
 
 import (
-	"bufio"
-	"bytes"
-	"errors"
 	"fmt"
-	"io"
-	"io/fs"
 	"regexp"
-	"strings"
 
-	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
 	"github.com/fogfish/arcnet-cli/internal/app/lint/kernel"
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
-
-// predicatesPath is where a graph's controlled predicate vocabulary lives
-// (CORE §7.3), created as an empty stub by arc init.
-const predicatesPath = "_meta/predicates.md"
-
-var predicateBulletPattern = regexp.MustCompile("^- `([^`]+)`")
-
-// parsePredicateRegistry parses _meta/predicates.md as a bullet list, one
-// predicate per item, named by its first inline-code span (research.md D9).
-// An absent file is not an error — it resolves to an empty registry (every
-// predicate unregistered); a genuine read failure is ErrPredicatesUnreadable.
-func parsePredicateRegistry(store fsys.Store) (map[string]bool, error) {
-	f, err := store.Open(predicatesPath)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return map[string]bool{}, nil
-		}
-		return nil, ErrPredicatesUnreadable.With(err, predicatesPath)
-	}
-	defer f.Close()
-
-	raw, err := io.ReadAll(f)
-	if err != nil {
-		return nil, ErrPredicatesUnreadable.With(err, predicatesPath)
-	}
-
-	registry := map[string]bool{}
-	scanner := bufio.NewScanner(bytes.NewReader(raw))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if m := predicateBulletPattern.FindStringSubmatch(line); m != nil {
-			registry[m[1]] = true
-		}
-	}
-	return registry, nil
-}
 
 // citoPredicates is CORE §8's fixed, cito:-aligned citation predicate
 // vocabulary (research.md D10).
@@ -141,7 +98,7 @@ func checkPredicateRegistered(node core.Node, path string, raw []byte, registry 
 				Rule:    kernel.RulePredicateRegistered,
 				Path:    path,
 				Line:    occ.line,
-				Message: fmt.Sprintf("predicate %q is not registered in %s", occ.predicate, predicatesPath),
+				Message: fmt.Sprintf("predicate %q is not registered in %s", occ.predicate, "_schema/predicates/"),
 			})
 		}
 	}

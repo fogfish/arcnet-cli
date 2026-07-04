@@ -17,6 +17,13 @@ import (
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
+var coreMergeRulesFixture = core.MergeRuleSet{
+	"source":   core.MergeNone,
+	"entity":   core.MergeUnion,
+	"resource": core.MergeUnionFirstWriter,
+	"timeline": core.MergeAppend,
+}
+
 func TestCheckUniqueBasenamesNoCollision(t *testing.T) {
 	index := map[string][]string{
 		"foo": {"sources/foo.md"},
@@ -51,13 +58,13 @@ func TestCheckUniqueBasenamesThreeWayCollisionNamesEveryFile(t *testing.T) {
 
 func TestCheckUnrecognizedKindRecognized(t *testing.T) {
 	node := core.Node{Kind: "source"}
-	out := checkUnrecognizedKind(node, "sources/foo.md", core.CoreMergeRules)
+	out := checkUnrecognizedKind(node, "sources/foo.md", coreMergeRulesFixture)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
 func TestCheckUnrecognizedKindUnrecognized(t *testing.T) {
 	node := core.Node{Kind: "hypothesis"}
-	out := checkUnrecognizedKind(node, "hypothesis/foo.md", core.CoreMergeRules)
+	out := checkUnrecognizedKind(node, "hypothesis/foo.md", coreMergeRulesFixture)
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).
 		Should(it.Equal(kernel.RuleUnrecognizedKind, out[0].Rule)).
@@ -65,7 +72,7 @@ func TestCheckUnrecognizedKindUnrecognized(t *testing.T) {
 }
 
 func TestCheckUnrecognizedKindConfigRegistered(t *testing.T) {
-	rules := core.CoreMergeRules.Union(core.MergeRuleSet{"hypothesis": core.MergeValidatedOverwrite})
+	rules := coreMergeRulesFixture.Union(core.MergeRuleSet{"hypothesis": core.MergeValidatedOverwrite})
 	node := core.Node{Kind: "hypothesis"}
 	out := checkUnrecognizedKind(node, "hypothesis/foo.md", rules)
 	it.Then(t).Should(it.Equal(0, len(out)))

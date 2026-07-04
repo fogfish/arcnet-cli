@@ -29,9 +29,9 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create the package skeleton: `internal/app/schema/{kernel,service}/` directories and an empty `internal/app/schema/component.go` per plan.md's Project Structure — no `port`/`adapter` subdirectories (research.md D2/D5)
-- [ ] T002 [P] Confirm no new third-party dependency is required — `go.mod` stays unchanged per plan.md Technical Context; note that `net/http` becomes unused by this feature once `internal/app/config/adapter/http` is deleted (Phase 2.5)
-- [ ] T003 [P] Run `staticcheck ./...` and confirm it passes clean on the new (still-empty) package skeleton
+- [X] T001 Create the package skeleton: `internal/app/schema/{kernel,service}/` directories and an empty `internal/app/schema/component.go` per plan.md's Project Structure — no `port`/`adapter` subdirectories (research.md D2/D5)
+- [X] T002 [P] Confirm no new third-party dependency is required — `go.mod` stays unchanged per plan.md Technical Context; note that `net/http` becomes unused by this feature once `internal/app/config/adapter/http` is deleted (Phase 2.5)
+- [X] T003 [P] Run `staticcheck ./...` and confirm it passes clean on the new (still-empty) package skeleton
 
 ---
 
@@ -43,29 +43,29 @@
 
 ### Phase 2a: Domain Model & Glossary (Principles II, V)
 
-- [ ] T004 Add **Schema Document**, **Node-Kind Schema Document**, **Predicate Schema Document**, and **Discovered Kind / Predicate** (data-model.md) to [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary; rewrite the existing **Metadata Stub** and **Kind Registration** entries, both now retired (Principle I obligation, plan.md Constitution Check row I, research.md D10)
-- [ ] T005 Verify no existing `internal/<domain>` package already defines a schema-shaped type before introducing `kernel.CoreMergeRules`/`kernel.CorePredicates` in `internal/app/schema/kernel` (none exist — this is the project's first schema-vocabulary package)
+- [X] T004 Add **Schema Document**, **Node-Kind Schema Document**, **Predicate Schema Document**, and **Discovered Kind / Predicate** (data-model.md) to [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary; rewrite the existing **Metadata Stub** and **Kind Registration** entries, both now retired (Principle I obligation, plan.md Constitution Check row I, research.md D10)
+- [X] T005 Verify no existing `internal/<domain>` package already defines a schema-shaped type before introducing `kernel.CoreMergeRules`/`kernel.CorePredicates` in `internal/app/schema/kernel` (none exist — this is the project's first schema-vocabulary package)
 
 ### Phase 2b: Command & Flag Contract Design (Principle IX)
 
-- [ ] T006 Confirm this feature introduces **zero** new/changed Cobra commands or flags against contracts/schema-contract.md — no `arc schema` command; `arc init`/`arc apply`/`arc lint`'s existing flag surface is unchanged
-- [ ] T007 [P] Review contracts/schema-contract.md (already produced during `/speckit-plan`) for completeness against spec.md's functional requirements — no changes expected, this is a gate check
+- [X] T006 Confirm this feature introduces **zero** new/changed Cobra commands or flags against contracts/schema-contract.md — no `arc schema` command; `arc init`/`arc apply`/`arc lint`'s existing flag surface is unchanged
+- [X] T007 [P] Review contracts/schema-contract.md (already produced during `/speckit-plan`) for completeness against spec.md's functional requirements — no changes expected, this is a gate check
 
 ### Phase 2c: External Integration & Adapter Design (Principle VII, if applicable)
 
-- [ ] T008 [P] Confirm `internal/app/schema` introduces no new external system integration — its only I/O is the already-shared `internal/adapter/fsys`, consumed directly with no private port wrapper (research.md D2/D5, mirroring `internal/app/ctrl/service.Init`'s existing precedent of taking `fsys.Mounter` as a plain parameter)
-- [ ] T009 Define `internal/app/graph/port/schema.go`'s `SchemaRegistry` interface shape (`RegisterKind`, `RegisterPredicate` only) per contracts/schema-contract.md — the design gate before any adapter/mock code is written (ADR 001 port isolation rule 1)
+- [X] T008 [P] Confirm `internal/app/schema` introduces no new external system integration — its only I/O is the already-shared `internal/adapter/fsys`, consumed directly with no private port wrapper (research.md D2/D5, mirroring `internal/app/ctrl/service.Init`'s existing precedent of taking `fsys.Mounter` as a plain parameter)
+- [X] T009 Define `internal/app/graph/port/schema.go`'s `SchemaRegistry` interface shape (`RegisterKind`, `RegisterPredicate` only) per contracts/schema-contract.md — the design gate before any adapter/mock code is written (ADR 001 port isolation rule 1)
 
 ### Phase 2d: E2E Acceptance Test Design (Principle VIII)
 
-- [ ] T010 [P] [US1] Write E2E tests in `cmd/arc/ctrl/init_test.go` for spec.md US1's 5 acceptance scenarios (`_schema/nodes`+`_schema/predicates` populated with every core kind/predicate; each node-kind document's `id`/`kind: schema`/`merge`; each predicate document's `id`/`kind: schema`; no `_meta/` folder and no merge-rule content anywhere; initialization succeeds with no network access) using the `sut()` helper — tests MUST compile and fail semantically (red phase)
-- [ ] T011 [P] [US2] Write E2E tests in `cmd/arc/graph/apply_test.go` for spec.md US2's 4 acceptance scenarios (a patch introducing an unregistered kind creates its schema document and still applies successfully using the union default; a patch introducing an unregistered predicate creates its schema document; an already-registered kind/predicate is left unchanged, not duplicated; new schema documents land in the same commit as the triggering patch, verified via `git show --stat`) — red phase
-- [ ] T012 [P] [US3] Write an E2E test in `cmd/arc/graph/apply_test.go` for spec.md US3's Acceptance Scenario 3 (hand-editing a registered kind's `_schema/nodes/<kind>.md` `merge` value changes the behavior a later `arc apply` invocation actually uses) — red phase
-- [ ] T013 [P] Write E2E tests in `cmd/arc/lint/lint_test.go` for the spec.md Clarifications (Q1/Q3, FR-015): a freshly initialized graph's `_schema/` documents never appear in `arc lint`'s checked-node count or violation list, and an ordinary content node sharing a basename with a schema document (e.g. `entities/hypothesis.md` vs. `_schema/nodes/hypothesis.md`) is not reported as a basename collision — red phase
+- [X] T010 [P] [US1] Write E2E tests in `cmd/arc/ctrl/init_test.go` for spec.md US1's 5 acceptance scenarios (`_schema/nodes`+`_schema/predicates` populated with every core kind/predicate; each node-kind document's `id`/`kind: schema`/`merge`; each predicate document's `id`/`kind: schema`; no `_meta/` folder and no merge-rule content anywhere; initialization succeeds with no network access) using the `sut()` helper — tests MUST compile and fail semantically (red phase)
+- [X] T011 [P] [US2] Write E2E tests in `cmd/arc/graph/apply_test.go` for spec.md US2's 4 acceptance scenarios (a patch introducing an unregistered kind creates its schema document and still applies successfully using the union default; a patch introducing an unregistered predicate creates its schema document; an already-registered kind/predicate is left unchanged, not duplicated; new schema documents land in the same commit as the triggering patch, verified via `git show --stat`) — red phase
+- [X] T012 [P] [US3] Write an E2E test in `cmd/arc/graph/apply_test.go` for spec.md US3's Acceptance Scenario 3 (hand-editing a registered kind's `_schema/nodes/<kind>.md` `merge` value changes the behavior a later `arc apply` invocation actually uses) — red phase
+- [X] T013 [P] Write E2E tests in `cmd/arc/lint/lint_test.go` for the spec.md Clarifications (Q1/Q3, FR-015): a freshly initialized graph's `_schema/` documents never appear in `arc lint`'s checked-node count or violation list, and an ordinary content node sharing a basename with a schema document (e.g. `entities/hypothesis.md` vs. `_schema/nodes/hypothesis.md`) is not reported as a basename collision — red phase
 
 ### Phase 2e: Configuration & Secrets Review (Principle XI, if applicable)
 
-- [ ] T014 Confirm this feature introduces no new configuration surface: `internal/app/config`'s `Load`/`Save` infrastructure is kept but has zero callers after this feature ships (plan.md Complexity Tracking, research.md D8); no secret or credential material is involved anywhere in `internal/app/schema`
+- [X] T014 Confirm this feature introduces no new configuration surface: `internal/app/config`'s `Load`/`Save` infrastructure is kept but has zero callers after this feature ships (plan.md Complexity Tracking, research.md D8); no secret or credential material is involved anywhere in `internal/app/schema`
 
 **Checkpoint**: All Phase 2 subsections complete — user story implementation can now begin
 
@@ -77,33 +77,33 @@
 
 ### `internal/core` cleanup (research.md D1)
 
-- [ ] T015 Delete `internal/core/rules.go` in its entirety — its content is redistributed into `internal/app/schema/kernel` (T021) and `internal/app/config/kernel` (T018)
-- [ ] T016 [P] Update `internal/core/rules_test.go`: remove test cases for the deleted `CoreMergeRules`/`KnownProfileMergeRules`/`ConfigPath`/`MergeRuleSet`'s YAML marshal/unmarshal methods; keep `Union`/`Lookup` test cases against the still-present `MergeRuleSet` type definition (depends on T015)
+- [X] T015 Delete `internal/core/rules.go` in its entirety — its content is redistributed into `internal/app/schema/kernel` (T021) and `internal/app/config/kernel` (T018)
+- [X] T016 [P] Update `internal/core/rules_test.go`: remove test cases for the deleted `CoreMergeRules`/`KnownProfileMergeRules`/`ConfigPath`/`MergeRuleSet`'s YAML marshal/unmarshal methods; keep `Union`/`Lookup` test cases against the still-present `MergeRuleSet` type definition (depends on T015)
 
 ### `internal/app/config` cleanup (research.md D8)
 
-- [ ] T017 Delete `internal/app/config/port/`, `internal/app/config/adapter/http/`, and `internal/app/config/adapter/mock/` in their entirety (the retired "github downloader")
-- [ ] T018 Remove the `MergeRules core.MergeRuleSet` field from `internal/app/config/kernel/config.go`'s `Config` struct; add `ConfigPath = ".arc/config.yml"` there (moved from `internal/core`, research.md D1) (depends on T015)
-- [ ] T019 Remove `service.Default`/`service.Resolve` from `internal/app/config/service/config.go` and their `component.go` exports; keep `Load`/`Save` unchanged (depends on T017, T018)
-- [ ] T020 [P] Update `internal/app/config/service/config_test.go`: remove `Default`/`Resolve` test cases; keep/adjust the `Load`/`Save` round-trip test against the now-field-empty `Config` (depends on T019)
+- [X] T017 Delete `internal/app/config/port/`, `internal/app/config/adapter/http/`, and `internal/app/config/adapter/mock/` in their entirety (the retired "github downloader")
+- [X] T018 Remove the `MergeRules core.MergeRuleSet` field from `internal/app/config/kernel/config.go`'s `Config` struct; add `ConfigPath = ".arc/config.yml"` there (moved from `internal/core`, research.md D1) (depends on T015)
+- [X] T019 Remove `service.Default`/`service.Resolve` from `internal/app/config/service/config.go` and their `component.go` exports; keep `Load`/`Save` unchanged (depends on T017, T018)
+- [X] T020 [P] Update `internal/app/config/service/config_test.go`: remove `Default`/`Resolve` test cases; keep/adjust the `Load`/`Save` round-trip test against the now-field-empty `Config` (depends on T019)
 
 ### `internal/app/schema` build-out
 
-- [ ] T021 [P] Implement `internal/app/schema/kernel/schema.go`: `SchemaKind core.Kind = "schema"`, `NodesDir = "_schema/nodes"`, `PredicatesDir = "_schema/predicates"` path constants, `CoreMergeRules` (moved from `internal/core/rules.go`, T015 — 4 entries: `source:none, entity:union, resource:union-first-writer, timeline:append`), `CorePredicates` (new — the 13 ARCNET-CORE §7.4 names with one-line descriptions each, research.md D7) (depends on T015)
-- [ ] T022 [P] Unit tests in `internal/app/schema/kernel/schema_test.go`: `CoreMergeRules` has exactly the 4 expected entries; `CorePredicates` has exactly 13 distinct, camelCase names (depends on T021)
-- [ ] T023 Implement `Seed()` in `internal/app/schema/service/schema.go` per data-model.md: for every `CoreMergeRules` entry, render a `core.Node{ID: kind, Kind: schema.SchemaKind, Attrs: {"merge": op}}` via `core.RenderNode` keyed at `NodesDir/<kind>.md`; for every `CorePredicates` entry, render `core.Node{ID: predicate, Kind: schema.SchemaKind}` keyed at `PredicatesDir/<predicate>.md`; pure function, no `context.Context`, no network call (research.md D5) (depends on T021)
-- [ ] T024 [P] Unit test for `Seed()` in `internal/app/schema/service/schema_test.go`: returns exactly 17 entries; every entry's rendered content round-trips through `core.ParseNode` back to the expected `id`/`kind`/`merge` (depends on T023)
-- [ ] T025 Implement `Resolve(store fsys.Store) (core.MergeRuleSet, map[string]bool, error)` in `internal/app/schema/service/schema.go` per contracts/schema-contract.md: walks `NodesDir`/`PredicatesDir`, `core.ParseNode`s each file; a file that fails to parse is **skipped, not an error** (spec.md Edge Cases); an absent `_schema/` folder resolves to two empty results, not an error (mirrors `config.Resolve`'s retired "absent file is not an error" precedent) (depends on T021)
-- [ ] T026 [P] Unit tests for `Resolve` in `internal/app/schema/service/schema_test.go`: a well-formed folder (e.g. `Seed()`'s own output) round-trips correctly; a malformed individual document is skipped without erroring the whole call; an absent `_schema/` folder returns two empty results with a nil error (depends on T025)
-- [ ] T027 Implement `RegisterKind(store, kind) (created bool, err error)` and `RegisterPredicate(store, predicate) (created bool, err error)` in `internal/app/schema/service/schema.go` per contracts/schema-contract.md: create-if-absent via `core.RenderNode`+`store.Create`; `created=false` and no write when the path already exists (spec FR-011); `RegisterKind` always writes `merge: union` (spec FR-010, clarified — never any other value) (depends on T021)
-- [ ] T028 [P] Unit tests for `RegisterKind`/`RegisterPredicate` in `internal/app/schema/service/schema_test.go`: creates the expected file exactly once with the expected content; a second call against the same kind/predicate returns `created=false` and does not modify the already-present file's content (depends on T027)
-- [ ] T029 [P] Implement `internal/app/schema/service/errors.go`: an `ErrSchemaWrite` `faults.Safe1[string]` sentinel for a write failure inside `RegisterKind`/`RegisterPredicate`, matching the codebase's existing `faults.Type`/`.With()` convention
-- [ ] T030 [P] Implement `internal/app/schema/component.go`: primary port `Seed()`, `Resolve(store)`, `RegisterKind(store, kind)`, `RegisterPredicate(store, predicate)` — thin delegators into `service`, per contracts/schema-contract.md (depends on T023, T025, T027)
-- [ ] T031 [P] Write `internal/app/schema/README.md` documenting the `schema` use-case per ADR 001's layout convention, noting the deliberate absence of `port`/`adapter` subdirectories (research.md D2/D5)
+- [X] T021 [P] Implement `internal/app/schema/kernel/schema.go`: `SchemaKind core.Kind = "schema"`, `NodesDir = "_schema/nodes"`, `PredicatesDir = "_schema/predicates"` path constants, `CoreMergeRules` (moved from `internal/core/rules.go`, T015 — 4 entries: `source:none, entity:union, resource:union-first-writer, timeline:append`), `CorePredicates` (new — the 13 ARCNET-CORE §7.4 names with one-line descriptions each, research.md D7) (depends on T015)
+- [X] T022 [P] Unit tests in `internal/app/schema/kernel/schema_test.go`: `CoreMergeRules` has exactly the 4 expected entries; `CorePredicates` has exactly 13 distinct, camelCase names (depends on T021)
+- [X] T023 Implement `Seed()` in `internal/app/schema/service/schema.go` per data-model.md: for every `CoreMergeRules` entry, render a `core.Node{ID: kind, Kind: schema.SchemaKind, Attrs: {"merge": op}}` via `core.RenderNode` keyed at `NodesDir/<kind>.md`; for every `CorePredicates` entry, render `core.Node{ID: predicate, Kind: schema.SchemaKind}` keyed at `PredicatesDir/<predicate>.md`; pure function, no `context.Context`, no network call (research.md D5) (depends on T021)
+- [X] T024 [P] Unit test for `Seed()` in `internal/app/schema/service/schema_test.go`: returns exactly 17 entries; every entry's rendered content round-trips through `core.ParseNode` back to the expected `id`/`kind`/`merge` (depends on T023)
+- [X] T025 Implement `Resolve(store fsys.Store) (core.MergeRuleSet, map[string]bool, error)` in `internal/app/schema/service/schema.go` per contracts/schema-contract.md: walks `NodesDir`/`PredicatesDir`, `core.ParseNode`s each file; a file that fails to parse is **skipped, not an error** (spec.md Edge Cases); an absent `_schema/` folder resolves to two empty results, not an error (mirrors `config.Resolve`'s retired "absent file is not an error" precedent) (depends on T021)
+- [X] T026 [P] Unit tests for `Resolve` in `internal/app/schema/service/schema_test.go`: a well-formed folder (e.g. `Seed()`'s own output) round-trips correctly; a malformed individual document is skipped without erroring the whole call; an absent `_schema/` folder returns two empty results with a nil error (depends on T025)
+- [X] T027 Implement `RegisterKind(store, kind) (created bool, err error)` and `RegisterPredicate(store, predicate) (created bool, err error)` in `internal/app/schema/service/schema.go` per contracts/schema-contract.md: create-if-absent via `core.RenderNode`+`store.Create`; `created=false` and no write when the path already exists (spec FR-011); `RegisterKind` always writes `merge: union` (spec FR-010, clarified — never any other value) (depends on T021)
+- [X] T028 [P] Unit tests for `RegisterKind`/`RegisterPredicate` in `internal/app/schema/service/schema_test.go`: creates the expected file exactly once with the expected content; a second call against the same kind/predicate returns `created=false` and does not modify the already-present file's content (depends on T027)
+- [X] T029 [P] Implement `internal/app/schema/service/errors.go`: an `ErrSchemaWrite` `faults.Safe1[string]` sentinel for a write failure inside `RegisterKind`/`RegisterPredicate`, matching the codebase's existing `faults.Type`/`.With()` convention
+- [X] T030 [P] Implement `internal/app/schema/component.go`: primary port `Seed()`, `Resolve(store)`, `RegisterKind(store, kind)`, `RegisterPredicate(store, predicate)` — thin delegators into `service`, per contracts/schema-contract.md (depends on T023, T025, T027)
+- [X] T031 [P] Write `internal/app/schema/README.md` documenting the `schema` use-case per ADR 001's layout convention, noting the deliberate absence of `port`/`adapter` subdirectories (research.md D2/D5)
 
 ### `internal/app/graph/port` — the structural bridge (research.md D3)
 
-- [ ] T032 [P] Implement `internal/app/graph/port/schema.go`'s `SchemaRegistry` interface (`RegisterKind`, `RegisterPredicate`, matching T009's design) — satisfied structurally by `internal/app/schema`'s concrete component, no explicit `implements` needed (depends on T009)
+- [X] T032 [P] Implement `internal/app/graph/port/schema.go`'s `SchemaRegistry` interface (`RegisterKind`, `RegisterPredicate`, matching T009's design) — satisfied structurally by `internal/app/schema`'s concrete component, no explicit `implements` needed (depends on T009)
 
 **Checkpoint**: Foundation ready — user story implementation can now proceed
 
@@ -119,19 +119,19 @@
 
 > E2E tests for this story were already written in Phase 2d (T010, T013) and MUST currently be failing (red). Implementation below MUST turn them green with minimal test changes.
 
-- [ ] T033 [US1] Update `internal/app/ctrl/kernel/graph.go`'s `DefaultLayout`: `Folders` drops `"_meta"`, adds `"_schema/nodes"` and `"_schema/predicates"` (using the same literal path values as `schema.kernel.NodesDir`/`PredicatesDir` — no cross-use-case import, kept in sync by both deriving from research.md D7); rename the `MetaStubs map[string]string` field to `SeedFiles map[string]string`, now empty by default (research.md D9)
-- [ ] T034 [US1] Rename `configSeed []byte` to `schemaSeed map[string]string` in `internal/app/ctrl/service/init.go`'s `Init` and `internal/app/ctrl/component.go`'s matching signature; merge `schemaSeed` into a per-call copy of `layout.SeedFiles` before `writeLayout`, exactly where `configSeed` was previously merged in at `core.ConfigPath` (depends on T033)
-- [ ] T035 [US1] Update `rollback()` in `internal/app/ctrl/service/init.go` to remove every path in the merged `layout.SeedFiles` instead of the deleted `core.ConfigPath`-specific removal (depends on T034)
-- [ ] T036 [US1] Update `cmd/arc/ctrl/init.go`: replace the `appconfig.Default(ctx, newConfigFetcher())` call with `appschema.Seed()`; pass the result as `Init`'s `schemaSeed` argument; delete the now-unused `fetchConfigSeed`/`newConfigFetcher` helpers (depends on T030, T034)
-- [ ] T037 [P] [US1] Update `internal/app/ctrl/service/init_test.go` and `cmd/arc/ctrl/init_test.go`'s existing fixtures/mocks referencing `configSeed`/`MetaStubs`/`_meta` to the new `schemaSeed`/`SeedFiles`/`_schema` shape (depends on T034, T036)
+- [X] T033 [US1] Update `internal/app/ctrl/kernel/graph.go`'s `DefaultLayout`: `Folders` drops `"_meta"`, adds `"_schema/nodes"` and `"_schema/predicates"` (using the same literal path values as `schema.kernel.NodesDir`/`PredicatesDir` — no cross-use-case import, kept in sync by both deriving from research.md D7); rename the `MetaStubs map[string]string` field to `SeedFiles map[string]string`, now empty by default (research.md D9)
+- [X] T034 [US1] Rename `configSeed []byte` to `schemaSeed map[string]string` in `internal/app/ctrl/service/init.go`'s `Init` and `internal/app/ctrl/component.go`'s matching signature; merge `schemaSeed` into a per-call copy of `layout.SeedFiles` before `writeLayout`, exactly where `configSeed` was previously merged in at `core.ConfigPath` (depends on T033)
+- [X] T035 [US1] Update `rollback()` in `internal/app/ctrl/service/init.go` to remove every path in the merged `layout.SeedFiles` instead of the deleted `core.ConfigPath`-specific removal (depends on T034)
+- [X] T036 [US1] Update `cmd/arc/ctrl/init.go`: replace the `appconfig.Default(ctx, newConfigFetcher())` call with `appschema.Seed()`; pass the result as `Init`'s `schemaSeed` argument; delete the now-unused `fetchConfigSeed`/`newConfigFetcher` helpers (depends on T030, T034)
+- [X] T037 [P] [US1] Update `internal/app/ctrl/service/init_test.go` and `cmd/arc/ctrl/init_test.go`'s existing fixtures/mocks referencing `configSeed`/`MetaStubs`/`_meta` to the new `schemaSeed`/`SeedFiles`/`_schema` shape (depends on T034, T036)
 
 ### `arc lint` exemption (needed immediately once `_schema/` exists — FR-015, Clarifications Q1/Q3)
 
-- [ ] T038 [US1] In `internal/app/lint/service/lint.go`'s `walkNodeFiles`, add `if full == "_schema" { continue }` alongside the existing `.arc` skip; delete `excludedMetaFiles` and its two now-obsolete entries (research.md D6)
-- [ ] T039 [US1] In `internal/app/lint/service/rules_predicates.go`, delete `parsePredicateRegistry` and `predicatesPath`; `internal/app/lint/service/lint.go`'s `Lint` gains a `predicates map[string]bool` parameter, used directly at the former `parsePredicateRegistry` call site; reword `checkPredicateRegistered`'s violation message to name `_schema/predicates/` instead of the retired path (depends on T038)
-- [ ] T040 [US1] Update `internal/app/lint/component.go`'s `Lint` signature to add the `predicates` parameter, thin delegation otherwise unchanged (depends on T039)
-- [ ] T041 [US1] Update `cmd/arc/lint/lint.go`: replace `appconfig.Resolve(store)` with `appschema.Resolve(store)`, passing both returned values (`rules`, `predicates`) into `applint.Lint` (depends on T030, T040)
-- [ ] T042 [P] [US1] Update `internal/app/lint/service/lint_test.go` and `rules_predicates_test.go`'s existing fixtures referencing `_meta`/`predicatesPath`/`parsePredicateRegistry` to the new `predicates`-parameter shape (depends on T039)
+- [X] T038 [US1] In `internal/app/lint/service/lint.go`'s `walkNodeFiles`, add `if full == "_schema" { continue }` alongside the existing `.arc` skip; delete `excludedMetaFiles` and its two now-obsolete entries (research.md D6)
+- [X] T039 [US1] In `internal/app/lint/service/rules_predicates.go`, delete `parsePredicateRegistry` and `predicatesPath`; `internal/app/lint/service/lint.go`'s `Lint` gains a `predicates map[string]bool` parameter, used directly at the former `parsePredicateRegistry` call site; reword `checkPredicateRegistered`'s violation message to name `_schema/predicates/` instead of the retired path (depends on T038)
+- [X] T040 [US1] Update `internal/app/lint/component.go`'s `Lint` signature to add the `predicates` parameter, thin delegation otherwise unchanged (depends on T039)
+- [X] T041 [US1] Update `cmd/arc/lint/lint.go`: replace `appconfig.Resolve(store)` with `appschema.Resolve(store)`, passing both returned values (`rules`, `predicates`) into `applint.Lint` (depends on T030, T040)
+- [X] T042 [P] [US1] Update `internal/app/lint/service/lint_test.go` and `rules_predicates_test.go`'s existing fixtures referencing `_meta`/`predicatesPath`/`parsePredicateRegistry` to the new `predicates`-parameter shape (depends on T039)
 
 **Checkpoint**: At this point, User Story 1's E2E tests (T010, T013) pass — a fresh `arc init` produces a fully-seeded, first-class `_schema/` folder with no `_meta/` folder and no merge-rule content in `.arc/config.yml`, and an immediate `arc lint` run reports a clean pass with zero `_schema/`-related noise
 
@@ -147,12 +147,12 @@
 
 > E2E tests for this story were already written in Phase 2d (T011) and MUST currently be failing (red).
 
-- [ ] T043 [US2] `internal/app/graph/service/apply.go`: `Apply`'s signature gains `predicates map[string]bool` and `schema port.SchemaRegistry` parameters (depends on T032)
-- [ ] T044 [US2] Inside `Apply`'s existing per-node loop, immediately after the existing `op, ok := rules.Lookup(node.Kind)` miss (line ~144), additionally call `schema.RegisterKind(store, node.Kind)` — alongside the existing, unchanged union-default-plus-warning behavior (research.md D3) (depends on T043)
-- [ ] T045 [US2] After `merged` is computed (which carries `.Links`/`.Edges`), collect every distinct predicate name from `merged.Links`'s keys and every non-empty `Link.Predicate` in `merged.Edges`; for each name absent from `predicates`, call `schema.RegisterPredicate(store, name)` (research.md D4) (depends on T043)
-- [ ] T046 [US2] Update `internal/app/graph/component.go`'s `Apply` signature to add the same two parameters, thin delegation otherwise unchanged (depends on T044, T045)
-- [ ] T047 [US2] Update `cmd/arc/graph/apply.go`: replace `appconfig.Resolve(store)` with `appschema.Resolve(store)`; construct the real `internal/app/schema` component as the `port.SchemaRegistry` argument; pass `predicates` through into `appgraph.Apply` (depends on T030, T046)
-- [ ] T048 [P] [US2] Update `internal/app/graph/service/apply_test.go`'s existing fixtures/mocks for `Apply`'s two new parameters (a fake `SchemaRegistry`, an empty/populated `predicates` map) (depends on T043)
+- [X] T043 [US2] `internal/app/graph/service/apply.go`: `Apply`'s signature gains `predicates map[string]bool` and `schema port.SchemaRegistry` parameters (depends on T032)
+- [X] T044 [US2] Inside `Apply`'s existing per-node loop, immediately after the existing `op, ok := rules.Lookup(node.Kind)` miss (line ~144), additionally call `schema.RegisterKind(store, node.Kind)` — alongside the existing, unchanged union-default-plus-warning behavior (research.md D3) (depends on T043)
+- [X] T045 [US2] After `merged` is computed (which carries `.Links`/`.Edges`), collect every distinct predicate name from `merged.Links`'s keys and every non-empty `Link.Predicate` in `merged.Edges`; for each name absent from `predicates`, call `schema.RegisterPredicate(store, name)` (research.md D4) (depends on T043)
+- [X] T046 [US2] Update `internal/app/graph/component.go`'s `Apply` signature to add the same two parameters, thin delegation otherwise unchanged (depends on T044, T045)
+- [X] T047 [US2] Update `cmd/arc/graph/apply.go`: replace `appconfig.Resolve(store)` with `appschema.Resolve(store)`; construct the real `internal/app/schema` component as the `port.SchemaRegistry` argument; pass `predicates` through into `appgraph.Apply` (depends on T030, T046)
+- [X] T048 [P] [US2] Update `internal/app/graph/service/apply_test.go`'s existing fixtures/mocks for `Apply`'s two new parameters (a fake `SchemaRegistry`, an empty/populated `predicates` map) (depends on T043)
 
 **Checkpoint**: User Stories 1 AND 2 both pass their E2E tests independently — a patch introducing a previously-unseen kind or predicate registers it into `_schema/` in the same commit as the patch's own content, and a second application of the same kind/predicate no longer produces the unrecognized-kind warning
 
@@ -168,8 +168,8 @@
 
 > E2E test for this story was already written in Phase 2d (T012) and MUST currently be failing (red) until Phase 4 lands; this phase verifies/hardens the exact behavior against US3's own acceptance scenario.
 
-- [ ] T049 [US3] Verify (via T012's E2E test) that a hand-edited `merge` value in an existing `_schema/nodes/<kind>.md` is what `internal/core.Merge`'s `op` parameter actually receives on a later `arc apply` invocation — this already follows from `cmd/arc/graph/apply.go` calling `appschema.Resolve` fresh on every invocation (T047); adjust T044's call site only if T012 reveals a stale-read issue (depends on T047)
-- [ ] T050 [P] [US3] Add a unit test in `internal/app/schema/service/schema_test.go`: `Resolve` reflects a hand-edited `merge` value in an existing `_schema/nodes/<kind>.md` file exactly as `core.ParseNode` parses it, with no caching across calls (depends on T025)
+- [X] T049 [US3] Verify (via T012's E2E test) that a hand-edited `merge` value in an existing `_schema/nodes/<kind>.md` is what `internal/core.Merge`'s `op` parameter actually receives on a later `arc apply` invocation — this already follows from `cmd/arc/graph/apply.go` calling `appschema.Resolve` fresh on every invocation (T047); adjust T044's call site only if T012 reveals a stale-read issue (depends on T047)
+- [X] T050 [P] [US3] Add a unit test in `internal/app/schema/service/schema_test.go`: `Resolve` reflects a hand-edited `merge` value in an existing `_schema/nodes/<kind>.md` file exactly as `core.ParseNode` parses it, with no caching across calls (depends on T025)
 
 **Checkpoint**: All three user stories pass their E2E tests independently — the schema folder is fully self-describing, auto-extending, and human-editable
 
@@ -179,9 +179,9 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T051 [P] Update `README.md`'s quick-start example if it currently mentions `_meta/`/`.arc/config.yml` merge rules (constitution Principle XII)
-- [ ] T052 [P] Manually run all 6 quickstart.md scenarios against the built binary and confirm expected output/exit codes
-- [ ] T053 [P] Add table-driven unit tests in `internal/app/schema/service/schema_test.go` covering every guard/error path end-to-end against a fake `fsys.Store`, asserting `errors.Is(err, service.ErrSchemaWrite)` where applicable (constitution Principle VI)
+- [X] T051 [P] Update `README.md`'s quick-start example if it currently mentions `_meta/`/`.arc/config.yml` merge rules (constitution Principle XII)
+- [X] T052 [P] Manually run all 6 quickstart.md scenarios against the built binary and confirm expected output/exit codes
+- [X] T053 [P] Add table-driven unit tests in `internal/app/schema/service/schema_test.go` covering every guard/error path end-to-end against a fake `fsys.Store`, asserting `errors.Is(err, service.ErrSchemaWrite)` where applicable (constitution Principle VI)
 
 ---
 
@@ -191,24 +191,24 @@
 
 ### Design Phase Verification
 
-- [ ] TN01 [ARCHITECTURE.md](../../ARCHITECTURE.md) reflects architectural changes: `internal/app/schema` (no `port`/`adapter` subdirectory), the retired `internal/app/config` fetcher, and `internal/core/rules.go`'s removal (Principle I)
-- [ ] TN02 Domain concepts added to the [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary (Principle II)
-- [ ] TN03 Command/flag surface matches the Phase 2b design exactly: zero new/changed commands or flags across `arc init`/`arc apply`/`arc lint` (Principle IX)
+- [X] TN01 [ARCHITECTURE.md](../../ARCHITECTURE.md) reflects architectural changes: `internal/app/schema` (no `port`/`adapter` subdirectory), the retired `internal/app/config` fetcher, and `internal/core/rules.go`'s removal (Principle I)
+- [X] TN02 Domain concepts added to the [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary (Principle II)
+- [X] TN03 Command/flag surface matches the Phase 2b design exactly: zero new/changed commands or flags across `arc init`/`arc apply`/`arc lint` (Principle IX)
 
 ### Implementation Phase Verification (grouped by principle)
 
-- [ ] TN04 Major decisions recorded in [adrs/](../../adrs/) with correct numbering, if a new architectural pattern was introduced beyond what ADR 001/002 already cover (Principle I) — none expected; confirm during review that the `internal/core`/`schema` boundary decision (research.md D1) is fully explained in this plan rather than requiring a new ADR
-- [ ] TN05 Domain logic uses ports (interfaces); `graph.port.SchemaRegistry` is satisfied structurally with no direct `internal/app/graph` → `internal/app/schema` import (Principle III, ADR 001 rule 1)
-- [ ] TN06 Unit tests were written first, compiled, and failed semantically before implementation (Principle VI)
-- [ ] TN07 Unit and E2E tests use `github.com/fogfish/it/v2` exclusively — no `testify` or stdlib-only comparisons mixed in (Principle VI, [Mandatory Libraries & Tooling](../../.specify/memory/constitution.md#mandatory-libraries--tooling))
-- [ ] TN08 No Bash scripts were used for unit-level code correctness validation (Principle VI)
-- [ ] TN09 `internal/app/schema` introduces no new external integration (no adapter added); the one new port (`graph.port.SchemaRegistry`) follows the existing structural-satisfaction pattern with no vendor type leaking through it (Principle VII)
-- [ ] TN10 Terminal output respects TTY detection, `NO_COLOR`, `--quiet`/`--verbose`; no new styling introduced beyond the existing `internal/bios` kernel (Principle X)
-- [ ] TN11 Configuration precedence respected; `internal/app/config`'s remaining `Load`/`Save` infra introduces no new configuration surface; no secrets logged (Principle XI)
-- [ ] TN12 No command/flag help text changes required — confirm no drift was introduced incidentally (Principle XII)
-- [ ] TN13 E2E tests from Phase 2d turned GREEN and changed minimally during implementation (Principle VIII)
-- [ ] TN14 All spec.md US1–US3 acceptance scenarios have a passing, colocated E2E test in `cmd/arc/ctrl/init_test.go`, `cmd/arc/graph/apply_test.go`, and `cmd/arc/lint/lint_test.go` (Principle VIII)
-- [ ] TN15 Release/versioning impact assessed: `--json` schemas for `arc init`/`arc apply`/`arc lint` gain no removed/renamed fields (additive only, if any); removing `internal/app/config`'s HTTP fetcher removes an internal dependency, not a scriptable-output contract change — no major-version implication (Principle XIV)
+- [X] TN04 Major decisions recorded in [adrs/](../../adrs/) with correct numbering, if a new architectural pattern was introduced beyond what ADR 001/002 already cover (Principle I) — none expected; confirm during review that the `internal/core`/`schema` boundary decision (research.md D1) is fully explained in this plan rather than requiring a new ADR
+- [X] TN05 Domain logic uses ports (interfaces); `graph.port.SchemaRegistry` is satisfied structurally with no direct `internal/app/graph` → `internal/app/schema` import (Principle III, ADR 001 rule 1)
+- [X] TN06 Unit tests were written first, compiled, and failed semantically before implementation (Principle VI)
+- [X] TN07 Unit and E2E tests use `github.com/fogfish/it/v2` exclusively — no `testify` or stdlib-only comparisons mixed in (Principle VI, [Mandatory Libraries & Tooling](../../.specify/memory/constitution.md#mandatory-libraries--tooling))
+- [X] TN08 No Bash scripts were used for unit-level code correctness validation (Principle VI)
+- [X] TN09 `internal/app/schema` introduces no new external integration (no adapter added); the one new port (`graph.port.SchemaRegistry`) follows the existing structural-satisfaction pattern with no vendor type leaking through it (Principle VII)
+- [X] TN10 Terminal output respects TTY detection, `NO_COLOR`, `--quiet`/`--verbose`; no new styling introduced beyond the existing `internal/bios` kernel (Principle X)
+- [X] TN11 Configuration precedence respected; `internal/app/config`'s remaining `Load`/`Save` infra introduces no new configuration surface; no secrets logged (Principle XI)
+- [X] TN12 No command/flag help text changes required — confirm no drift was introduced incidentally (Principle XII)
+- [X] TN13 E2E tests from Phase 2d turned GREEN and changed minimally during implementation (Principle VIII)
+- [X] TN14 All spec.md US1–US3 acceptance scenarios have a passing, colocated E2E test in `cmd/arc/ctrl/init_test.go`, `cmd/arc/graph/apply_test.go`, and `cmd/arc/lint/lint_test.go` (Principle VIII)
+- [X] TN15 Release/versioning impact assessed: `--json` schemas for `arc init`/`arc apply`/`arc lint` gain no removed/renamed fields (additive only, if any); removing `internal/app/config`'s HTTP fetcher removes an internal dependency, not a scriptable-output contract change — no major-version implication (Principle XIV)
 
 ---
 

@@ -36,6 +36,32 @@ func (r *fakeReporter) Step(label string)          { r.steps = append(r.steps, l
 func (r *fakeReporter) Done(string, time.Duration) {}
 func (r *fakeReporter) Error(string, error)        {}
 
+var coreMergeRulesFixture = core.MergeRuleSet{
+	"source":   core.MergeNone,
+	"entity":   core.MergeUnion,
+	"resource": core.MergeUnionFirstWriter,
+	"timeline": core.MergeAppend,
+}
+
+var emptyPredicates = map[string]bool{}
+
+// fakeSchema records every RegisterKind/RegisterPredicate call, for
+// asserting graph.Apply's auto-discovery hook (spec.md US2).
+type fakeSchema struct {
+	registeredKinds      []core.Kind
+	registeredPredicates []string
+}
+
+func (f *fakeSchema) RegisterKind(store fsys.Store, kind core.Kind) (bool, error) {
+	f.registeredKinds = append(f.registeredKinds, kind)
+	return true, nil
+}
+
+func (f *fakeSchema) RegisterPredicate(store fsys.Store, predicate string) (bool, error) {
+	f.registeredPredicates = append(f.registeredPredicates, predicate)
+	return true, nil
+}
+
 type memFileInfo struct{ name string }
 
 func (i memFileInfo) Name() string       { return i.name }
@@ -246,7 +272,7 @@ func TestApplyGuardNotAGraph(t *testing.T) {
 	store := newMemStore()
 	store.files["patch.md"] = []byte(minimalSourcePatch)
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, &graphmock.VCS{}, bios.NewReporter(true, true), core.CoreMergeRules, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, &graphmock.VCS{}, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.True(errors.Is(err, service.ErrNotAGraph)))
 }
@@ -254,7 +280,7 @@ func TestApplyGuardNotAGraph(t *testing.T) {
 func TestApplyGuardPatchReadFailure(t *testing.T) {
 	store := newGraphStore()
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, &graphmock.VCS{}, bios.NewReporter(true, true), core.CoreMergeRules, "/graph", "/missing.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, &graphmock.VCS{}, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/missing.md")
 
 	it.Then(t).Should(it.True(errors.Is(err, service.ErrPatchRead)))
 }
@@ -264,7 +290,7 @@ func TestApplySkipsWhenAlreadyTracked(t *testing.T) {
 	store.files["patch.md"] = []byte(minimalSourcePatch)
 	vcs := &graphmock.VCS{Tracked: map[string]bool{"sources/foo-2026-x.md": true}}
 
-	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), core.CoreMergeRules, "/graph", "/patch.md")
+	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -279,7 +305,7 @@ func TestApplyCreatesNewNode(t *testing.T) {
 	store.files["patch.md"] = []byte(minimalSourcePatch)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), core.CoreMergeRules, "/graph", "/patch.md")
+	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -296,7 +322,7 @@ func TestApplyMergesExistingNode(t *testing.T) {
 	store.files["entities/Widget.md"] = []byte(existingWidgetEntity)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), core.CoreMergeRules, "/graph", "/patch.md")
+	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -317,7 +343,7 @@ func TestApplyFlagsConflict(t *testing.T) {
 	store.files["resources/Widget Spec.md"] = []byte(existingWidgetSpecResourceWithStatus)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), core.CoreMergeRules, "/graph", "/patch.md")
+	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, len(result.Conflicts)))
@@ -334,7 +360,7 @@ func TestApplyUnregisteredKindWarns(t *testing.T) {
 	store.files["patch.md"] = []byte(domainKindPatch)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), core.CoreMergeRules, "/graph", "/patch.md")
+	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -347,12 +373,56 @@ func TestApplyRegisteredKindNoWarning(t *testing.T) {
 	store := newGraphStore()
 	store.files["patch.md"] = []byte(domainKindPatch)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
-	rules := core.CoreMergeRules.Union(core.MergeRuleSet{"hypothesis": core.MergeValidatedOverwrite})
+	rules := coreMergeRulesFixture.Union(core.MergeRuleSet{"hypothesis": core.MergeValidatedOverwrite})
 
-	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), rules, "/graph", "/patch.md")
+	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), rules, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(0, len(result.Warnings)))
+}
+
+// arc apply — spec.md US2: an unregistered kind is also registered into
+// _schema/ via the SchemaRegistry port, in the same call as the triggering
+// patch (research.md D3).
+func TestApplyUnregisteredKindRegistersSchemaKind(t *testing.T) {
+	store := newGraphStore()
+	store.files["patch.md"] = []byte(domainKindPatch)
+	vcs := &graphmock.VCS{CommitHash: "abc123"}
+	schema := &fakeSchema{}
+
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, schema, "/graph", "/patch.md")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Seq(schema.registeredKinds).Contain(core.Kind("hypothesis")))
+}
+
+// arc apply — spec.md US2: a previously-unseen predicate declared in a
+// patch-carried node is registered into _schema/predicates/ too.
+func TestApplyUnregisteredPredicateRegistersSchemaPredicate(t *testing.T) {
+	store := newGraphStore()
+	store.files["patch.md"] = []byte(sourceEntityPatch)
+	vcs := &graphmock.VCS{CommitHash: "abc123"}
+	schema := &fakeSchema{}
+
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, schema, "/graph", "/patch.md")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Seq(schema.registeredPredicates).Contain("replaces"))
+}
+
+// arc apply — spec.md US2 Acceptance Scenario 3: an already-registered
+// predicate is not re-registered.
+func TestApplyRegisteredPredicateNotReRegistered(t *testing.T) {
+	store := newGraphStore()
+	store.files["patch.md"] = []byte(sourceEntityPatch)
+	vcs := &graphmock.VCS{CommitHash: "abc123"}
+	schema := &fakeSchema{}
+	predicates := map[string]bool{"replaces": true}
+
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, predicates, schema, "/graph", "/patch.md")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(0, len(schema.registeredPredicates)))
 }
 
 func TestApplyCommitErrorPropagates(t *testing.T) {
@@ -360,7 +430,7 @@ func TestApplyCommitErrorPropagates(t *testing.T) {
 	store.files["patch.md"] = []byte(minimalSourcePatch)
 	vcs := &graphmock.VCS{CommitErr: errors.New("commit failed")}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), core.CoreMergeRules, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).ShouldNot(it.Nil(err))
 }
@@ -370,7 +440,7 @@ func TestApplyTimelineEntriesCreated(t *testing.T) {
 	store.files["patch.md"] = []byte(minimalSourcePatch)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), core.CoreMergeRules, "/graph", "/patch.md")
+	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Seq(result.Timeline).Equal("2026", "2026-04"))
@@ -390,7 +460,7 @@ func TestApplyYearlyTimelinePeriodFileParsesViaCoreParseNode(t *testing.T) {
 	store.files["patch.md"] = []byte(minimalSourcePatch)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), core.CoreMergeRules, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
 	it.Then(t).Should(it.Nil(err))
 
 	yearly := store.files["timeline/yearly/2026.md"]
@@ -412,7 +482,7 @@ func TestApplyReportsStepPerNode(t *testing.T) {
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 	reporter := &fakeReporter{}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, reporter, core.CoreMergeRules, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, reporter, coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -431,7 +501,7 @@ func TestApplyReportsStepConflictFlagged(t *testing.T) {
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 	reporter := &fakeReporter{}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, reporter, core.CoreMergeRules, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, reporter, coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal("Widget Spec: merged (conflict flagged)", reporter.steps[1]))
