@@ -9,7 +9,7 @@ func ParsePatch(r io.Reader) (Patch, error)
 func ParseNode(r io.Reader) (Node, error)
 ```
 
-- `ParsePatch` — CORE §12.2/§12.3. Returns `ErrManifestInvalid` if `kind`/`document`/`published` are missing from the front-matter manifest; `ErrPatchStructure` if the body does not resolve to H1-kind/H2-node sections with a fenced ` ```yaml ` block per node.
+- `ParsePatch` — CORE §12.2/§12.3. Returns `ErrManifestInvalid` if `kind`/`document`/`published` are missing from the front-matter manifest; `ErrPatchStructure` if the body does not resolve to H1-kind/H2-node sections with a fenced ` ```yaml ` block per node. A `kind: timeline` H1 section parses like any other — `ParsePatch` does not special-case it; it is `internal/app/graph/service.Apply`'s job to fold it into the tool's own derived timeline index rather than reconstruct it as a generic node (research.md D8b, BUG-005/BUG-006, spec.md FR-025).
 - `ParseNode` — CORE §4/§9. Parses one on-disk graph node file (front-matter + body) into a `Node`, used both to read an existing node before merging (research.md D6) and to read an existing timeline period file before inserting an entry (research.md D8).
 - Both preserve unrecognized front-matter attributes verbatim in `Attrs` (AST invariant 5).
 - Both **strip** `[[Target]]`/`[[Target|alias]]`/`[predicate:: [[Target]]]` bracket markup found inline inside `text`/`notes` prose out of the returned `Node.Text`/`.Notes`, recording each occurrence as a `Link` appended to `HRefs` instead, in the order encountered (research.md D3/D3b). Standalone list-item edges (`- predicate:: [[Target]]`, not embedded in a prose sentence) are unaffected — those populate `Edges`/`Links`, never `HRefs`.

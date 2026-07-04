@@ -139,6 +139,40 @@ No fenced yaml block here.
 	it.Then(t).Should(it.True(errors.Is(err, core.ErrPatchStructure)))
 }
 
+// BUG-006 (corrects BUG-005's over-broad fix): a real extraction pipeline
+// intentionally emits a "# Timeline" section alongside a document's own
+// "# Source" section — ParsePatch parses it as an ordinary H1-kind/H2-node
+// section like any other; it is internal/app/graph/service.Apply's job
+// (not ParsePatch's) to fold it into the tool's own derived timeline index
+// rather than writing it as a generic node file (research.md D8b revised).
+func TestParsePatchTimelineKindSectionParsesAsOrdinaryNode(t *testing.T) {
+	fixture := `---
+kind: patch
+document: foo-2026-x
+published: 2026-07-12
+---
+# Source
+
+## foo-2026-x
+` + "```yaml\n```\n" + `
+text.
+
+# Timeline
+
+## 2026-07
+` + "```yaml\ngranularity: monthly\n```" + `
+- [[foo-2026-x]]
+`
+	patch, err := core.ParsePatch(strings.NewReader(fixture))
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(2, len(patch.Nodes)))
+
+	timelineNode := patch.Nodes[1]
+	it.Then(t).
+		Should(it.Equal(core.Kind("timeline"), timelineNode.Kind)).
+		Should(it.Equal("2026-07", timelineNode.ID))
+}
+
 func TestParsePatchInlineWikilinkStrippedIntoHRefs(t *testing.T) {
 	fixture := `---
 kind: patch

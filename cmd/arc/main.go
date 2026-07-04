@@ -31,6 +31,13 @@ func humanize(err error) string {
 func main() {
 	cmd, err := newRootCmd().ExecuteC()
 	if err != nil {
+		// bios.ErrSilent (DS-07): the command already printed its complete
+		// result (e.g. arc lint's violation list) — exit non-zero with no
+		// second, redundant error line.
+		if err == bios.ErrSilent {
+			os.Exit(1)
+		}
+
 		// BUG-001: render only the single-line message through lipgloss —
 		// passing the whole multi-line block (blank lines + hint) into one
 		// Render() call hits the same block-padding bug fixed in

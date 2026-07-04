@@ -15,6 +15,7 @@ import (
 
 	"github.com/fogfish/arcnet-cli/cmd/arc/ctrl"
 	"github.com/fogfish/arcnet-cli/cmd/arc/graph"
+	"github.com/fogfish/arcnet-cli/cmd/arc/lint"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
 
@@ -51,6 +52,7 @@ Report issues at https://github.com/fogfish/arcnet-cli/issues`,
 
 	cmd.AddCommand(ctrl.NewInitCmd())
 	cmd.AddCommand(graph.NewApplyCmd())
+	cmd.AddCommand(lint.NewLintCmd())
 
 	return cmd
 }

@@ -10,6 +10,17 @@ package bios
 
 import "encoding/json"
 
+// ErrSilent is a sentinel a command's RunE returns purely to force a
+// non-zero exit code after it has already printed its own complete result
+// (DS-07) — e.g. arc lint reporting violations, not a refusal condition.
+// cmd/arc/main.go recognizes this exact value and exits 1 without
+// rendering a second, redundant error line.
+var ErrSilent error = errSilent{}
+
+type errSilent struct{}
+
+func (errSilent) Error() string { return "" }
+
 // Mode is the single resolved output mode for the current invocation.
 type Mode int
 

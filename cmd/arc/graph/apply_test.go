@@ -708,6 +708,81 @@ Just prose, no H1/H2 structure.
 	it.Then(t).Should(it.Error(out, err))
 }
 
+const patchWithExplicitTimelineSection = `---
+kind: patch
+document: foo-2026-x
+published: 2026-07-12
+title: "A Test Document"
+---
+# Source
+
+## foo-2026-x
+` + "```yaml" + `
+title: "A Test Document"
+published: "2026-07-12"
+` + "```" + `
+
+A test document.
+
+# Timeline
+
+## 2026-07
+` + "```yaml\ngranularity: monthly\n```" + `
+- [[foo-2026-x]]
+`
+
+// arc apply timeline.patch.md
+// BUG-006 (corrects BUG-005's over-broad "refuse the whole patch" fix): a
+// real extraction pipeline intentionally emits a "# Timeline" section
+// alongside a document's own "# Source" section — the tool must apply
+// such a patch successfully, folding the declared period into its own
+// derived timeline index (correctly named timeline/monthly|yearly/*.md,
+// never the generic per-kind "timelines/" folder that previously
+// collided with it).
+func TestApplyPatchCarriedTimelineSectionFoldedIntoIndex(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "timeline.patch.md", patchWithExplicitTimelineSection)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	_, statErr := os.Stat(filepath.Join(dir, "timelines"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+
+	monthly := readFile(t, filepath.Join(dir, "timeline", "monthly", "2026-07.md"))
+	yearly := readFile(t, filepath.Join(dir, "timeline", "yearly", "2026.md"))
+	it.Then(t).
+		Should(it.String(monthly).Contain("foo-2026-x")).
+		Should(it.String(yearly).Contain("foo-2026-x"))
+}
+
+// arc apply timeline.patch.md
+// BUG-006: a patch's explicitly-declared Timeline period may differ from
+// the month patch.Published itself derives (e.g. a later correction);
+// both monthly periods must end up populated, and the shared yearly
+// rollup must contain the entry exactly once (not duplicated).
+func TestApplyPatchCarriedTimelineSectionCascadesToYearlyForDifferentMonth(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	differentMonth := strings.ReplaceAll(patchWithExplicitTimelineSection, "2026-07-12", "2026-08-12")
+	patch := writePatchFile(t, dir, "timeline.patch.md", differentMonth)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	augustMonthly := readFile(t, filepath.Join(dir, "timeline", "monthly", "2026-08.md"))
+	julyMonthly := readFile(t, filepath.Join(dir, "timeline", "monthly", "2026-07.md"))
+	yearly := readFile(t, filepath.Join(dir, "timeline", "yearly", "2026.md"))
+	it.Then(t).
+		Should(it.String(augustMonthly).Contain("foo-2026-x")).
+		Should(it.String(julyMonthly).Contain("foo-2026-x")).
+		Should(it.String(yearly).Contain("foo-2026-x")).
+		Should(it.Equal(1, strings.Count(yearly, "foo-2026-x")))
+}
+
 // arc apply tls13.patch.md
 // Edge case: target directory is not an initialized graph
 func TestApplyTargetNotAGraphRefuses(t *testing.T) {
