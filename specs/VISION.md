@@ -148,7 +148,7 @@ Expose the full graph navigation surface as a [Model Context Protocol](https://m
 
 A user can verify the graph against every conformance rule in the CORE spec.
 
-- [ ] `arc lint` — run the full CORE §14 checklist across every node and report violations with file path and line number for each: valid YAML front-matter and `kind` field; unique basenames (CORE §3.2); every `[[link]]` resolves to an existing basename; `source` citekey `id` equals its basename (CORE §6.2); `entity` four-word decoded Sowa `category` (CORE §9.2.1); derived nodes link back to at least one `source` (CORE §3.4); predicates are camelCase and registered in `_meta/predicates.md` (CORE §7.3); citations use a registered `cito:`-aligned predicate (CORE §8); each document is exactly one `graph(ingest):` commit (CORE §11.1); extension kind conformance per the kind's profile checklist
+- [x] `arc lint` — run the full CORE §14 checklist across every node and report violations with file path and line number for each: valid YAML front-matter and `kind` field; unique basenames (CORE §3.2); every `[[link]]` resolves to an existing basename; `source` citekey `id` equals its basename (CORE §6.2); `entity` four-word decoded Sowa `category` (CORE §9.2.1); derived nodes link back to at least one `source` (CORE §3.4); predicates are camelCase and registered in `_meta/predicates.md` (CORE §7.3); citations use a registered `cito:`-aligned predicate (CORE §8); each document is exactly one `graph(ingest):` commit (CORE §11.1); extension kind conformance per the kind's profile checklist
 - [ ] `arc lint <basename>` — validate a single node in isolation; useful in a pre-commit hook
 - [ ] `arc lint --fix` — auto-correct violations that have a safe deterministic fix (e.g. missing `id` field equal to basename, incorrect citekey casing); flag the rest
 - [ ] yaml configurable lint rules for extensions
@@ -185,7 +185,7 @@ Graph exploration backed by the Phase 4 index for structured queries, and direct
 
 **Content search**
 
-- [ ] `arc grep [<filter>] <pattern>` — scan nodes matching the filter (see Filtering) for lines matching the regexp `<pattern>`; print `<kind>  <id>  <line-number>  <matched line>`, one match per output line; without a filter, scans every node file; suitable for piping to standard tools
+- [x] `arc grep [<filter>] <pattern>` — scan nodes matching the filter (see Filtering) for lines matching the regexp `<pattern>`; print `<kind>  <id>  <line-number>  <matched line>`, one match per output line; without a filter, scans every node file; suitable for piping to standard tools
 
 **Structured graph queries (index-backed)**
 

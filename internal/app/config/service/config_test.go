@@ -124,3 +124,26 @@ func TestSaveThenLoadRoundTrips(t *testing.T) {
 		Should(it.Nil(err)).
 		Should(it.Equal(kernel.Config{}, cfg))
 }
+
+func TestGrepConfigRoundTripsThroughLoadSave(t *testing.T) {
+	store := newFakeStore(nil)
+	cfg := kernel.Config{Grep: kernel.GrepConfig{Workers: 16, MaxLineWidth: 120}}
+	it.Then(t).Should(it.Nil(service.Save(store, cfg)))
+
+	store.files = map[string]string{kernel.ConfigPath: store.written[kernel.ConfigPath]}
+	loaded, err := service.Load(store)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.Equal(cfg, loaded))
+}
+
+func TestGrepConfigAbsentLoadsAsZeroValue(t *testing.T) {
+	store := newFakeStore(nil)
+
+	cfg, err := service.Load(store)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.Equal(kernel.GrepConfig{}, cfg.Grep))
+}

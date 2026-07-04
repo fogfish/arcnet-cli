@@ -24,9 +24,13 @@ type Schema struct {
 	StatusWarn lipgloss.Style
 	StatusFail lipgloss.Style
 	Hint       lipgloss.Style
-	IconOK     string
-	IconWarn   string
-	IconFail   string
+	// Match highlights a search hit within a line of text (arc grep,
+	// specs/006-arc-grep-content-search, research.md D11) — a no-op in
+	// SCHEMA_PLAIN so piped/non-TTY output is never altered.
+	Match    lipgloss.Style
+	IconOK   string
+	IconWarn string
+	IconFail string
 }
 
 var SCHEMA_PLAIN = Schema{
@@ -34,6 +38,7 @@ var SCHEMA_PLAIN = Schema{
 	StatusWarn: lipgloss.NewStyle(),
 	StatusFail: lipgloss.NewStyle(),
 	Hint:       lipgloss.NewStyle(),
+	Match:      lipgloss.NewStyle(),
 }
 
 var SCHEMA_COLOR = Schema{
@@ -41,6 +46,7 @@ var SCHEMA_COLOR = Schema{
 	StatusWarn: lipgloss.NewStyle().Foreground(lipgloss.Color("3")),
 	StatusFail: lipgloss.NewStyle().Foreground(lipgloss.Color("1")),
 	Hint:       lipgloss.NewStyle().Faint(true),
+	Match:      lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ad0000")),
 	IconOK:     "✅ ",
 	IconWarn:   "  ",
 	IconFail:   "❌ ",

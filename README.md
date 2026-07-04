@@ -17,6 +17,7 @@ go build -o arc ./cmd/arc
 ./arc init
 ./arc apply rescorla-2026-tls13.patch.md
 ./arc lint
+./arc grep TLS
 ```
 
 `arc init` bootstraps a new, empty knowledge graph in the current directory (or an optional target directory): the canonical folder layout, a first-class, versioned `_schema/` seeded with every ARCNET-CORE node kind and predicate, the `.arc/` local state directory, a `.gitignore`, and a single initial git commit. Initialization is fully offline — no network access required.
@@ -25,4 +26,6 @@ go build -o arc ./cmd/arc
 
 `arc lint` validates the graph against the full CORE §14 conformance checklist — front-matter/kind, unique basenames, resolvable links, source citekey identity, entity Sowa category, predicate registration, citation predicates, one ingest commit per document, and absence of merge-conflict markers — reporting every violation with its file and line. `_schema/` documents are exempt from these checks. It is strictly read-only.
 
-See [specs/001-cli-infrastructure/quickstart.md](specs/001-cli-infrastructure/quickstart.md), [specs/002-arc-init/quickstart.md](specs/002-arc-init/quickstart.md), [specs/003-apply-patch/quickstart.md](specs/003-apply-patch/quickstart.md), [specs/004-arc-lint/quickstart.md](specs/004-arc-lint/quickstart.md), and [specs/005-graph-schema-first-class/quickstart.md](specs/005-graph-schema-first-class/quickstart.md) for the full development quickstarts.
+`arc grep <pattern>` scans every node file's content for lines matching a regexp, optionally narrowed by a `--kind`/`--tag`/`--attr` filter (see Filtering in [specs/VISION.md](specs/VISION.md)), printing one `<kind>  <id>  <line>  <text>` row per match — suitable for piping to standard tools. It is strictly read-only.
+
+See [specs/001-cli-infrastructure/quickstart.md](specs/001-cli-infrastructure/quickstart.md), [specs/002-arc-init/quickstart.md](specs/002-arc-init/quickstart.md), [specs/003-apply-patch/quickstart.md](specs/003-apply-patch/quickstart.md), [specs/004-arc-lint/quickstart.md](specs/004-arc-lint/quickstart.md), [specs/005-graph-schema-first-class/quickstart.md](specs/005-graph-schema-first-class/quickstart.md), and [specs/006-arc-grep-content-search/quickstart.md](specs/006-arc-grep-content-search/quickstart.md) for the full development quickstarts.
