@@ -342,6 +342,11 @@ func TestGrepVerboseShowsFullLineColorModeTruncatesDefault(t *testing.T) {
 	longLine := "TLS 1.3 removes support for static RSA key exchange, replacing it with ephemeral Diffie-Hellman key agreement for every handshake, a change motivated entirely by forward secrecy."
 	content := "---\nkind: source\nid: longline-2026-doc\n---\n# longline-2026-doc\n\n" + longLine + "\n"
 	writeGrepNode(t, dir, "sources/longline-2026-doc.md", content)
+	// Pinned explicitly rather than relying on the built-in default, so
+	// this test stays correct regardless of that default's own value —
+	// only that *some* configured width shorter than longLine triggers
+	// truncation is under test here.
+	writeGrepNode(t, dir, ".arc/config.yml", "grep:\n  maxLineWidth: 80\n")
 	chdir(t, dir)
 
 	bios.SCHEMA = bios.SCHEMA_COLOR
