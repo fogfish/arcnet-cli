@@ -9,9 +9,11 @@
 // Package kernel holds the config (.arc/config.yml) domain's value types.
 package kernel
 
-import "github.com/fogfish/arcnet-cli/internal/core"
+// ConfigPath is the path, relative to a graph root, where a graph's
+// configuration lives.
+const ConfigPath = ".arc/config.yml"
 
-// Config is the on-disk shape of .arc/config.yml.
-type Config struct {
-	MergeRules core.MergeRuleSet `yaml:"mergeRules"`
-}
+// Config is the on-disk shape of .arc/config.yml. Empty until a future,
+// unrelated configuration need arrives — this feature's own schema data
+// lives under _schema/, not here (research.md D8).
+type Config struct{}

@@ -22,9 +22,9 @@ import (
 
 	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
 	"github.com/fogfish/arcnet-cli/internal/adapter/git"
-	appconfig "github.com/fogfish/arcnet-cli/internal/app/config"
 	appgraph "github.com/fogfish/arcnet-cli/internal/app/graph"
 	"github.com/fogfish/arcnet-cli/internal/app/graph/kernel"
+	appschema "github.com/fogfish/arcnet-cli/internal/app/schema"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
@@ -120,7 +120,7 @@ See more info https://github.com/fogfish/arcnet-cli`,
 				return err
 			}
 
-			rules, err := appconfig.Resolve(store)
+			rules, predicates, err := appschema.Resolve(store)
 			if err != nil {
 				return err
 			}
@@ -146,7 +146,7 @@ See more info https://github.com/fogfish/arcnet-cli`,
 				return err
 			}
 
-			result, err = appgraph.Apply(ctx, fsys.Local{}, vcs, reporter, rules, dir, patchPath)
+			result, err = appgraph.Apply(ctx, fsys.Local{}, vcs, reporter, rules, predicates, appschema.Component{}, dir, patchPath)
 			if err != nil {
 				return err
 			}

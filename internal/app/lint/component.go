@@ -25,6 +25,6 @@ import (
 
 // Lint validates the graph rooted at dir against the CORE §14 conformance
 // checklist. It is a thin delegator into service.Lint.
-func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, rules core.MergeRuleSet, dir string) (kernel.LintResult, error) {
-	return service.Lint(ctx, mounter, vcs, reporter, rules, dir)
+func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, rules core.MergeRuleSet, predicates map[string]bool, dir string) (kernel.LintResult, error) {
+	return service.Lint(ctx, mounter, vcs, reporter, rules, predicates, dir)
 }

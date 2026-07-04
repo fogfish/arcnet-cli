@@ -20,9 +20,9 @@ import (
 
 	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
 	"github.com/fogfish/arcnet-cli/internal/adapter/git"
-	appconfig "github.com/fogfish/arcnet-cli/internal/app/config"
 	applint "github.com/fogfish/arcnet-cli/internal/app/lint"
 	"github.com/fogfish/arcnet-cli/internal/app/lint/kernel"
+	appschema "github.com/fogfish/arcnet-cli/internal/app/schema"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
 
@@ -132,7 +132,7 @@ See more info https://github.com/fogfish/arcnet-cli`,
 				return err
 			}
 
-			rules, err := appconfig.Resolve(store)
+			rules, predicates, err := appschema.Resolve(store)
 			if err != nil {
 				return err
 			}
@@ -152,7 +152,7 @@ See more info https://github.com/fogfish/arcnet-cli`,
 				ctx = context.Background()
 			}
 
-			result, err = applint.Lint(ctx, fsys.Local{}, vcs, reporter, rules, dir)
+			result, err = applint.Lint(ctx, fsys.Local{}, vcs, reporter, rules, predicates, dir)
 			if err != nil {
 				return err
 			}

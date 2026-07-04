@@ -20,9 +20,8 @@ import (
 	"github.com/fogfish/arcnet-cli/internal/app/ctrl/service"
 )
 
-// Init bootstraps a new, empty knowledge graph at dir, seeding
-// .arc/config.yml with configSeed. It is a thin delegator into
-// service.Init.
-func Init(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, dir string, configSeed []byte) (kernel.InitResult, error) {
-	return service.Init(ctx, mounter, vcs, dir, configSeed)
+// Init bootstraps a new, empty knowledge graph at dir, seeding _schema/
+// with schemaSeed. It is a thin delegator into service.Init.
+func Init(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, dir string, schemaSeed map[string]string) (kernel.InitResult, error) {
+	return service.Init(ctx, mounter, vcs, dir, schemaSeed)
 }

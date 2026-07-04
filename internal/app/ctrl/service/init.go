@@ -18,7 +18,6 @@ import (
 	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
 	"github.com/fogfish/arcnet-cli/internal/app/ctrl/kernel"
 	"github.com/fogfish/arcnet-cli/internal/app/ctrl/port"
-	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
 const (
@@ -43,11 +42,19 @@ var (
 )
 
 // Init bootstraps a new, empty knowledge graph at dir: the canonical folder
-// layout, _meta/ registry stubs, .arc/ state directory, .arc/config.yml
-// seeded with configSeed, .gitignore, and exactly one git commit. Any
-// failure after the target has been resolved leaves no partial graph state
-// behind (FR-013).
-func Init(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, dir string, configSeed []byte) (kernel.InitResult, error) {
+// layout, _schema/ seeded with schemaSeed, .arc/ state directory,
+// .gitignore, and exactly one git commit. Any failure after the target has
+// been resolved leaves no partial graph state behind (FR-013).
+func Init(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, dir string, schemaSeed map[string]string) (kernel.InitResult, error) {
+	layout := kernel.DefaultLayout
+	layout.SeedFiles = make(map[string]string, len(kernel.DefaultLayout.SeedFiles)+len(schemaSeed))
+	for k, v := range kernel.DefaultLayout.SeedFiles {
+		layout.SeedFiles[k] = v
+	}
+	for k, v := range schemaSeed {
+		layout.SeedFiles[k] = v
+	}
+
 	created, err := resolveLocalRoot(dir)
 	if err != nil {
 		return kernel.InitResult{}, err
@@ -59,45 +66,38 @@ func Init(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, dir string, c
 	}
 
 	if err := guardNotAlreadyInitialized(store, dir); err != nil {
-		rollback(store, dir, created)
+		rollback(store, dir, created, layout)
 		return kernel.InitResult{}, err
 	}
 
 	if err := guardTargetEmpty(store, dir); err != nil {
-		rollback(store, dir, created)
+		rollback(store, dir, created, layout)
 		return kernel.InitResult{}, err
 	}
 
 	if err := vcs.IsAvailable(ctx); err != nil {
-		rollback(store, dir, created)
+		rollback(store, dir, created, layout)
 		return kernel.InitResult{}, ErrGitUnavailable.With(err)
 	}
 
-	layout := kernel.DefaultLayout
-	layout.MetaStubs = make(map[string]string, len(kernel.DefaultLayout.MetaStubs)+1)
-	for k, v := range kernel.DefaultLayout.MetaStubs {
-		layout.MetaStubs[k] = v
-	}
-	layout.MetaStubs[core.ConfigPath] = string(configSeed)
-
 	if err := writeLayout(store, layout); err != nil {
-		rollback(store, dir, created)
+		rollback(store, dir, created, layout)
 		return kernel.InitResult{}, err
 	}
 
 	if err := vcs.Init(ctx, dir); err != nil {
-		rollback(store, dir, created)
+		rollback(store, dir, created, layout)
 		return kernel.InitResult{}, err
 	}
 
 	if err := vcs.StageAll(ctx, dir); err != nil {
-		rollback(store, dir, created)
+		rollback(store, dir, created, layout)
 		return kernel.InitResult{}, err
 	}
 
 	hash, err := vcs.Commit(ctx, dir, initCommitMessage)
 	if err != nil {
-		rollback(store, dir, created)
+		rollback(store, dir, created, layout)
 		return kernel.InitResult{}, err
 	}
 
@@ -141,7 +141,7 @@ func writeLayout(store fsys.Store, layout kernel.ArcNetCoreLayout) error {
 		}
 	}
 
-	for path, content := range layout.MetaStubs {
+	for path, content := range layout.SeedFiles {
 		if err := writeFile(store, path, content); err != nil {
 			return err
 		}
@@ -155,7 +155,7 @@ func writeLayout(store fsys.Store, layout kernel.ArcNetCoreLayout) error {
 }
 
 func hasStub(layout kernel.ArcNetCoreLayout, folder string) bool {
-	for path := range layout.MetaStubs {
+	for path := range layout.SeedFiles {
 		if strings.HasPrefix(path, folder+"/") {
 			return true
 		}
@@ -184,21 +184,20 @@ func writeFile(store fsys.Store, path, content string) error {
 // rollback undoes a failed initialization. When created is true, the whole
 // directory was this run's own creation, so one RemoveLocalRoot call undoes
 // everything. Otherwise, only the fixed, statically-known set of paths
-// ArcNetCoreLayout describes is removed, tolerating not-found errors for
-// any that were never reached (research.md D4).
-func rollback(store fsys.Store, dir string, created bool) {
+// layout describes is removed, tolerating not-found errors for any that
+// were never reached (research.md D4).
+func rollback(store fsys.Store, dir string, created bool, layout kernel.ArcNetCoreLayout) {
 	if created {
 		_ = removeLocalRoot(dir)
 		return
 	}
 
-	for _, folder := range kernel.DefaultLayout.Folders {
+	for _, folder := range layout.Folders {
 		_ = store.Remove(folder + "/.gitkeep")
 	}
-	for path := range kernel.DefaultLayout.MetaStubs {
+	for path := range layout.SeedFiles {
 		_ = store.Remove(path)
 	}
-	_ = store.Remove(core.ConfigPath)
 	_ = store.Remove(arcStateMarker)
 	_ = store.Remove(gitignorePath)
 }

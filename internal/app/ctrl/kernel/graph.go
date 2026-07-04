@@ -25,7 +25,7 @@ func (g GraphRoot) MarshalJSON() ([]byte, error) {
 // must contain. Not user-configurable in this feature.
 type ArcNetCoreLayout struct {
 	Folders   []string
-	MetaStubs map[string]string
+	SeedFiles map[string]string
 }
 
 var DefaultLayout = ArcNetCoreLayout{
@@ -35,12 +35,10 @@ var DefaultLayout = ArcNetCoreLayout{
 		"resources",
 		"timeline/yearly",
 		"timeline/monthly",
-		"_meta",
+		"_schema/nodes",
+		"_schema/predicates",
 	},
-	MetaStubs: map[string]string{
-		"_meta/predicates.md": "# Predicates\n",
-		"_meta/aliases.md":    "# Aliases\n",
-	},
+	SeedFiles: map[string]string{},
 }
 
 // InitResult is the domain value component.go's Init returns to

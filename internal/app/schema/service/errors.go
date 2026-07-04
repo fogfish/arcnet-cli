@@ -10,4 +10,6 @@ package service
 
 import "github.com/fogfish/faults"
 
-const ErrNotAGraph = faults.Safe1[string]("%s is not an initialized graph")
+// ErrSchemaWrite is returned when RegisterKind/RegisterPredicate fails to
+// write a new schema document.
+const ErrSchemaWrite = faults.Safe1[string]("failed to write schema document %s")

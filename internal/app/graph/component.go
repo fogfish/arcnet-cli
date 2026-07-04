@@ -23,6 +23,6 @@ import (
 
 // Apply ingests the patch at patchPath into the graph rooted at dir. It is
 // a thin delegator into service.Apply.
-func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, rules core.MergeRuleSet, dir, patchPath string) (kernel.ApplyResult, error) {
-	return service.Apply(ctx, mounter, vcs, reporter, rules, dir, patchPath)
+func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, rules core.MergeRuleSet, predicates map[string]bool, schema port.SchemaRegistry, dir, patchPath string) (kernel.ApplyResult, error) {
+	return service.Apply(ctx, mounter, vcs, reporter, rules, predicates, schema, dir, patchPath)
 }

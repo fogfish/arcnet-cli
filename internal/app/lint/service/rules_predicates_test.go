@@ -9,52 +9,13 @@
 package service
 
 import (
-	"errors"
-	"io/fs"
-	"strings"
 	"testing"
 
 	"github.com/fogfish/it/v2"
 
-	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
 	"github.com/fogfish/arcnet-cli/internal/app/lint/kernel"
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
-
-// predicatesMemStore is a minimal fsys.Store fake, local to this package's
-// (internal, non-_test-suffixed) tests, so unexported functions like
-// parsePredicateRegistry can be exercised directly.
-type predicatesMemStore struct {
-	files    map[string]string
-	openErrs map[string]error
-}
-
-func newMemStoreForPredicates() *predicatesMemStore {
-	return &predicatesMemStore{files: map[string]string{}, openErrs: map[string]error{}}
-}
-
-type predicatesMemFile struct{ *strings.Reader }
-
-func (f predicatesMemFile) Close() error               { return nil }
-func (f predicatesMemFile) Stat() (fs.FileInfo, error) { return nil, nil }
-
-func (s *predicatesMemStore) Open(name string) (fs.File, error) {
-	if err, ok := s.openErrs[name]; ok {
-		return nil, err
-	}
-	content, ok := s.files[name]
-	if !ok {
-		return nil, fs.ErrNotExist
-	}
-	return predicatesMemFile{strings.NewReader(content)}, nil
-}
-
-func (s *predicatesMemStore) Stat(name string) (fs.FileInfo, error)      { return nil, fs.ErrNotExist }
-func (s *predicatesMemStore) ReadDir(name string) ([]fs.DirEntry, error) { return nil, nil }
-func (s *predicatesMemStore) Create(name string) (fsys.File, error) {
-	return nil, errors.New("read-only fake")
-}
-func (s *predicatesMemStore) Remove(name string) error { return errors.New("read-only fake") }
 
 func TestCheckPredicateCaseValid(t *testing.T) {
 	node := core.Node{Edges: []core.Link{{Predicate: "mentions", Target: "X"}}}
@@ -120,34 +81,3 @@ func TestCheckCitationPredicateBareLinkExempt(t *testing.T) {
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
-func TestParsePredicateRegistryWellFormed(t *testing.T) {
-	s := newMemStoreForPredicates()
-	s.files[predicatesPath] = "# Predicates\n\n- `mentions` — a document mentions an entity\n- `cites` — a citation\n"
-
-	registry, err := parsePredicateRegistry(s)
-
-	it.Then(t).Should(it.Nil(err))
-	it.Then(t).
-		Should(it.True(registry["mentions"])).
-		Should(it.True(registry["cites"])).
-		Should(it.Equal(2, len(registry)))
-}
-
-func TestParsePredicateRegistryAbsentFile(t *testing.T) {
-	s := newMemStoreForPredicates()
-
-	registry, err := parsePredicateRegistry(s)
-
-	it.Then(t).
-		Should(it.Nil(err)).
-		Should(it.Equal(0, len(registry)))
-}
-
-func TestParsePredicateRegistryReadFailure(t *testing.T) {
-	s := newMemStoreForPredicates()
-	s.openErrs[predicatesPath] = errors.New("boom")
-
-	_, err := parsePredicateRegistry(s)
-
-	it.Then(t).ShouldNot(it.Nil(err))
-}

@@ -1,5 +1,12 @@
 # Changelog
 
+# 2026-07-04
+
+/speckit-specify Make a schema as a first class citizen of the graph. Instead of `_meta` and `.arc/config` a new folder `_schema` is defined. The folder contains subfolders: (a) `nodes/` contains a document per node kind (e.g. entity.md) and `predicates/` contains a documents per predicate (e.g. related.md). Each of them has `id` equal to file base name (equal to name of this entity) and `kind: schema`. The nodes document also contains a `merge` attribute. It substitude `.arc/config` behaviour. The schema is created by `arc init` for core specification (see https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-CORE.md). The schema is extended by `arc apply` when new node kind or predicate is discovered in the graph. 
+
+/speckit-plan schema as own domain `internal/app/schema`. Remove "merge" configurability from `.arc/config` but keep the config infrastructure alive, just remove the github downloader, it is not relevant anymore. Integrate `schema` domain with `apply` and `init`. Isolate ALL ARCNET-CORE abstractions, definitions, const and invariants within `schema` domain. It MUST BE a single entity in the app that has dependencies to https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-CORE.md specification. 
+
+
 # 2026-07-03
 
 /speckit-specify `arc lint` — run the full CORE §14 checklist across every node and report violations with file path and line number for each: valid YAML front-matter and `kind` field; unique basenames (CORE §3.2); every `[[link]]` resolves to an existing basename; `source` citekey `id` equals its basename (CORE §6.2); `entity` four-word decoded Sowa `category` (CORE §9.2.1); derived nodes link back to at least one `source` (CORE §3.4); predicates are camelCase and registered in `_meta/predicates.md` (CORE §7.3); citations use a registered `cito:`-aligned predicate (CORE §8); each document is exactly one `graph(ingest):` commit (CORE §11.1); extension kind conformance per the kind's profile checklist and graph nodes does not have any active merge conflicts.

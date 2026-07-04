@@ -164,13 +164,19 @@ A test entity.
 - mentions:: [[foo-2026-x]]
 `
 
-const predicatesRegistryFixture = "# Predicates\n\n- `mentions` — a document mentions an entity or resource\n"
+var coreMergeRulesFixture = core.MergeRuleSet{
+	"source":   core.MergeNone,
+	"entity":   core.MergeUnion,
+	"resource": core.MergeUnionFirstWriter,
+	"timeline": core.MergeAppend,
+}
+
+var predicatesFixture = map[string]bool{"mentions": true}
 
 func newConformantStore() *memStore {
 	s := newMemStore()
 	s.files["sources/foo-2026-x.md"] = conformantSourceFixture
 	s.files["entities/Widget.md"] = conformantEntityFixture
-	s.files["_meta/predicates.md"] = predicatesRegistryFixture
 	return s
 }
 
@@ -178,7 +184,7 @@ func TestLintGuardNotAGraph(t *testing.T) {
 	s := newMemStore()
 	delete(s.dirs, ".arc")
 
-	_, err := service.Lint(context.Background(), memMounter{s}, &lintmock.VCS{}, bios.NewReporter(true, true), core.CoreMergeRules, "/graph")
+	_, err := service.Lint(context.Background(), memMounter{s}, &lintmock.VCS{}, bios.NewReporter(true, true), coreMergeRulesFixture, predicatesFixture, "/graph")
 
 	it.Then(t).Should(it.True(errors.Is(err, service.ErrNotAGraph)))
 }
@@ -187,7 +193,7 @@ func TestLintConformantGraphAllPass(t *testing.T) {
 	s := newConformantStore()
 	vcs := &lintmock.VCS{Commits: map[string][]string{"Source-Id: foo-2026-x": {"abc123"}}}
 
-	result, err := service.Lint(context.Background(), memMounter{s}, vcs, bios.NewReporter(true, true), core.CoreMergeRules, "/graph")
+	result, err := service.Lint(context.Background(), memMounter{s}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, predicatesFixture, "/graph")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -197,13 +203,13 @@ func TestLintConformantGraphAllPass(t *testing.T) {
 		Should(it.Equal(0, len(result.Violations)))
 }
 
-func TestLintExcludesArcAndMetaStubs(t *testing.T) {
+func TestLintExcludesArcAndSchema(t *testing.T) {
 	s := newConformantStore()
-	s.files[".arc/config.yml"] = "mergeRules: {}\n"
-	s.files["_meta/aliases.md"] = "# Aliases\n"
+	s.files[".arc/config.yml"] = ""
+	s.files["_schema/nodes/entity.md"] = "---\nid: entity\nkind: schema\nmerge: union\n---\n# entity\n"
 	vcs := &lintmock.VCS{Commits: map[string][]string{"Source-Id: foo-2026-x": {"abc123"}}}
 
-	result, err := service.Lint(context.Background(), memMounter{s}, vcs, bios.NewReporter(true, true), core.CoreMergeRules, "/graph")
+	result, err := service.Lint(context.Background(), memMounter{s}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, predicatesFixture, "/graph")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(2, len(result.Nodes)))
@@ -212,10 +218,10 @@ func TestLintExcludesArcAndMetaStubs(t *testing.T) {
 func TestLintIncludesNodeInNonStandardFolder(t *testing.T) {
 	s := newConformantStore()
 	s.files["hypothesis/A Test Hypothesis.md"] = "---\nkind: hypothesis\ntitle: A Test Hypothesis\n---\n# A Test Hypothesis\n\nA conclusion.\n\n## Mentions\n- mentions:: [[foo-2026-x]]\n"
-	rules := core.CoreMergeRules.Union(core.MergeRuleSet{"hypothesis": core.MergeValidatedOverwrite})
+	rules := coreMergeRulesFixture.Union(core.MergeRuleSet{"hypothesis": core.MergeValidatedOverwrite})
 	vcs := &lintmock.VCS{Commits: map[string][]string{"Source-Id: foo-2026-x": {"abc123"}}}
 
-	result, err := service.Lint(context.Background(), memMounter{s}, vcs, bios.NewReporter(true, true), rules, "/graph")
+	result, err := service.Lint(context.Background(), memMounter{s}, vcs, bios.NewReporter(true, true), rules, predicatesFixture, "/graph")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(3, len(result.Nodes)))
@@ -226,7 +232,7 @@ func TestLintRecordsFrontMatterViolationWithoutAbortingWalk(t *testing.T) {
 	s.files["entities/Broken.md"] = "not valid front matter at all\n"
 	vcs := &lintmock.VCS{Commits: map[string][]string{"Source-Id: foo-2026-x": {"abc123"}}}
 
-	result, err := service.Lint(context.Background(), memMounter{s}, vcs, bios.NewReporter(true, true), core.CoreMergeRules, "/graph")
+	result, err := service.Lint(context.Background(), memMounter{s}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, predicatesFixture, "/graph")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(3, len(result.Nodes)))
@@ -246,7 +252,7 @@ func TestLintMergeConflictExcludesFileFromOtherChecks(t *testing.T) {
 	s.files["entities/Broken.md"] = "<<<<<<< HEAD\nkind: entity\n=======\nkind: entity\n>>>>>>> feature\n"
 	vcs := &lintmock.VCS{Commits: map[string][]string{"Source-Id: foo-2026-x": {"abc123"}}}
 
-	result, err := service.Lint(context.Background(), memMounter{s}, vcs, bios.NewReporter(true, true), core.CoreMergeRules, "/graph")
+	result, err := service.Lint(context.Background(), memMounter{s}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, predicatesFixture, "/graph")
 
 	it.Then(t).Should(it.Nil(err))
 	for _, n := range result.Nodes {
@@ -255,16 +261,4 @@ func TestLintMergeConflictExcludesFileFromOtherChecks(t *testing.T) {
 			it.Then(t).Should(it.Equal("mergeConflict", string(n.Violations[0].Rule)))
 		}
 	}
-}
-
-func TestLintPredicatesUnreadablePropagatesError(t *testing.T) {
-	s := newConformantStore()
-	delete(s.files, "_meta/predicates.md")
-	s.openErrs["_meta/predicates.md"] = errors.New("permission denied")
-
-	vcs := &lintmock.VCS{}
-
-	_, err := service.Lint(context.Background(), memMounter{s}, vcs, bios.NewReporter(true, true), core.CoreMergeRules, "/graph")
-
-	it.Then(t).ShouldNot(it.Nil(err))
 }

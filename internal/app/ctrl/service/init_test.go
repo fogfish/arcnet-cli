@@ -177,7 +177,7 @@ func TestInitSuccessWritesLayoutAndCommits(t *testing.T) {
 	it.Then(t).Should(it.Equal("abc123", result.CommitHash))
 	it.Then(t).Should(it.Equal("/target", result.Root.Root))
 	it.Then(t).Should(it.True(store.written["sources/.gitkeep"]))
-	it.Then(t).Should(it.True(store.written["_meta/predicates.md"]))
+	it.Then(t).Should(it.True(store.written["_schema/nodes/.gitkeep"]))
 	it.Then(t).Should(it.True(store.written[".arc/.gitkeep"]))
 	it.Then(t).Should(it.True(store.written[".gitignore"]))
 	it.Then(t).
@@ -196,22 +196,22 @@ func TestInitRollsBackOnCommitFailureWithoutCreatedRoot(t *testing.T) {
 
 	it.Then(t).ShouldNot(it.Nil(err))
 	it.Then(t).Should(it.Seq(store.removed).Contain(
-		"sources/.gitkeep", "_meta/predicates.md", ".arc/.gitkeep", ".gitignore", ".arc/config.yml",
+		"sources/.gitkeep", "_schema/nodes/.gitkeep", ".arc/.gitkeep", ".gitignore",
 	))
 }
 
-func TestInitWritesConfigSeedVerbatim(t *testing.T) {
+func TestInitWritesSchemaSeedVerbatim(t *testing.T) {
 	withStubbedResolve(t, false, nil)
 	store := newFakeStore()
 	vcs := &mock.VCS{CommitHash: "abc123"}
-	seed := []byte("mergeRules:\n  source: none\n")
+	seed := map[string]string{"_schema/nodes/source.md": "---\nid: source\nkind: schema\nmerge: none\n---\n# source\n"}
 
 	_, err := Init(context.Background(), fakeMounter{store: store}, vcs, "/target", seed)
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
-		Should(it.True(store.written[".arc/config.yml"])).
-		Should(it.Equal(string(seed), string(store.content[".arc/config.yml"])))
+		Should(it.True(store.written["_schema/nodes/source.md"])).
+		Should(it.Equal(seed["_schema/nodes/source.md"], string(store.content["_schema/nodes/source.md"])))
 }
 
 func TestInitRollsBackViaRemoveLocalRootWhenCreated(t *testing.T) {
