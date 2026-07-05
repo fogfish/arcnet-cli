@@ -10,6 +10,7 @@ package core_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/fogfish/it/v2"
 
@@ -22,10 +23,23 @@ func TestNodeZeroValue(t *testing.T) {
 	it.Then(t).
 		Should(it.Equal("", n.ID)).
 		Should(it.Equal(core.Kind(""), n.Kind)).
+		Should(it.True(n.Published.IsZero())).
 		Should(it.Equal(0, len(n.Attrs))).
 		Should(it.Equal(0, len(n.HRefs))).
 		Should(it.Equal(0, len(n.Edges))).
 		Should(it.Equal(0, len(n.Links)))
+}
+
+// data-model.md: Node.Published is a typed field, mirroring Patch's own
+// existing Published field — a Node literal that sets it retains it as an
+// ordinary struct field, no different from any other typed field.
+func TestNodePublishedRetainsSetValue(t *testing.T) {
+	published := time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)
+	n := core.Node{ID: "x", Kind: "source", Published: published}
+
+	it.Then(t).
+		ShouldNot(it.True(n.Published.IsZero())).
+		Should(it.Equal(published, n.Published))
 }
 
 func TestPatchZeroValue(t *testing.T) {

@@ -570,6 +570,35 @@ id: Hub
 		Should(it.String(stderr).Contain("truncated"))
 }
 
+const subgraphEntityWithPublished = `---
+kind: entity
+id: PublishedThing
+published: "2026-04-12"
+---
+# PublishedThing
+
+A published thing.
+`
+
+// arc subgraph PublishedThing --depth 0
+// Scenario 3 from spec.md US3 / FR-011: a node's own published value
+// survives arc subgraph's extraction unchanged, distinct from the
+// synthesized patch manifest's own published (today's extraction date,
+// research.md D11).
+func TestSubgraphPreservesPublishedValueUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	writeGrepNode(t, dir, "entities/PublishedThing.md", subgraphEntityWithPublished)
+	chdir(t, dir)
+
+	cmd := NewSubgraphCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("depth", "0")))
+	out, err := sut(cmd, []string{"PublishedThing"})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).Should(it.String(out).Contain(`published: "2026-04-12"`))
+}
+
 // BUG-001 regression: extracting with --stubs and applying the result into
 // a freshly initialized, otherwise empty graph must never leave a
 // dangling structural reference behind (spec SC-008: "zero unresolved-

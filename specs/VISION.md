@@ -208,6 +208,7 @@ A user can extract graph content in machine-readable or portable forms.
 - [ ] `arc export json [<filter>]` — export nodes matching the filter (see Filtering) as the ARCNET-AST JSON model (ARCNET-AST §4–§6); without a filter, exports all nodes; suitable for downstream tooling and LLM context injection
 - [ ] `arc export dot [<filter>]` — emit a GraphViz DOT file of the directed edge graph for nodes matching the filter, nodes labelled by basename, edges labelled by predicate
 - [ ] `arc export patch <source-id>` — re-serialize an ingested source and its derived nodes back into the patch exchange format (CORE §12); useful for sharing a subgraph
+- [ ] `arc config obsidian` - obsidian coloring pre-sets
 
 ---
 

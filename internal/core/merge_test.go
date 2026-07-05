@@ -11,6 +11,7 @@ package core_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fogfish/it/v2"
 
@@ -243,4 +244,61 @@ func TestMergeAllDocumentedOpsNeverReturnErrUnknownMergeOp(t *testing.T) {
 		_, _, err := core.Merge(existing, incoming, op, "incoming-doc")
 		it.Then(t).Should(it.Nil(err))
 	}
+}
+
+// research.md D3: Published fills once from incoming when existing.Published
+// is zero, for every non-"none" op, never flagged as a conflict.
+func TestMergePublishedFillsFromIncomingWhenExistingZero(t *testing.T) {
+	incomingPublished := time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)
+
+	for _, op := range []core.MergeOp{
+		core.MergeUnion, core.MergeUnionFirstWriter, core.MergeAppend, core.MergeValidatedOverwrite,
+	} {
+		existing := core.Node{ID: "x", Kind: "entity"}
+		incoming := core.Node{ID: "x", Kind: "entity", Published: incomingPublished}
+
+		merged, conflicts, err := core.Merge(existing, incoming, op, "incoming-doc")
+
+		it.Then(t).Should(it.Nil(err))
+		it.Then(t).
+			Should(it.Equal(incomingPublished, merged.Published)).
+			Should(it.Equal(0, len(conflicts)))
+	}
+}
+
+// research.md D3: Published, once non-zero on existing, is preserved
+// unchanged by a later merge even when incoming declares a different
+// value — first-writer-wins, never flagged.
+func TestMergePublishedPreservedWhenExistingAlreadySet(t *testing.T) {
+	existingPublished := time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)
+	incomingPublished := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+
+	for _, op := range []core.MergeOp{
+		core.MergeUnion, core.MergeUnionFirstWriter, core.MergeAppend, core.MergeValidatedOverwrite,
+	} {
+		existing := core.Node{ID: "x", Kind: "entity", Published: existingPublished}
+		incoming := core.Node{ID: "x", Kind: "entity", Published: incomingPublished}
+
+		merged, conflicts, err := core.Merge(existing, incoming, op, "incoming-doc")
+
+		it.Then(t).Should(it.Nil(err))
+		it.Then(t).
+			Should(it.Equal(existingPublished, merged.Published)).
+			Should(it.Equal(0, len(conflicts)))
+	}
+}
+
+// research.md D3: MergeNone's existing whole-node no-op leaves Published
+// untouched, matching every other field.
+func TestMergeNoneLeavesPublishedUntouched(t *testing.T) {
+	existingPublished := time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)
+	existing := core.Node{ID: "x", Kind: "source", Published: existingPublished}
+	incoming := core.Node{ID: "x", Kind: "source", Published: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)}
+
+	merged, conflicts, err := core.Merge(existing, incoming, core.MergeNone, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(existingPublished, merged.Published)).
+		Should(it.Equal(0, len(conflicts)))
 }

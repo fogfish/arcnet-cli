@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -1148,6 +1149,307 @@ A cryptographic protocol.
 **Related**
 - related:: [[Forward Secrecy]]
 `
+
+// extractQuotedAttr returns the value of a `key: "value"` front-matter line
+// within content, or "" if absent — used to compare timestamp attributes
+// (`indexed`/`updated`) written by two different node files from the same
+// arc apply invocation (spec.md FR-005/FR-009).
+func extractQuotedAttr(content, key string) string {
+	m := regexp.MustCompile(key + `: "([^"]+)"`).FindStringSubmatch(content)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+// arc apply tls13.patch.md
+// Scenario 1 from spec.md US1: a created ordinary node's published equals
+// the patch's own declared date.
+func TestApplyCreatedNodeCarriesPublishedFromPatch(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	source := readFile(t, filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	entity := readFile(t, filepath.Join(dir, "entities", "Transport Layer Security.md"))
+	it.Then(t).
+		Should(it.String(source).Contain(`published: "2026-04-12"`)).
+		Should(it.String(entity).Contain(`published: "2026-04-12"`))
+}
+
+// arc apply tls13.patch.md
+// Scenario 2 from spec.md US1: every node one application creates shares
+// an identical indexed value (FR-005).
+func TestApplyCreatedNodesShareIdenticalIndexedValue(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	source := readFile(t, filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	entity := readFile(t, filepath.Join(dir, "entities", "Transport Layer Security.md"))
+
+	sourceIndexed := extractQuotedAttr(source, "indexed")
+	entityIndexed := extractQuotedAttr(entity, "indexed")
+	it.Then(t).
+		ShouldNot(it.Equal("", sourceIndexed)).
+		Should(it.Equal(sourceIndexed, entityIndexed))
+}
+
+const stubEntityPatch = `---
+kind: patch
+document: foo-2026-stub
+published: 2026-04-12
+title: "Stub Test Document"
+---
+# Source
+
+## foo-2026-stub
+` + "```yaml" + `
+title: "Stub Test Document"
+published: "2026-04-12"
+` + "```" + `
+
+A stub test document.
+
+# Entity
+
+## StubEntity
+` + "```yaml\n```" + `
+`
+
+// arc apply stub.patch.md
+// Scenario 3 from spec.md US1: a minimal-stub patch section (kind/id only)
+// creates a node carrying neither published nor indexed.
+func TestApplyStubShapedSectionCreatesNodeWithNoPublishedOrIndexed(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "stub.patch.md", stubEntityPatch)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	content := readFile(t, filepath.Join(dir, "entities", "StubEntity.md"))
+	it.Then(t).
+		ShouldNot(it.String(content).Contain("published:")).
+		ShouldNot(it.String(content).Contain("indexed:"))
+}
+
+// arc apply note.patch.md
+// Scenario 4 from spec.md US1: an auto-registered _schema/ document carries
+// neither published nor indexed, exactly like a stub node.
+func TestApplyAutoRegisteredSchemaDocumentCarriesNoTimestamps(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "note.patch.md", notePatchWithHypothesis)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	schemaDoc := readFile(t, filepath.Join(dir, "_schema", "nodes", "hypothesis.md"))
+	it.Then(t).
+		ShouldNot(it.String(schemaDoc).Contain("published:")).
+		ShouldNot(it.String(schemaDoc).Contain("indexed:"))
+}
+
+// arc apply pqkex.patch.md
+// Scenario 1 from spec.md US2: a real merge stamps updated identical to
+// the same application's indexed value on a newly created node.
+func TestApplyRealMergeStampsUpdatedIdenticalToIndexed(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedNode(t, dir, "entities/Transport Layer Security.md", tlsEntitySeed)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "pqkex.patch.md", pqkexPatchMergingEntity)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	source := readFile(t, filepath.Join(dir, "sources", "chen-2026-pqkex.md"))
+	entity := readFile(t, filepath.Join(dir, "entities", "Transport Layer Security.md"))
+
+	sourceIndexed := extractQuotedAttr(source, "indexed")
+	entityUpdated := extractQuotedAttr(entity, "updated")
+	it.Then(t).
+		ShouldNot(it.Equal("", sourceIndexed)).
+		Should(it.Equal(sourceIndexed, entityUpdated))
+}
+
+const memoNoneSeed = `---
+kind: memo
+id: Widget
+title: Widget
+---
+# Widget
+
+Original text.
+`
+
+const memoNonePatch = `---
+kind: patch
+document: foo-2026-memo
+published: 2026-05-01
+title: "Memo Patch"
+---
+# Source
+
+## foo-2026-memo
+` + "```yaml" + `
+title: "Memo Patch"
+published: "2026-05-01"
+` + "```" + `
+
+A memo patch.
+
+# Memo
+
+## Widget
+` + "```yaml\n```" + `
+
+Changed text.
+`
+
+// arc apply memo.patch.md
+// Scenario 2 from spec.md US2: a "none"-behavior kind's existing no-op
+// guarantee holds — the file is byte-unchanged and no updated is added.
+func TestApplyNoneKindReContributionAddsNoUpdatedByteUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedSchemaNode(t, dir, "memo", "none")
+	seedNode(t, dir, "memos/Widget.md", memoNoneSeed)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "memo.patch.md", memoNonePatch)
+
+	before := readFile(t, filepath.Join(dir, "memos", "Widget.md"))
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	after := readFile(t, filepath.Join(dir, "memos", "Widget.md"))
+	it.Then(t).
+		Should(it.Equal(before, after)).
+		ShouldNot(it.String(after).Contain("updated:"))
+}
+
+const stubbedThingSeed = `---
+kind: entity
+id: StubbedThing
+---
+# StubbedThing
+`
+
+const patchFillsStubWithRealContent = `---
+kind: patch
+document: foo-2026-fill
+published: 2026-06-01
+title: "Fill Patch"
+---
+# Source
+
+## foo-2026-fill
+` + "```yaml" + `
+title: "Fill Patch"
+published: "2026-06-01"
+` + "```" + `
+
+A fill patch.
+
+# Entity
+
+## StubbedThing
+` + "```yaml\npublished: \"2026-05-02\"\n```" + `
+
+Now has real content.
+`
+
+// arc apply fill.patch.md
+// Scenario 3 from spec.md US2: a stub later merged with real content fills
+// published (per that node's own merge rules, from the contribution's own
+// value — distinct from the patch manifest's own published) and gains
+// updated, but never gains indexed (only ever assigned at non-stub
+// creation, and this node's creation was a stub).
+func TestApplyStubMergedWithRealContentFillsPublishedAndUpdatedNeverIndexed(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedNode(t, dir, "entities/StubbedThing.md", stubbedThingSeed)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "fill.patch.md", patchFillsStubWithRealContent)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	content := readFile(t, filepath.Join(dir, "entities", "StubbedThing.md"))
+	it.Then(t).
+		Should(it.String(content).Contain(`published: "2026-05-02"`)).
+		ShouldNot(it.String(content).Contain("indexed:"))
+
+	updated := extractQuotedAttr(content, "updated")
+	it.Then(t).ShouldNot(it.Equal("", updated))
+}
+
+const noOpUnionEntitySeed = `---
+kind: entity
+title: Widget
+category: [independent, abstract, occurrent, script]
+---
+# Widget
+
+A test entity.
+- replaces:: [[Old Widget]]
+`
+
+const noOpUnionPatch = `---
+kind: patch
+document: foo-2026-noop
+published: 2026-05-03
+title: "No-op Patch"
+---
+# Source
+
+## foo-2026-noop
+` + "```yaml" + `
+title: "No-op Patch"
+published: "2026-05-03"
+` + "```" + `
+
+A no-op patch.
+
+# Entity
+
+## Widget
+` + "```yaml" + `
+category: [independent, abstract, occurrent, script]
+` + "```" + `
+
+A test entity.
+- replaces:: [[Old Widget]]
+`
+
+// arc apply noop.patch.md
+// Scenario 4 from spec.md US2: a non-"none" (union) re-contribution that
+// nets out identical to the file's prior content adds no updated.
+func TestApplyNoOpUnionReContributionAddsNoUpdated(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedNode(t, dir, "entities/Widget.md", noOpUnionEntitySeed)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "noop.patch.md", noOpUnionPatch)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	content := readFile(t, filepath.Join(dir, "entities", "Widget.md"))
+	it.Then(t).ShouldNot(it.String(content).Contain("updated:"))
+}
 
 // arc apply tls13.patch.md
 // BUG-003 / spec.md FR-004: a patch using CORE §12.2's canonical

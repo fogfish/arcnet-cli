@@ -103,6 +103,8 @@ func ParseNode(r io.Reader) (Node, error) {
 		return Node{}, ErrManifestInvalid.With(errNoCause)
 	}
 
+	published, manifest := extractPublished(manifest)
+
 	attrs := map[string]any{}
 	for k, v := range manifest {
 		if k == "kind" {
@@ -121,15 +123,36 @@ func ParseNode(r io.Reader) (Node, error) {
 	text, notes, hrefs, edges, links := walkNodeBody(children, source)
 
 	return Node{
-		ID:    id,
-		Kind:  Kind(kindValue),
-		Attrs: attrs,
-		Text:  text,
-		Notes: notes,
-		HRefs: hrefs,
-		Edges: edges,
-		Links: links,
+		ID:        id,
+		Kind:      Kind(kindValue),
+		Published: published,
+		Attrs:     attrs,
+		Text:      text,
+		Notes:     notes,
+		HRefs:     hrefs,
+		Edges:     edges,
+		Links:     links,
 	}, nil
+}
+
+// extractPublished pulls a "published" key out of a raw front-matter/yaml-
+// fence map, decoding it via the same decodeManifestDate decodePatchManifest
+// already uses, and returns the remaining map with that key removed
+// (research.md D2) — used by both ParseNode and parsePatchBody's per-node
+// construction, so "published" is never left behind as a generic Attrs key.
+func extractPublished(manifest map[string]any) (time.Time, map[string]any) {
+	published, _ := decodeManifestDate(manifest["published"])
+	if _, ok := manifest["published"]; !ok {
+		return published, manifest
+	}
+	out := make(map[string]any, len(manifest)-1)
+	for k, v := range manifest {
+		if k == "published" {
+			continue
+		}
+		out[k] = v
+	}
+	return published, out
 }
 
 func deriveNodeID(manifest map[string]any) string {
@@ -282,6 +305,7 @@ func parsePatchBody(doc ast.Node, source []byte) ([]Node, error) {
 			if err != nil {
 				return nil, ErrPatchStructure.With(err)
 			}
+			published, attrs := extractPublished(attrs)
 
 			i += 2
 
@@ -293,14 +317,15 @@ func parsePatchBody(doc ast.Node, source []byte) ([]Node, error) {
 			text, notes, hrefs, edges, links := walkNodeBody(children[start:i], source)
 
 			nodes = append(nodes, Node{
-				ID:    id,
-				Kind:  currentKind,
-				Attrs: attrs,
-				Text:  text,
-				Notes: notes,
-				HRefs: hrefs,
-				Edges: edges,
-				Links: links,
+				ID:        id,
+				Kind:      currentKind,
+				Published: published,
+				Attrs:     attrs,
+				Text:      text,
+				Notes:     notes,
+				HRefs:     hrefs,
+				Edges:     edges,
+				Links:     links,
 			})
 			sawNode = true
 		}
@@ -657,7 +682,7 @@ func RenderPatch(p Patch) ([]byte, error) {
 		buf.WriteString("# " + titleCaseKind(string(kind)) + "\n")
 
 		for _, n := range nodes {
-			fence, err := renderAttrYAML("", n.ID, n.Attrs)
+			fence, err := renderAttrYAML("", n.ID, n.Published, n.Attrs)
 			if err != nil {
 				return nil, err
 			}
@@ -786,15 +811,15 @@ func markupFor(l Link) string {
 }
 
 func renderFrontMatter(n Node) ([]byte, error) {
-	return renderAttrYAML(n.Kind, n.ID, n.Attrs)
+	return renderAttrYAML(n.Kind, n.ID, n.Published, n.Attrs)
 }
 
 // renderAttrYAML renders a YAML mapping: kind first (when non-empty — a
 // patch-exchange node section's fence deliberately omits it, research.md
-// D2, by passing kind ""), then id, then every other attribute sorted
-// alphabetically. Shared by RenderNode's front-matter and RenderPatch's
-// per-node fence (research.md D2/D9), so both stay the single, structurally
-// correct place this shape is produced.
+// D2, by passing kind ""), then id, then every other attribute — including
+// published, when non-zero — sorted alphabetically. Shared by RenderNode's
+// front-matter and RenderPatch's per-node fence (research.md D2/D9), so
+// both stay the single, structurally correct place this shape is produced.
 //
 // AST §4: the identity field (id) MAY be repeated in attrs "for
 // convenience" — it is not mandatory there, since a node's true identity is
@@ -807,7 +832,7 @@ func renderFrontMatter(n Node) ([]byte, error) {
 // its citekey/identity commonly differ, so treating title-present as
 // id-present here silently dropped the real id (source-kind nodes hit this
 // in practice: their patch yaml fence always carries "title").
-func renderAttrYAML(kind Kind, id string, attrs map[string]any) ([]byte, error) {
+func renderAttrYAML(kind Kind, id string, published time.Time, attrs map[string]any) ([]byte, error) {
 	root := &yaml.Node{Kind: yaml.MappingNode}
 
 	if kind != "" {
@@ -822,14 +847,21 @@ func renderAttrYAML(kind Kind, id string, attrs map[string]any) ([]byte, error) 
 		}
 	}
 
-	keys := make([]string, 0, len(attrs))
+	keys := make([]string, 0, len(attrs)+1)
 	for k := range attrs {
 		keys = append(keys, k)
+	}
+	if !published.IsZero() {
+		keys = append(keys, "published")
 	}
 	sort.Strings(keys)
 
 	for _, k := range keys {
-		if err := appendYAMLPair(root, k, attrs[k]); err != nil {
+		value := attrs[k]
+		if k == "published" && !published.IsZero() {
+			value = published.Format("2006-01-02")
+		}
+		if err := appendYAMLPair(root, k, value); err != nil {
 			return nil, err
 		}
 	}
