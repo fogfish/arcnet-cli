@@ -652,6 +652,126 @@ func TestRenderPatchRoundTripsNodeWithEdgesLinksNotesHRefs(t *testing.T) {
 		Should(it.Equal("SSL", mentions.Seq[0].Target))
 }
 
+// research.md D2: a "published" front-matter key is decoded into
+// Node.Published, not left in Attrs.
+func TestParseNodeExtractsPublishedNeverLeftInAttrs(t *testing.T) {
+	fixture := `---
+kind: entity
+id: X
+published: "2026-04-12"
+---
+# X
+
+Some text.
+`
+	node, err := core.ParseNode(strings.NewReader(fixture))
+	it.Then(t).Should(it.Nil(err))
+
+	it.Then(t).
+		ShouldNot(it.True(node.Published.IsZero())).
+		Should(it.Equal(2026, node.Published.Year())).
+		Should(it.Equal(4, int(node.Published.Month()))).
+		Should(it.Equal(12, node.Published.Day()))
+
+	_, hasPublished := node.Attrs["published"]
+	it.Then(t).ShouldNot(it.True(hasPublished))
+}
+
+// research.md D2: a "published" yaml-fence key within a patch's per-node
+// section is likewise decoded into Node.Published, not left in Attrs.
+func TestParsePatchBodyExtractsPublishedNeverLeftInAttrs(t *testing.T) {
+	fixture := `---
+kind: patch
+document: foo-2026-x
+published: 2026-04-12
+---
+# Entity
+
+## X
+` + "```yaml\npublished: \"2026-05-01\"\n```" + `
+
+Some text.
+`
+	patch, err := core.ParsePatch(strings.NewReader(fixture))
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(1, len(patch.Nodes)))
+
+	node := patch.Nodes[0]
+	it.Then(t).
+		ShouldNot(it.True(node.Published.IsZero())).
+		Should(it.Equal(5, int(node.Published.Month())))
+
+	_, hasPublished := node.Attrs["published"]
+	it.Then(t).ShouldNot(it.True(hasPublished))
+}
+
+// data-model.md: RenderNode renders a non-zero Published back into front
+// matter, at its sorted-attribute position, date-only formatted.
+func TestRenderNodeRendersNonZeroPublished(t *testing.T) {
+	n := core.Node{
+		ID:        "X",
+		Kind:      "entity",
+		Published: time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC),
+		Attrs:     map[string]any{"title": "X"},
+		Text:      "Some text.",
+	}
+
+	out, err := core.RenderNode(n)
+	it.Then(t).Should(it.Nil(err))
+
+	rendered := string(out)
+	it.Then(t).Should(it.String(rendered).Contain(`published: "2026-04-12"`))
+
+	publishedIdx := strings.Index(rendered, "published:")
+	titleIdx := strings.Index(rendered, "title:")
+	it.Then(t).Should(it.True(publishedIdx >= 0 && publishedIdx < titleIdx))
+}
+
+// data-model.md: RenderNode omits Published entirely when zero (a stub or
+// schema document never gains a "published:" line).
+func TestRenderNodeOmitsZeroPublished(t *testing.T) {
+	n := core.Node{ID: "X", Kind: "entity", Attrs: map[string]any{"title": "X"}}
+
+	out, err := core.RenderNode(n)
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.String(string(out)).Contain("published:"))
+}
+
+// data-model.md: RenderPatch's per-node yaml fence likewise renders a
+// non-zero Published.
+func TestRenderPatchRendersNonZeroPublished(t *testing.T) {
+	p := core.Patch{
+		Document:  "foo-2026-x",
+		Published: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Nodes: []core.Node{
+			{ID: "Widget", Kind: "entity", Published: time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC), Attrs: map[string]any{"category": "form"}, Text: "A widget."},
+		},
+	}
+
+	raw, err := core.RenderPatch(p)
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.String(string(raw)).Contain(`published: "2026-04-12"`))
+}
+
+// AST contract: ParseNode(RenderNode(n)) round-trips Published exactly,
+// the same lossless-conversion invariant every other field already holds.
+func TestRoundTripPublished(t *testing.T) {
+	n := core.Node{
+		ID:        "X",
+		Kind:      "entity",
+		Published: time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC),
+		Attrs:     map[string]any{"title": "X"},
+		Text:      "Some text.",
+	}
+
+	raw, err := core.RenderNode(n)
+	it.Then(t).Should(it.Nil(err))
+
+	back, err := core.ParseNode(strings.NewReader(string(raw)))
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(n.Published, back.Published))
+}
+
 func TestRenderPatchNoKindFieldInsidePerNodeFence(t *testing.T) {
 	p := core.Patch{
 		Document:  "foo-2026-w",

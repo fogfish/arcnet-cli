@@ -56,6 +56,13 @@ type Node struct {
 	ID string `json:"id"`
 	// Kind is mandatory.
 	Kind Kind `json:"kind"`
+	// Published is the source document's declared publication date,
+	// propagated to every non-stub, non-schema node the patch creates
+	// (spec 009 FR-001), and filled on a later merge that finds it
+	// previously zero (spec 009 FR-010) — never overwritten once non-zero.
+	// Zero value (IsZero()) means "not yet set" (a stub, a schema document,
+	// or a node from before spec 009).
+	Published time.Time `json:"published,omitempty"`
 	// Attrs holds front-matter scalars, excluding kind (AST §4); unrecognized
 	// keys are preserved verbatim (AST invariant 5, spec FR-017).
 	Attrs map[string]any `json:"attrs,omitempty"`

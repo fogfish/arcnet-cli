@@ -12,7 +12,19 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 )
+
+// mergePublished fills Published from incoming only when existing is not
+// yet set — first-writer-wins forever after, never flagged as a conflict
+// regardless of the calling op's own fillEmpty/flagConflicts rules
+// (research.md D3).
+func mergePublished(existing, incoming time.Time) time.Time {
+	if !existing.IsZero() {
+		return existing
+	}
+	return incoming
+}
 
 // Merge reconciles incoming into existing per CORE §10's fixed menu of
 // merge operations (research.md D6). existing is the zero Node (ID == "")
@@ -75,6 +87,8 @@ func Merge(existing, incoming Node, op MergeOp, sourceID string) (Node, []string
 func mergeCore(existing, incoming Node, sourceID string, fillEmpty, flagConflicts, unionText bool) (Node, []string) {
 	merged := existing
 	var conflicts []string
+
+	merged.Published = mergePublished(existing.Published, incoming.Published)
 
 	if unionText {
 		merged.Text = mergeText(existing.Text, incoming.Text)

@@ -10,6 +10,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -81,6 +82,41 @@ func distinctPredicates(node core.Node) []string {
 	return out
 }
 
+// isStub reports whether node carries no content beyond ID/Kind — the
+// exact zero-beyond-ID/Kind shape service/subgraph.go's --stubs flag
+// already emits (spec 007 FR-017, research.md D7). A stub-shaped node
+// created by service.Apply gets neither Published nor an "indexed" stamp.
+func isStub(node core.Node) bool {
+	return len(node.Attrs) == 0 && node.Text == "" && node.Notes == "" &&
+		len(node.HRefs) == 0 && len(node.Edges) == 0 && len(node.Links) == 0
+}
+
+// nodeContentChanged reports whether merged's rendered content actually
+// differs, byte-for-byte, from existing's (research.md D6) — the single
+// mechanism deciding whether a merge earns an "updated" stamp, correct for
+// every core.MergeOp uniformly including MergeNone's already-a-no-op case.
+func nodeContentChanged(existing, merged core.Node) (bool, error) {
+	existingRaw, err := core.RenderNode(existing)
+	if err != nil {
+		return false, err
+	}
+	mergedRaw, err := core.RenderNode(merged)
+	if err != nil {
+		return false, err
+	}
+	return !bytes.Equal(existingRaw, mergedRaw), nil
+}
+
+// setAttr nil-safely sets key on attrs, allocating it if nil, and returns
+// it — used to stamp both "indexed" and "updated".
+func setAttr(attrs map[string]any, key string, value any) map[string]any {
+	if attrs == nil {
+		attrs = map[string]any{}
+	}
+	attrs[key] = value
+	return attrs
+}
+
 // Reporter phase labels (data-model.md Reporter events, research.md D9,
 // BUG-001 revised).
 const (
@@ -114,6 +150,8 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 	}
 
 	start := time.Now()
+	appliedAt := time.Now().UTC()
+	stamp := appliedAt.Format(time.RFC3339)
 	patch, err := readPatch(mounter, patchPath)
 	if err != nil {
 		reporter.Error(labelReadingPatch, err)
@@ -202,8 +240,24 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 				result.Conflicts = append(result.Conflicts, path)
 				outcome = "merged (conflict flagged)"
 			}
+
+			changed, err := nodeContentChanged(existing, merged)
+			if err != nil {
+				reporter.Error(labelApplyingNodes, err)
+				rollback(store, createdPaths)
+				return kernel.ApplyResult{}, err
+			}
+			if changed {
+				merged.Attrs = setAttr(merged.Attrs, "updated", stamp)
+			}
 		} else {
 			result.Created[node.Kind]++
+			if !isStub(node) {
+				if merged.Published.IsZero() {
+					merged.Published = patch.Published
+				}
+				merged.Attrs = setAttr(merged.Attrs, "indexed", stamp)
+			}
 		}
 
 		for _, name := range distinctPredicates(merged) {
