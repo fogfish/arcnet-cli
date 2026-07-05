@@ -1,5 +1,15 @@
 # Changelog
 
+# 2026-07-05
+
+/speckit-specify `arc serve` — start an MCP server (stdio transport by default; `--http <port>` for SSE) exposing these tools:
+  - `node_get(id)` → full node object (ARCNET-AST §4): attrs, text, edges, links
+  - `node_grep(pattern, filter?)` → list of `{id, kind, line, snippet}` for nodes whose content matches a regexp pattern, optionally pre-filtered by the filter object
+  - `subgraph_get(id, depth?)` → return the fully-resolved subgraph rooted at `id` to `depth` hops (default 1): a flat array of complete node objects for the seed and every reachable neighbor; covers the same operation as `arc subgraph` for agent context expansion mid-conversation
+
+/speckit-plan mcp server is an frontend to existing domains. Use exising `internal/app/graph` and implement only "wiring" of these tools. Reply data in markdown format to for MCP client.
+
+
 # 2026-07-04
 
 /speckit-specify `arc subgraph <basename> [--depth <n>] [<filter>]` — extract a self-contained subgraph: the seed node plus all nodes reachable within N hops (default 1), optionally filtered by kind or attributes on the reached nodes; the filter applies to the expanded nodes, not the seed; output uses the patch exchange format (CORE §12.2) as the serialization: nodes are grouped by kind under `# <Kind>` headings, each node under `## <basename>`, front-matter in a fenced YAML block, body verbatim below — human-readable, LLM-friendly, and round-trippable back into `arc apply`

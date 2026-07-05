@@ -128,18 +128,18 @@ Fast graph navigation depends on never re-parsing every `.md` file on every comm
 Expose the full graph navigation surface as a [Model Context Protocol](https://modelcontextprotocol.io) server so any MCP-compatible LLM client can consume the knowledge graph as a set of structured tools. Backed by the Phase 4 index; all tool responses are fast. The server is bidirectional: read tools let an agent navigate the graph, and the write tool lets an agent append to it by streaming a patch it constructed itself.
 
 - [ ] `arc serve` — start an MCP server (stdio transport by default; `--http <port>` for SSE) exposing these tools:
-  - `node_get(id)` → full node object (ARCNET-AST §4): attrs, text, edges, links
-  - `node_list(filter?)` → array of `{id, kind, title}` for nodes matching the filter object (see Filtering — MCP filter object)
-  - `node_grep(pattern, filter?)` → list of `{id, kind, line, snippet}` for nodes whose content matches a regexp pattern, optionally pre-filtered by the filter object
-  - `node_edges(id)` → outgoing edges: `[{predicate, target}]` from `edges` + `links`
-  - `node_backlinks(id)` → incoming edges: `[{source, predicate}]` from the backlink index
-  - `graph_path(from, to)` → shortest directed edge path between two ids, or empty if none
-  - `graph_stats()` → the same summary as `arc stats`
-  - `timeline_get(period?)` → timeline entries for a year/month period
-  - `context_retrieve(query, filter?, limit?)` → the primary RAG tool: runs the same three-pass retrieval as `arc context` — grep match, attribute match, neighbor expansion — and returns the top-N node objects with full content (attrs + text + edges + links); designed to let an agent build its working context in a single tool call without iterating through grep results and fetching each node separately; `limit` defaults to 10
-  - `subgraph_get(id, depth?)` → return the fully-resolved subgraph rooted at `id` to `depth` hops (default 1): a flat array of complete node objects for the seed and every reachable neighbor; covers the same operation as `arc subgraph` for agent context expansion mid-conversation
-  - `patch_apply(content)` → accept a complete patch document as a string (CORE §12 format), validate it, apply it to the graph, and return the resulting commit hash and stats; this is the write entry-point for LLM agents that generate a patch inline and stream it directly to `arc` without writing a file
-  - `patch_validate(content)` → dry-run: parse the patch, run the Phase 6 lint rules against it, and return a list of violations without writing anything; intended for an agent to self-check a patch before committing it
+  - [ ] `node_get(id)` → full node object (ARCNET-AST §4): attrs, text, edges, links
+  - [ ] `node_list(filter?)` → array of `{id, kind, title}` for nodes matching the filter object (see Filtering — MCP filter object)
+  - [ ] `node_grep(pattern, filter?)` → list of `{id, kind, line, snippet}` for nodes whose content matches a regexp pattern, optionally pre-filtered by the filter object
+  - [ ] `node_edges(id)` → outgoing edges: `[{predicate, target}]` from `edges` + `links`
+  - [ ] `node_backlinks(id)` → incoming edges: `[{source, predicate}]` from the backlink index
+  - [ ] `graph_path(from, to)` → shortest directed edge path between two ids, or empty if none
+  - [ ] `graph_stats()` → the same summary as `arc stats`
+  - [ ] `timeline_get(period?)` → timeline entries for a year/month period
+  - [ ] `context_retrieve(query, filter?, limit?)` → the primary RAG tool: runs the same three-pass retrieval as `arc context` — grep match, attribute match, neighbor expansion — and returns the top-N node objects with full content (attrs + text + edges + links); designed to let an agent build its working context in a single tool call without iterating through grep results and fetching each node separately; `limit` defaults to 10
+  - [ ] `subgraph_get(id, depth?)` → return the fully-resolved subgraph rooted at `id` to `depth` hops (default 1): a flat array of complete node objects for the seed and every reachable neighbor; covers the same operation as `arc subgraph` for agent context expansion mid-conversation
+  - [ ] `patch_apply(content)` → accept a complete patch document as a string (CORE §12 format), validate it, apply it to the graph, and return the resulting commit hash and stats; this is the write entry-point for LLM agents that generate a patch inline and stream it directly to `arc` without writing a file
+  - [ ] `patch_validate(content)` → dry-run: parse the patch, run the Phase 6 lint rules against it, and return a list of violations without writing anything; intended for an agent to self-check a patch before committing it
 - [ ] `arc serve --readonly` — disable `patch_apply` and `patch_validate`; expose only the navigation tools; safe for untrusted or read-only clients
 
 ---

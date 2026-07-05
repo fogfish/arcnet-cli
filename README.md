@@ -19,6 +19,7 @@ go build -o arc ./cmd/arc
 ./arc lint
 ./arc grep TLS
 ./arc subgraph TLS
+./arc serve
 ```
 
 `arc init` bootstraps a new, empty knowledge graph in the current directory (or an optional target directory): the canonical folder layout, a first-class, versioned `_schema/` seeded with every ARCNET-CORE node kind and predicate, the `.arc/` local state directory, a `.gitignore`, and a single initial git commit. Initialization is fully offline — no network access required.
@@ -31,4 +32,6 @@ go build -o arc ./cmd/arc
 
 `arc subgraph <basename>` extracts a seed node plus everything reachable from it within `--depth` hops (both outgoing and incoming structural connections, default `1`), optionally narrowed by the same `--kind`/`--tag`/`--attr` filter, and serializes the result as one patch-exchange document — ready to re-ingest via `arc apply` or paste into an LLM prompt. It is strictly read-only.
 
-See [specs/001-cli-infrastructure/quickstart.md](specs/001-cli-infrastructure/quickstart.md), [specs/002-arc-init/quickstart.md](specs/002-arc-init/quickstart.md), [specs/003-apply-patch/quickstart.md](specs/003-apply-patch/quickstart.md), [specs/004-arc-lint/quickstart.md](specs/004-arc-lint/quickstart.md), [specs/005-graph-schema-first-class/quickstart.md](specs/005-graph-schema-first-class/quickstart.md), [specs/006-arc-grep-content-search/quickstart.md](specs/006-arc-grep-content-search/quickstart.md), and [specs/007-arc-subgraph/quickstart.md](specs/007-arc-subgraph/quickstart.md) for the full development quickstarts.
+`arc serve [--http <addr>]` starts a Model Context Protocol (MCP) server exposing three read-only tools — `node_get`, `node_grep`, `subgraph_get` — backed by the same use-case functions `arc grep`/`arc subgraph` already call, so an LLM client can read the graph directly. It serves over stdio by default, or over Streamable HTTP/SSE when `--http <addr>` is given (a bare port or `:port` binds loopback-only; an explicit host binds exactly that host). It is strictly read-only.
+
+See [specs/001-cli-infrastructure/quickstart.md](specs/001-cli-infrastructure/quickstart.md), [specs/002-arc-init/quickstart.md](specs/002-arc-init/quickstart.md), [specs/003-apply-patch/quickstart.md](specs/003-apply-patch/quickstart.md), [specs/004-arc-lint/quickstart.md](specs/004-arc-lint/quickstart.md), [specs/005-graph-schema-first-class/quickstart.md](specs/005-graph-schema-first-class/quickstart.md), [specs/006-arc-grep-content-search/quickstart.md](specs/006-arc-grep-content-search/quickstart.md), [specs/007-arc-subgraph/quickstart.md](specs/007-arc-subgraph/quickstart.md), and [specs/008-arc-serve-mcp/quickstart.md](specs/008-arc-serve-mcp/quickstart.md) for the full development quickstarts.

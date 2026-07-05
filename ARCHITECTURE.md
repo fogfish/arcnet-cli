@@ -17,10 +17,17 @@ cmd/arc/                    # sole primary (driving) adapter: Cobra command tree
 │   ├── grep.go              # `arc grep` command: <pattern> arg, --kind/--tag/--attr local
 │   │                         #   flags, calls internal/app/graph.Grep, renders via
 │   │                         #   bios.Registry (highlight/truncate presentation only)
-│   └── subgraph.go          # `arc subgraph` command: <basename> arg, --depth local flag,
-│                             #   reuses grep.go's optsFilter, calls internal/app/graph.Subgraph,
-│                             #   writes core.RenderPatch's bytes verbatim to stdout — no
-│                             #   bios.SCHEMA styling (specs/007-arc-subgraph, research.md D10)
+│   ├── subgraph.go          # `arc subgraph` command: <basename> arg, --depth local flag,
+│   │                         #   reuses grep.go's optsFilter, calls internal/app/graph.Subgraph,
+│   │                         #   writes core.RenderPatch's bytes verbatim to stdout — no
+│   │                         #   bios.SCHEMA styling (specs/007-arc-subgraph, research.md D10)
+│   └── serve.go             # `arc serve [--http <addr>]` command: the codebase's second
+│                             #   primary-adapter family (ADR 003) — registers node_get/
+│                             #   node_grep/subgraph_get as MCP Tools on an mcp.Server, calling
+│                             #   internal/app/graph.NodeGet/Grep/Subgraph exactly like every
+│                             #   Cobra command does, over stdio by default or Streamable
+│                             #   HTTP/SSE when --http names a Bind Address
+│                             #   (specs/008-arc-serve-mcp)
 └── lint/                   # Cobra wiring for the lint (graph conformance validation) domain
     └── lint.go               # `arc lint` command: flag/arg parsing, calls
                               #   internal/app/schema.Resolve then internal/app/lint.Lint
@@ -121,7 +128,11 @@ internal/
     │                              #   predicates, schema, dir, patchPath) (kernel.ApplyResult, error);
     │                              #   Grep(ctx, mounter, filter, pattern, cfg, dir) (kernel.GrepResult, error);
     │                              #   Subgraph(ctx, mounter, filter, basename, depth, cfg, dir)
-    │                              #   (kernel.SubgraphResult, error)
+    │                              #   (kernel.SubgraphResult, error); NodeGet(ctx, mounter, dir, id)
+    │                              #   (core.Node, error) and EnsureGraph(ctx, mounter, dir) error
+    │                              #   (specs/008-arc-serve-mcp — arc serve's node_get tool and
+    │                              #   startup preflight, backed by service/node.go reusing
+    │                              #   enumerateNodes/guardIsGraph)
     │
     └── lint/                  # fifth domain use-case: graph conformance validation (CORE §14)
         ├── kernel/              # domain value types (Rule, Violation, NodeStatus, LintResult, Sowa tables)
@@ -171,3 +182,6 @@ This project uses **bare top-level verbs** (`arc init`, `arc apply`, `arc list`,
 | **Reachable Node** | Any node other than the seed found within `arc subgraph`'s requested hop count by following structural `Edges`/`Links` in either direction; subject to the optional `Filter` and to its traversal direction's cap. `specs/007-arc-subgraph`. |
 | **Subgraph** | The seed node plus the set of reachable nodes selected for one `arc subgraph` extraction, serialized as one patch-exchange document grouped by kind via `internal/core.RenderPatch`. `internal/app/graph/kernel.SubgraphResult`, `internal/app/graph/service.Subgraph` (`specs/007-arc-subgraph`). |
 | **Traversal Cap** | A configurable ceiling — `subgraph.directCap` (outgoing, default `4096`) and `subgraph.backlinkCap` (incoming, default `1024`), `internal/app/config/kernel.SubgraphConfig` — on how many nodes `arc subgraph` retains per traversal direction before filtering; when exceeded, the highest-degree candidates are kept and the run still succeeds (soft cap). `specs/007-arc-subgraph`, research.md D4/D5. |
+| **MCP Tool** | One callable capability `arc serve` registers on its `mcp.Server` via `mcp.AddTool` — `node_get`, `node_grep`, or `subgraph_get`. Each is a thin wrapper: decode MCP JSON arguments, call the identical `internal/app/graph` primary-port function every Cobra command already calls, render the result as markdown text (`core.RenderNode`/`RenderPatch`, or a new table for `node_grep`), never new business logic (ADR 003). `specs/008-arc-serve-mcp`. |
+| **Transport** | The wire framing `arc serve` runs its `mcp.Server` over: `mcp.StdioTransport` by default (newline-delimited JSON over stdin/stdout) or `mcp.NewStreamableHTTPHandler` (Streamable HTTP/SSE) when `--http <addr>` is given. Both front the identical registered tool set — only the framing differs (spec SC-007). ADR 003, `specs/008-arc-serve-mcp`. |
+| **Bind Address** | The `[host]:port` value `arc serve --http <addr>` parses via `resolveHTTPAddr`: a bare port or `:port` (no host) resolves to `127.0.0.1` (loopback-only); an explicit host binds exactly that host. A syntactically invalid address, or one already in use, refuses to start (spec FR-003/FR-005). `specs/008-arc-serve-mcp`, research.md D5. |
