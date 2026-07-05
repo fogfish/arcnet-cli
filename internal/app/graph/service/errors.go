@@ -28,4 +28,10 @@ const (
 	ErrInvalidAttrFlag = faults.Safe1[string]("--attr %s must be name=value or name~=pattern")
 	ErrSeedNotFound    = faults.Safe1[string]("no node found with basename %s")
 	ErrInvalidDepth    = faults.Safe1[string]("--depth %s must be a non-negative integer")
+
+	// ErrHTTPAddr and ErrInvalidFilterPattern are arc serve's own sentinels
+	// (specs/008-arc-serve-mcp): an invalid/in-use --http address, and an
+	// MCP filter object's attrPatterns value that is not a valid regexp.
+	ErrHTTPAddr             = faults.Safe1[string]("invalid or unavailable --http address %s")
+	ErrInvalidFilterPattern = faults.Safe1[string]("%s is not a valid pattern")
 )

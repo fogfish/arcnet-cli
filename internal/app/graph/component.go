@@ -44,3 +44,16 @@ func Grep(ctx context.Context, mounter fsys.Mounter, filter core.Filter, pattern
 func Subgraph(ctx context.Context, mounter fsys.Mounter, filter core.Filter, basename string, depth int, cfg configkernel.SubgraphConfig, dir string, stubs bool) (kernel.SubgraphResult, error) {
 	return service.Subgraph(ctx, mounter, filter, basename, depth, cfg, dir, stubs)
 }
+
+// NodeGet fetches the single node identified by id from the graph rooted at
+// dir. It is a thin delegator into service.NodeGet.
+func NodeGet(ctx context.Context, mounter fsys.Mounter, dir, id string) (core.Node, error) {
+	return service.NodeGet(ctx, mounter, dir, id)
+}
+
+// EnsureGraph confirms dir is an initialized graph, without reading any node
+// — the preflight arc serve calls before starting its MCP transport. It is a
+// thin delegator into service.EnsureGraph.
+func EnsureGraph(ctx context.Context, mounter fsys.Mounter, dir string) error {
+	return service.EnsureGraph(ctx, mounter, dir)
+}

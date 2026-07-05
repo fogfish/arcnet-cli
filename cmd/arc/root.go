@@ -54,6 +54,7 @@ Report issues at https://github.com/fogfish/arcnet-cli/issues`,
 	cmd.AddCommand(graph.NewApplyCmd())
 	cmd.AddCommand(graph.NewGrepCmd())
 	cmd.AddCommand(graph.NewSubgraphCmd())
+	cmd.AddCommand(graph.NewServeCmd())
 	cmd.AddCommand(lint.NewLintCmd())
 
 	return cmd
