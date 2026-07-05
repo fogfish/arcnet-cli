@@ -147,3 +147,26 @@ func TestGrepConfigAbsentLoadsAsZeroValue(t *testing.T) {
 		Should(it.Nil(err)).
 		Should(it.Equal(kernel.GrepConfig{}, cfg.Grep))
 }
+
+func TestSubgraphConfigRoundTripsThroughLoadSave(t *testing.T) {
+	store := newFakeStore(nil)
+	cfg := kernel.Config{Subgraph: kernel.SubgraphConfig{DirectCap: 200, BacklinkCap: 50}}
+	it.Then(t).Should(it.Nil(service.Save(store, cfg)))
+
+	store.files = map[string]string{kernel.ConfigPath: store.written[kernel.ConfigPath]}
+	loaded, err := service.Load(store)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.Equal(cfg, loaded))
+}
+
+func TestSubgraphConfigAbsentLoadsAsZeroValue(t *testing.T) {
+	store := newFakeStore(nil)
+
+	cfg, err := service.Load(store)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.Equal(kernel.SubgraphConfig{}, cfg.Subgraph))
+}

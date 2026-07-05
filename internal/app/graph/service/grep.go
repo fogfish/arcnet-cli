@@ -26,11 +26,13 @@ import (
 // means "use the built-in default" (research.md D10).
 const defaultGrepWorkers = 8
 
-// walkGrepNodeFiles recursively walks store from its root, collecting every
+// walkNodeFiles recursively walks store from its root, collecting every
 // *.md file except anything under .arc/ or _schema/ (mirrors
 // internal/app/lint/service.walkNodeFiles, research.md D9), in
-// deterministic (sorted) order.
-func walkGrepNodeFiles(store fsys.Store) ([]string, error) {
+// deterministic (sorted) order. Shared by Grep and Subgraph (research.md
+// D7 in specs/007-arc-subgraph) — a second, copy-pasted walker in this
+// package would be exactly the drift Principle V exists to prevent.
+func walkNodeFiles(store fsys.Store) ([]string, error) {
 	var out []string
 	var walk func(dir string) error
 	walk = func(dir string) error {
@@ -88,7 +90,7 @@ func Grep(ctx context.Context, mounter fsys.Mounter, filter core.Filter, pattern
 		return kernel.GrepResult{}, ErrInvalidPattern.With(err, pattern)
 	}
 
-	paths, err := walkGrepNodeFiles(store)
+	paths, err := walkNodeFiles(store)
 	if err != nil {
 		return kernel.GrepResult{}, err
 	}

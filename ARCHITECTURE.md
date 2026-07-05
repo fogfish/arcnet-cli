@@ -14,9 +14,13 @@ cmd/arc/                    # sole primary (driving) adapter: Cobra command tree
 ├── graph/                  # Cobra wiring for the graph (graph I/O) domain
 │   ├── apply.go             # `arc apply` command: flag/arg parsing, calls
 │   │                         #   internal/app/schema.Resolve then internal/app/graph.Apply
-│   └── grep.go              # `arc grep` command: <pattern> arg, --kind/--tag/--attr local
-│                             #   flags, calls internal/app/graph.Grep, renders via
-│                             #   bios.Registry (highlight/truncate presentation only)
+│   ├── grep.go              # `arc grep` command: <pattern> arg, --kind/--tag/--attr local
+│   │                         #   flags, calls internal/app/graph.Grep, renders via
+│   │                         #   bios.Registry (highlight/truncate presentation only)
+│   └── subgraph.go          # `arc subgraph` command: <basename> arg, --depth local flag,
+│                             #   reuses grep.go's optsFilter, calls internal/app/graph.Subgraph,
+│                             #   writes core.RenderPatch's bytes verbatim to stdout — no
+│                             #   bios.SCHEMA styling (specs/007-arc-subgraph, research.md D10)
 └── lint/                   # Cobra wiring for the lint (graph conformance validation) domain
     └── lint.go               # `arc lint` command: flag/arg parsing, calls
                               #   internal/app/schema.Resolve then internal/app/lint.Lint
@@ -35,6 +39,9 @@ internal/
 │                             #   Filter{Kinds,Tags,Attrs,AttrPatterns}/Filter.Match(Node) — the
 │                             #   shared node-selection type every VISION.md Filtering-section
 │                             #   command consumes (specs/006-arc-grep-content-search, research.md D8).
+│                             #   RenderPatch(Patch) ([]byte, error) is the structural inverse of
+│                             #   ParsePatch (specs/007-arc-subgraph, research.md D2): CORE §12.2
+│                             #   patch-exchange serialization, grouped by Kind/ID (research.md D9).
 ├── pkg/                     # NEW tier (ADR 001 "evolution of domain logic" phase 2): generic,
 │                             #   reusable domain services promoted out of internal/core once they
 │                             #   need stricter isolation. First occupant:
@@ -91,22 +98,30 @@ internal/
     │                             #   satisfies graph.port.SchemaRegistry structurally
     │
     ├── graph/                 # third domain use-case: graph mutation / graph I/O
-    │   ├── kernel/              # domain value types (ApplyResult, Match, GrepResult)
+    │   ├── kernel/              # domain value types (ApplyResult, Match, GrepResult,
+    │   │                          #   SubgraphResult — specs/007-arc-subgraph)
     │   ├── port/                 # graph-private secondary ports: VCS, and SchemaRegistry
     │   │                          #   (RegisterKind/RegisterPredicate — satisfied structurally by
     │   │                          #   internal/app/schema's Component, ADR 001 port isolation rule 1)
     │   ├── adapter/
     │   │   └── mock/             # in-memory fake VCS for service unit tests
-    │   ├── service/              # use-case logic (Apply, Grep) — Apply's per-node loop's
-    │   │                          #   auto-discovery hook registers a previously-unseen
+    │   ├── service/              # use-case logic (Apply, Grep, Subgraph) — Apply's per-node
+    │   │                          #   loop's auto-discovery hook registers a previously-unseen
     │   │                          #   kind/predicate into _schema/ in the same commit as the
     │   │                          #   triggering patch (spec.md FR-012); Grep enumerates+parses
     │   │                          #   every node file (excluding .arc/ and _schema/), builds a
     │   │                          #   Filter-membership set, and delegates the actual line scan to
-    │   │                          #   internal/pkg/grep.Search (specs/006-arc-grep-content-search)
+    │   │                          #   internal/pkg/grep.Search (specs/006-arc-grep-content-search);
+    │   │                          #   Subgraph shares Grep's walkNodeFiles enumeration, then runs
+    │   │                          #   two independent, capped BFS passes (direct/backlink) from a
+    │   │                          #   seed node and serializes the result via core.RenderPatch
+    │   │                          #   (specs/007-arc-subgraph, research.md D3/D4/D5) — no port of
+    │   │                          #   its own, strictly read-only like Grep
     │   └── component.go          # primary port: Apply(ctx, mounter, vcs, reporter, rules,
     │                              #   predicates, schema, dir, patchPath) (kernel.ApplyResult, error);
-    │                              #   Grep(ctx, mounter, filter, pattern, cfg, dir) (kernel.GrepResult, error)
+    │                              #   Grep(ctx, mounter, filter, pattern, cfg, dir) (kernel.GrepResult, error);
+    │                              #   Subgraph(ctx, mounter, filter, basename, depth, cfg, dir)
+    │                              #   (kernel.SubgraphResult, error)
     │
     └── lint/                  # fifth domain use-case: graph conformance validation (CORE §14)
         ├── kernel/              # domain value types (Rule, Violation, NodeStatus, LintResult, Sowa tables)
@@ -152,3 +167,7 @@ This project uses **bare top-level verbs** (`arc init`, `arc apply`, `arc list`,
 | **Filter** | The optional, composable node-selection criteria (`Kinds` OR'd, `Tags`/`Attrs`/`AttrPatterns` AND'd) shared by every VISION.md Filtering-section command; a zero-value `Filter{}` matches every node. `internal/core.Filter`, `Filter.Match(Node) bool` (`specs/006-arc-grep-content-search`, research.md D8) — `arc grep` is the first command to consume it. |
 | **Match** | One reported occurrence of `arc grep`'s `<pattern>` on a single line within a single node's file: the node's `kind`/`id`, the 1-based line number, and the full matched line text. `internal/pkg/grep.Match` (path/line/text/byte-offsets, domain-agnostic) is mapped into `internal/app/graph/kernel.Match` (kind/id-labeled) for rendering. |
 | **Grep Run** | One `arc grep` invocation: enumerates and parses every node file (excluding `.arc/` and `_schema/`), narrows the scan to nodes passing a `Filter`, and reports every matching line across every scanned node in a single pass, never stopping at the first match. Strictly read-only, like `arc lint`. `internal/app/graph/kernel.GrepResult`, `internal/app/graph/service.Grep` (`specs/006-arc-grep-content-search`). |
+| **Seed Node** | The node named by `arc subgraph`'s `<basename>` argument — always present in its extraction's output, never excluded by a `Filter`. `specs/007-arc-subgraph`. |
+| **Reachable Node** | Any node other than the seed found within `arc subgraph`'s requested hop count by following structural `Edges`/`Links` in either direction; subject to the optional `Filter` and to its traversal direction's cap. `specs/007-arc-subgraph`. |
+| **Subgraph** | The seed node plus the set of reachable nodes selected for one `arc subgraph` extraction, serialized as one patch-exchange document grouped by kind via `internal/core.RenderPatch`. `internal/app/graph/kernel.SubgraphResult`, `internal/app/graph/service.Subgraph` (`specs/007-arc-subgraph`). |
+| **Traversal Cap** | A configurable ceiling — `subgraph.directCap` (outgoing, default `4096`) and `subgraph.backlinkCap` (incoming, default `1024`), `internal/app/config/kernel.SubgraphConfig` — on how many nodes `arc subgraph` retains per traversal direction before filtering; when exceeded, the highest-degree candidates are kept and the run still succeeds (soft cap). `specs/007-arc-subgraph`, research.md D4/D5. |

@@ -34,55 +34,60 @@ const (
 // for exactly one of three distinct purposes: HRefs, Edges, or a
 // LinkBlock's Seq — never two at once for the same purpose (AST §3).
 type Link struct {
-	Predicate string
-	Target    string
-	Alias     string
+	Predicate string `json:"predicate,omitempty"`
+	Target    string `json:"target"`
+	Alias     string `json:"alias,omitempty"`
 }
 
 // LinkBlock is one predicate-grouped body block (AST §6.5). Title is the
 // display heading (e.g. "Mentions"), derived and never independently
 // re-derived by a consumer once parsed.
 type LinkBlock struct {
-	Title string
-	Seq   []Link
+	Title string `json:"title"`
+	Seq   []Link `json:"seq"`
 }
 
-// Node is the graph's domain-level unit (ARCNET-AST §4 "Node Object").
+// Node is the graph's domain-level unit (ARCNET-AST §4 "Node Object"). Its
+// json tags (specs/007-arc-subgraph) are the first exposure of this type
+// through a --json contract (kernel.SubgraphResult.Patch.Nodes) — no
+// existing --json contract embeds Node, so this is purely additive.
 type Node struct {
 	// ID is the basename, equal to the filename without ".md" (CORE §6, AST §4).
-	ID string
+	ID string `json:"id"`
 	// Kind is mandatory.
-	Kind Kind
+	Kind Kind `json:"kind"`
 	// Attrs holds front-matter scalars, excluding kind (AST §4); unrecognized
 	// keys are preserved verbatim (AST invariant 5, spec FR-017).
-	Attrs map[string]any
+	Attrs map[string]any `json:"attrs,omitempty"`
 	// Text is the leading prose block, bracket-stripped (research.md D3/D3b):
 	// any [[Target]]/[[Target|alias]] markup originally embedded in the prose
 	// is removed and recorded in HRefs instead.
-	Text string
+	Text string `json:"text,omitempty"`
 	// Notes is the trailing prose block, rendered after Edges/Links;
 	// bracket-stripped exactly like Text (D3b).
-	Notes string
+	Notes string `json:"notes,omitempty"`
 	// HRefs are inline links originally embedded in Text/Notes, extracted at
 	// parse time; never a source of navigable edges (AST invariant 3).
-	HRefs []Link
+	HRefs []Link `json:"hrefs,omitempty"`
 	// Edges are ungrouped structural edges, order-preserving.
-	Edges []Link
+	Edges []Link `json:"edges,omitempty"`
 	// Links are predicate-grouped structural edges.
-	Links map[string]LinkBlock
+	Links map[string]LinkBlock `json:"links,omitempty"`
 }
 
 // Patch is one CORE §12.2 document patch: a manifest plus every H1/H2 node
-// section it carries, in document order.
+// section it carries, in document order. Its json tags (specs/007-arc-
+// subgraph) are the first exposure of this type through a --json contract
+// (kernel.SubgraphResult.Patch) — purely additive, mirroring Node's own.
 type Patch struct {
 	// Document is the source citekey this patch contributes (mandatory).
-	Document string
+	Document string `json:"document"`
 	// Published drives timeline derivation (D8); mandatory.
-	Published time.Time
+	Published time.Time `json:"published"`
 	// Title is recommended.
-	Title string
+	Title string `json:"title,omitempty"`
 	// Stats is recommended; carried through, not independently validated
 	// against actual counts.
-	Stats map[string]any
-	Nodes []Node
+	Stats map[string]any `json:"stats,omitempty"`
+	Nodes []Node         `json:"nodes"`
 }

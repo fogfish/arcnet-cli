@@ -10,8 +10,10 @@ package core_test
 
 import (
 	"errors"
+	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fogfish/it/v2"
 
@@ -521,4 +523,148 @@ func TestParsePatchMixedBoldLabelAndHeadingBlocks(t *testing.T) {
 	it.Then(t).
 		Should(it.True(ok)).
 		Should(it.Equal("B", cites.Seq[0].Target))
+}
+
+// sortedByKindThenID mirrors RenderPatch's own deterministic ordering
+// (research.md D9), so a round-trip test can compare the parsed-back node
+// set against the input regardless of the input slice's original order.
+func sortedByKindThenID(nodes []core.Node) []core.Node {
+	out := append([]core.Node(nil), nodes...)
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Kind != out[j].Kind {
+			return out[i].Kind < out[j].Kind
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out
+}
+
+func TestRenderPatchRoundTripsSingleNode(t *testing.T) {
+	p := core.Patch{
+		Document:  "foo-2026-x",
+		Published: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Title:     "Foo",
+		Nodes: []core.Node{
+			// "id" is included in Attrs, exactly as a real on-disk node's
+			// own Attrs already would be (ParseNode preserves whatever the
+			// front matter carried) — so this fixture exercises the plain
+			// round-trip, not RenderPatch's separate "id" guarantee-inject
+			// behavior (renderAttrYAML, shared with RenderNode's own
+			// existing precedent), which is covered on its own below.
+			// Links is explicitly the non-nil empty map ParsePatch itself
+			// always produces (walkNodeBody), so reflect.DeepEqual isn't
+			// tripped by a nil-vs-empty-map distinction invisible to %v.
+			{ID: "Widget", Kind: "entity", Attrs: map[string]any{"category": "form", "id": "Widget"}, Text: "A widget.", Links: map[string]core.LinkBlock{}},
+		},
+	}
+
+	raw, err := core.RenderPatch(p)
+	it.Then(t).Should(it.Nil(err))
+
+	back, err := core.ParsePatch(strings.NewReader(string(raw)))
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.Equal("foo-2026-x", back.Document)).
+		Should(it.Seq(sortedByKindThenID(back.Nodes)).Equal(sortedByKindThenID(p.Nodes)...))
+}
+
+func TestRenderPatchInjectsIDWhenAttrsOmitIt(t *testing.T) {
+	p := core.Patch{
+		Document:  "foo-2026-x2",
+		Published: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Nodes: []core.Node{
+			{ID: "Widget", Kind: "entity", Attrs: map[string]any{"category": "form"}, Text: "A widget."},
+		},
+	}
+
+	raw, err := core.RenderPatch(p)
+	it.Then(t).Should(it.Nil(err))
+
+	back, err := core.ParsePatch(strings.NewReader(string(raw)))
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(1, len(back.Nodes)))
+	it.Then(t).Should(it.Equal("Widget", back.Nodes[0].Attrs["id"]))
+}
+
+func TestRenderPatchRoundTripsMultipleKindsSortedDeterministically(t *testing.T) {
+	nodes := []core.Node{
+		{ID: "z-source", Kind: "source", Attrs: map[string]any{"id": "z-source", "title": "Z"}, Text: "z body.", Links: map[string]core.LinkBlock{}},
+		{ID: "Widget", Kind: "entity", Attrs: map[string]any{"id": "Widget", "category": "form"}, Text: "widget body.", Links: map[string]core.LinkBlock{}},
+		{ID: "a-source", Kind: "source", Attrs: map[string]any{"id": "a-source", "title": "A"}, Text: "a body.", Links: map[string]core.LinkBlock{}},
+	}
+	p := core.Patch{Document: "foo-2026-y", Published: time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC), Nodes: nodes}
+
+	raw, err := core.RenderPatch(p)
+	it.Then(t).Should(it.Nil(err))
+
+	// Kinds sorted alphabetically ("entity" before "source"); within
+	// "source", IDs sorted alphabetically ("a-source" before "z-source") —
+	// research.md D9.
+	out := string(raw)
+	entityIdx := strings.Index(out, "# Entity")
+	sourceIdx := strings.Index(out, "# Source")
+	aIdx := strings.Index(out, "## a-source")
+	zIdx := strings.Index(out, "## z-source")
+	it.Then(t).
+		Should(it.True(entityIdx >= 0 && sourceIdx > entityIdx)).
+		Should(it.True(aIdx >= 0 && zIdx > aIdx))
+
+	back, err := core.ParsePatch(strings.NewReader(out))
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.Seq(sortedByKindThenID(back.Nodes)).Equal(sortedByKindThenID(nodes)...))
+}
+
+func TestRenderPatchRoundTripsNodeWithEdgesLinksNotesHRefs(t *testing.T) {
+	nodes := []core.Node{
+		{
+			ID:    "Transport Layer Security",
+			Kind:  "entity",
+			Attrs: map[string]any{"category": "form"},
+			Text:  "TLS is the successor to SSL.",
+			Notes: "See also RFC 8446.",
+			Edges: []core.Link{{Target: "rescorla-2026-tls13"}},
+			Links: map[string]core.LinkBlock{
+				"mentions": {Title: "Mentions", Seq: []core.Link{{Predicate: "mentions", Target: "SSL"}}},
+			},
+		},
+	}
+	p := core.Patch{Document: "foo-2026-z", Published: time.Date(2026, 3, 3, 0, 0, 0, 0, time.UTC), Nodes: nodes}
+
+	raw, err := core.RenderPatch(p)
+	it.Then(t).Should(it.Nil(err))
+
+	back, err := core.ParsePatch(strings.NewReader(string(raw)))
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(1, len(back.Nodes)))
+
+	got := back.Nodes[0]
+	it.Then(t).
+		Should(it.Equal("Transport Layer Security", got.ID)).
+		Should(it.Equal("TLS is the successor to SSL.", got.Text)).
+		Should(it.Equal("See also RFC 8446.", got.Notes)).
+		Should(it.Equal(1, len(got.Edges))).
+		Should(it.Equal("rescorla-2026-tls13", got.Edges[0].Target))
+
+	mentions, ok := got.Links["mentions"]
+	it.Then(t).
+		Should(it.True(ok)).
+		Should(it.Equal("SSL", mentions.Seq[0].Target))
+}
+
+func TestRenderPatchNoKindFieldInsidePerNodeFence(t *testing.T) {
+	p := core.Patch{
+		Document:  "foo-2026-w",
+		Published: time.Date(2026, 4, 4, 0, 0, 0, 0, time.UTC),
+		Nodes:     []core.Node{{ID: "x", Kind: "entity", Attrs: map[string]any{}}},
+	}
+
+	raw, err := core.RenderPatch(p)
+	it.Then(t).Should(it.Nil(err))
+
+	// The per-node fence must never declare "kind" (research.md D2) — a
+	// node's kind is implied solely by its enclosing H1, never re-declared
+	// per-node; the top-level manifest's own "kind: patch" line is the only
+	// permitted "kind:" occurrence in the whole document.
+	it.Then(t).Should(it.Equal(1, strings.Count(string(raw), "kind:")))
 }

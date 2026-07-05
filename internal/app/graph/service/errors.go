@@ -8,7 +8,17 @@
 
 package service
 
-import "github.com/fogfish/faults"
+import (
+	"errors"
+
+	"github.com/fogfish/faults"
+)
+
+// errNoCause is passed to a faults.SafeN.With for guard conditions that
+// are not caused by an underlying Go error, so the rendered message has
+// no trailing "%!s(<nil>)" artifact (mirrors internal/core's own
+// precedent, errNoCause in internal/core/markdown.go).
+var errNoCause = errors.New("")
 
 const (
 	ErrNotAGraph       = faults.Safe1[string]("%s is not an initialized graph")
@@ -16,4 +26,6 @@ const (
 	ErrNodeWrite       = faults.Safe1[string]("failed to write %s")
 	ErrInvalidPattern  = faults.Safe1[string]("%s is not a valid pattern")
 	ErrInvalidAttrFlag = faults.Safe1[string]("--attr %s must be name=value or name~=pattern")
+	ErrSeedNotFound    = faults.Safe1[string]("no node found with basename %s")
+	ErrInvalidDepth    = faults.Safe1[string]("--depth %s must be a non-negative integer")
 )

@@ -34,3 +34,13 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 func Grep(ctx context.Context, mounter fsys.Mounter, filter core.Filter, pattern string, cfg configkernel.GrepConfig, dir string) (kernel.GrepResult, error) {
 	return service.Grep(ctx, mounter, filter, pattern, cfg, dir)
 }
+
+// Subgraph extracts the node identified by basename plus every node
+// reachable from it within depth hops (both directions), narrowed by
+// filter, from the graph rooted at dir. When stubs is true (BUG-001, spec
+// FR-017), a minimal placeholder node is also emitted for every
+// extraction-boundary link target. It is a thin delegator into
+// service.Subgraph.
+func Subgraph(ctx context.Context, mounter fsys.Mounter, filter core.Filter, basename string, depth int, cfg configkernel.SubgraphConfig, dir string, stubs bool) (kernel.SubgraphResult, error) {
+	return service.Subgraph(ctx, mounter, filter, basename, depth, cfg, dir, stubs)
+}

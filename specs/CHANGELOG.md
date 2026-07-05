@@ -2,6 +2,12 @@
 
 # 2026-07-04
 
+/speckit-specify `arc subgraph <basename> [--depth <n>] [<filter>]` — extract a self-contained subgraph: the seed node plus all nodes reachable within N hops (default 1), optionally filtered by kind or attributes on the reached nodes; the filter applies to the expanded nodes, not the seed; output uses the patch exchange format (CORE §12.2) as the serialization: nodes are grouped by kind under `# <Kind>` headings, each node under `## <basename>`, front-matter in a fenced YAML block, body verbatim below — human-readable, LLM-friendly, and round-trippable back into `arc apply`
+
+/speckit-plan implement grap grep as part of `internal/app/graph` domain, also maintain same hierarchy in `cmd/arc/graph`. UX implementation and usability MUST BE according to ADR 002 UX Design System (002-ux-design-system.md). Do not use the color system for output. The graph serialization to patch format is part of the core `internal/core`
+
+---
+
 /speckit-specify `arc grep [<filter>] <pattern>` — scan nodes matching the filter (see Filtering) for lines matching the regexp `<pattern>`; print `<kind>  <id>  <line-number>  <matched line>`, one match per output line; without a filter, scans every node file; suitable for piping to standard tools.
 
 /speckit-plan implement grap grep as part of `internal/app/graph` domain, also maintain same hierarchy in `cmd/arc/graph`. UX implementation and usability MUST BE according to ADR 002 UX Design System (002-ux-design-system.md). Use colors to highite matched text if color mode is enabled. If macthed line longer that 80 chars (configurable via `.arc/config`) the ellipse before and after to fit the match roughtly to one terminal line. 
