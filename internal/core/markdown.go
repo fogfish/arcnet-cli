@@ -580,6 +580,19 @@ func RenderNode(n Node) ([]byte, error) {
 	buf.Write(frontMatter)
 	buf.WriteString("---\n")
 	buf.WriteString("# " + n.ID + "\n")
+	buf.Write(renderNodeBody(n))
+
+	return buf.Bytes(), nil
+}
+
+// renderNodeBody renders n's Text/Edges/Links/Notes (with HRefs
+// reconstructed into Text/Notes), shared verbatim by RenderNode's on-disk
+// single-node shape and RenderPatch's per-node patch-exchange section
+// (specs/007-arc-subgraph, research.md D2/D9) — the only difference between
+// the two callers is what precedes this body (a "# <ID>" H1 heading vs. a
+// "## <ID>" H2 heading plus a fenced yaml block).
+func renderNodeBody(n Node) []byte {
+	var buf bytes.Buffer
 
 	consumed := make([]bool, len(n.HRefs))
 	renderedText := reconstructHRefs(n.Text, n.HRefs, consumed)
@@ -614,6 +627,134 @@ func RenderNode(n Node) ([]byte, error) {
 		buf.WriteString("\n")
 	}
 
+	return buf.Bytes()
+}
+
+// RenderPatch is the structural inverse of ParsePatch (research.md D2): a
+// `---`-delimited manifest (kind: patch, document, published, title,
+// stats), then p.Nodes grouped by Kind (sorted alphabetically) under
+// "# <Kind>" headings, each node (sorted alphabetically by ID within its
+// kind — research.md D9) under a "## <ID>" heading with a fenced yaml
+// block (attributes only, kind excluded — implied by the enclosing H1) and
+// its body via the same renderNodeBody RenderNode uses.
+func RenderPatch(p Patch) ([]byte, error) {
+	manifest, err := renderPatchManifest(p)
+	if err != nil {
+		return nil, err
+	}
+
+	var buf bytes.Buffer
+	buf.WriteString("---\n")
+	buf.Write(manifest)
+	buf.WriteString("---\n")
+
+	for i, kind := range sortedPatchKinds(p.Nodes) {
+		nodes := nodesOfKind(p.Nodes, kind)
+
+		if i > 0 {
+			buf.WriteString("\n")
+		}
+		buf.WriteString("# " + titleCaseKind(string(kind)) + "\n")
+
+		for _, n := range nodes {
+			fence, err := renderAttrYAML("", n.ID, n.Attrs)
+			if err != nil {
+				return nil, err
+			}
+
+			buf.WriteString("\n## " + n.ID + "\n")
+			buf.WriteString("```yaml\n")
+			buf.Write(fence)
+			buf.WriteString("```\n")
+			buf.Write(renderNodeBody(n))
+		}
+	}
+
+	return buf.Bytes(), nil
+}
+
+// sortedPatchKinds returns every distinct Kind present in nodes, sorted
+// alphabetically (research.md D9).
+func sortedPatchKinds(nodes []Node) []Kind {
+	seen := map[Kind]bool{}
+	var kinds []Kind
+	for _, n := range nodes {
+		if !seen[n.Kind] {
+			seen[n.Kind] = true
+			kinds = append(kinds, n.Kind)
+		}
+	}
+	sort.Slice(kinds, func(i, j int) bool { return kinds[i] < kinds[j] })
+	return kinds
+}
+
+// nodesOfKind returns every node of kind, sorted alphabetically by ID
+// (research.md D9).
+func nodesOfKind(nodes []Node, kind Kind) []Node {
+	var out []Node
+	for _, n := range nodes {
+		if n.Kind == kind {
+			out = append(out, n)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// titleCaseKind renders a Kind for display as a section heading ("entity"
+// -> "Entity") — ParsePatch's own parsePatchBody lowercases whatever
+// heading text it finds, so this casing choice is cosmetic, not load-
+// bearing for the round-trip property.
+func titleCaseKind(k string) string {
+	if k == "" {
+		return k
+	}
+	r := []rune(k)
+	return strings.ToUpper(string(r[0])) + string(r[1:])
+}
+
+// renderPatchManifest renders p's document-level manifest as a mapping:
+// kind: patch, document, published (date-only, "2006-01-02"), title (when
+// non-empty), and stats (when non-empty, flow-style — "{a: 1, b: 2}") to
+// match cli-contract.md's example shape.
+func renderPatchManifest(p Patch) ([]byte, error) {
+	root := &yaml.Node{Kind: yaml.MappingNode}
+
+	if err := appendYAMLPair(root, "kind", "patch"); err != nil {
+		return nil, err
+	}
+	if err := appendYAMLPair(root, "document", p.Document); err != nil {
+		return nil, err
+	}
+	if err := appendYAMLPair(root, "published", p.Published.Format("2006-01-02")); err != nil {
+		return nil, err
+	}
+	if p.Title != "" {
+		if err := appendYAMLPair(root, "title", p.Title); err != nil {
+			return nil, err
+		}
+	}
+	if len(p.Stats) > 0 {
+		keyNode, err := encodeYAMLNode("stats")
+		if err != nil {
+			return nil, err
+		}
+		statsNode, err := encodeYAMLNode(p.Stats)
+		if err != nil {
+			return nil, err
+		}
+		statsNode.Style = yaml.FlowStyle
+		root.Content = append(root.Content, keyNode, statsNode)
+	}
+
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	if err := enc.Encode(root); err != nil {
+		return nil, err
+	}
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
 	return buf.Bytes(), nil
 }
 
@@ -645,38 +786,50 @@ func markupFor(l Link) string {
 }
 
 func renderFrontMatter(n Node) ([]byte, error) {
+	return renderAttrYAML(n.Kind, n.ID, n.Attrs)
+}
+
+// renderAttrYAML renders a YAML mapping: kind first (when non-empty — a
+// patch-exchange node section's fence deliberately omits it, research.md
+// D2, by passing kind ""), then id, then every other attribute sorted
+// alphabetically. Shared by RenderNode's front-matter and RenderPatch's
+// per-node fence (research.md D2/D9), so both stay the single, structurally
+// correct place this shape is produced.
+//
+// AST §4: the identity field (id) MAY be repeated in attrs "for
+// convenience" — it is not mandatory there, since a node's true identity is
+// its filename. But ParseNode has no filename parameter (ast-contract.md),
+// so it can only recover a node's ID from the front matter itself:
+// guarantee an explicit "id" survives whenever it is not already present,
+// so every node this package renders remains parseable by ParseNode.
+// "title" is a separate, human-readable attribute (e.g. a source's
+// citation title) and is never a substitute for "id" — a node's title and
+// its citekey/identity commonly differ, so treating title-present as
+// id-present here silently dropped the real id (source-kind nodes hit this
+// in practice: their patch yaml fence always carries "title").
+func renderAttrYAML(kind Kind, id string, attrs map[string]any) ([]byte, error) {
 	root := &yaml.Node{Kind: yaml.MappingNode}
 
-	if err := appendYAMLPair(root, "kind", string(n.Kind)); err != nil {
-		return nil, err
-	}
-
-	// AST §4: the identity field (id) MAY be repeated in attrs "for
-	// convenience" — it is not mandatory there, since a node's true
-	// identity is its filename. But ParseNode has no filename parameter
-	// (ast-contract.md), so it can only recover a node's ID from the
-	// front matter itself: guarantee an explicit "id" survives whenever
-	// it is not already present, so every node this package renders
-	// remains parseable by ParseNode. "title" is a separate, human-
-	// readable attribute (e.g. a source's citation title) and is never a
-	// substitute for "id" — a node's title and its citekey/identity
-	// commonly differ, so treating title-present as id-present here
-	// silently dropped the real id (source-kind nodes hit this in
-	// practice: their patch yaml fence always carries "title").
-	if _, hasID := n.Attrs["id"]; !hasID {
-		if err := appendYAMLPair(root, "id", n.ID); err != nil {
+	if kind != "" {
+		if err := appendYAMLPair(root, "kind", string(kind)); err != nil {
 			return nil, err
 		}
 	}
 
-	keys := make([]string, 0, len(n.Attrs))
-	for k := range n.Attrs {
+	if _, hasID := attrs["id"]; !hasID {
+		if err := appendYAMLPair(root, "id", id); err != nil {
+			return nil, err
+		}
+	}
+
+	keys := make([]string, 0, len(attrs))
+	for k := range attrs {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 
 	for _, k := range keys {
-		if err := appendYAMLPair(root, k, n.Attrs[k]); err != nil {
+		if err := appendYAMLPair(root, k, attrs[k]); err != nil {
 			return nil, err
 		}
 	}
