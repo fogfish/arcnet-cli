@@ -1,0 +1,91 @@
+# Research: Node Provenance Timestamps (`published`/`indexed`/`updated`)
+
+No `NEEDS CLARIFICATION` markers remain in `spec.md` — all three were resolved during `/speckit-clarify`. This document instead records the technical decisions needed to implement the spec against the actual current shape of `internal/core` and `internal/app/graph/service/apply.go`.
+
+## D1: `published` becomes a typed `Node` field, not an `Attrs` entry
+
+**Decision**: Add `Published time.Time` to `internal/core.Node` (`ast.go`), mirroring the field `Patch` already has. `ParseNode`/`parsePatchBody` extract a front-matter/yaml-fence `published` key into this field instead of leaving it in `Attrs`; `RenderNode`/`RenderPatch` write it back out as an ordinary-looking `published:` front-matter line, sorted alphabetically alongside the rest of the node's attributes exactly where it would have landed had it stayed a plain `Attrs` entry — the on-disk shape is unchanged, only the in-memory representation moves.
+
+**Rationale**: Per the user's explicit instruction ("defined `published` attribute at `Node` type level, making it de-facto core standard attribute"). Promoting it out of the open `Attrs` bag lets `internal/core.Merge` reason about it with dedicated, typed semantics (D3) instead of relying on `mergeAttrs`'s generic first-writer/fill-empty/flag-conflict machinery, which was designed for arbitrary domain-profile scalars, not a cross-cutting provenance field every kind carries the same way.
+
+**Alternatives considered**: Leaving `published` as a plain `Attrs["published"]` string — rejected per the user's explicit direction, though noted here that it would have worked for free (existing `mergeAttrs`'s "absent key always fills in regardless of the op's `fillEmpty` flag" rule already produces exactly the fill-once-then-never-overwrite behavior FR-010 requires). The typed-field approach costs a handful of extra lines in `merge.go`/`markdown.go` in exchange for `published` being a documented, discoverable part of `Node`'s Go type rather than a magic string key any caller could typo.
+
+## D2: Codec integration — `published` is parsed out and rendered back in, never left in `Attrs`
+
+**Decision**: A new unexported helper, `extractPublished(manifest map[string]any) (time.Time, map[string]any)`, reuses the existing `decodeManifestDate` (already used by `decodePatchManifest`) to pull a `"published"` key out of a raw front-matter/yaml-fence map, returning the decoded `time.Time` (zero if absent or undecodable) and the remaining map. `ParseNode` calls it inline where it currently special-cases `"kind"`; `parsePatchBody`'s per-node construction calls it right after `decodeYAMLBlock` returns. On the render side, `renderFrontMatter`/`RenderPatch`'s per-node fence both route through `renderAttrYAML`, which gains a `published time.Time` parameter: when non-zero, it is formatted `"2006-01-02"` (matching `Patch.Published`'s own existing manifest format, spec Assumptions) and merged into the same sorted-keys loop that already renders every other attribute, so its position in the output is indistinguishable from an ordinary attribute.
+
+**Rationale**: Keeps exactly one place (`renderAttrYAML`) responsible for front-matter key ordering, so `published`'s addition doesn't create a second, divergent rendering path. Extracting via the same `decodeManifestDate` the patch manifest already uses keeps date-parsing behavior (bare date, RFC3339, etc.) identical between `Patch.Published` and `Node.Published`.
+
+**Alternatives considered**: A `Node.MarshalYAML`/`UnmarshalYAML` pair — rejected; this codebase's front-matter codec is hand-written directly against a goldmark-parsed manifest map (`ast-contract.md`), not `yaml.Node`-driven unmarshaling of `Node` itself, so introducing a second marshaling mechanism just for one field would fragment the existing approach for no benefit.
+
+## D3: Merge algebra — `published` fills once, never overwritten, never flagged
+
+**Decision**: `mergeCore` (the function shared by `MergeUnion`/`MergeUnionFirstWriter`/`MergeAppend`/`MergeValidatedOverwrite`) gains one line: `merged.Published = mergePublished(existing.Published, incoming.Published)`, where `mergePublished` returns `existing` unchanged if it is already non-zero, else falls back to `incoming` — never flagged as a conflict, regardless of the op's own `flagConflicts` setting. `MergeNone`'s existing early return (`return existing, nil, nil`, unmodified) already leaves `Published` exactly as it was, satisfying FR-008/spec 003 FR-007's no-op guarantee with zero additional code.
+
+**Rationale**: Matches FR-010 ("the same rules already governing every other such attribute") applied at the semantic level that matters — fill only when genuinely absent, first-writer-wins forever after, never treated as a human-authored fact that can conflict. This is deliberately **not** routed through `mergeAttrs`'s `fillEmpty`/`flagConflicts` parameters (which vary per op) precisely because `published` should behave identically across every non-`none` op, not inherit each op's own scalar-conflict policy.
+
+**Alternatives considered**: Making `published`'s fill-behavior vary by op (e.g. only fill for `union-first-writer`, matching that op's `fillEmpty=true`) — rejected: this would leave a stub node merged via a plain `union`-kind patch (e.g. `entity`) never gaining a `published` value at all, contradicting spec Edge Cases' stub-then-real-content scenario, which does not carve out `union` as an exception.
+
+## D4: `indexed`/`updated` stay plain `Attrs` string entries, owned entirely by `service.Apply`
+
+**Decision**: Unlike `published`, `indexed` and `updated` are **not** added to `internal/core.Node` as typed fields. They are ordinary `Attrs["indexed"]`/`Attrs["updated"]` string values (RFC 3339, e.g. `"2026-07-05T14:22:31Z"`), set directly by `internal/app/graph/service.Apply`'s per-node loop after computing the create/merge outcome, never touched by `internal/core.Merge`.
+
+**Rationale**: `published` earns "core standard attribute" status because every kind's merge semantics must agree on how it behaves (D3) — it is graph-format-level provenance. `indexed`/`updated` are strictly **this one use-case's own bookkeeping** about *when `arc apply` last touched a file*, not a fact the domain's merge algebra needs to reconcile across two patches' worth of content — there is never a "conflicting `indexed`" to resolve, since it is assigned exactly once by the single invocation doing the writing. Keeping them at the service layer avoids growing `internal/core`'s typed surface for a value with no merge semantics of its own.
+
+**Alternatives considered**: Symmetric typed `Node.Indexed`/`Node.Updated time.Time` fields — rejected as unnecessary complexity (YAGNI, constitution Principle V): nothing in `internal/core.Merge` needs to reason about them, so there is no typed-surface benefit, only cost (two more fields threading through `ParseNode`/`RenderNode`/`RenderPatch`/JSON tags for values `internal/core` itself never inspects).
+
+## D5: One Application Timestamp, captured once, shared by every `indexed`/`updated` stamp
+
+**Decision**: `service.Apply` captures `appliedAt := time.Now().UTC()` once, near the top of the function (alongside the existing `start := time.Now()` Reporter-phase timer), and formats it once (`appliedAt.Format(time.RFC3339)`) into a `stamp string` reused verbatim for every node's `indexed` (on create) or `updated` (on an actually-changed merge) in that invocation — satisfying FR-005/FR-009's "identical for all nodes in the patch" requirement trivially, since it is the same string value, not independently-formatted equal instants.
+
+**Rationale**: `time.RFC3339` is already this codebase's established timestamp convention for a similar purpose (`internal/app/graph/service/subgraph.go` uses `now.Format(time.RFC3339)` for its synthesized patch's `Document` id) — reusing it keeps timestamp formatting conventions consistent project-wide rather than introducing a second format. No clock is injected via a port/interface: this project has no existing "Clock" abstraction anywhere, and `subgraph.go` already calls `time.Now()` directly for a similar per-invocation timestamp, so this follows established precedent rather than introducing new test-seam machinery no other command has needed.
+
+**Alternatives considered**: An injectable `func() time.Time` parameter on `service.Apply`/`component.Apply` — rejected: no existing test in this codebase needs to control "now" precisely; assertions can check the value parses as RFC 3339 and is identical across every touched node in one test run, without pinning it to an exact instant (matching how `subgraph_test.go` already asserts against `patch.Document`'s embedded timestamp, per grep of that test file's conventions).
+
+## D6: Detecting "did this merge actually change the file" — render-and-compare, not per-op special-casing
+
+**Decision**: After `core.Merge` returns `merged`, and before deciding whether to stamp `updated`, `service.Apply` calls a small helper, `nodeContentChanged(existing, merged core.Node) (bool, error)`, which renders both sides via the existing `core.RenderNode` and compares the resulting bytes (`!bytes.Equal(...)`). `updated` is stamped only when they differ.
+
+**Rationale**: This single mechanism correctly covers every `MergeOp` uniformly, including the two cases the clarified spec calls out explicitly:
+- `MergeNone`: `Merge` returns `existing` verbatim (same struct value) — `RenderNode(existing) == RenderNode(merged)` trivially, no extra code needed.
+- Any other op re-contributed with nothing genuinely new (e.g. a `union` re-mention of an entity with relations already present): `unionLinks`/`mergeAttrs`/`mergeParagraphs` are all dedup-and-no-op-preserving by construction, so `merged` comes back structurally identical to `existing`, and the rendered bytes match.
+
+Comparing **rendered** bytes on both sides (not raw on-disk bytes vs. rendered bytes) means the comparison is immune to `RenderNode`'s own canonicalization (sorted attribute keys, fixed spacing) — only a genuine difference in the `Node` values themselves can make the two sides diverge, so there is no risk of a false "changed" from cosmetic formatting alone.
+
+**Alternatives considered**: `reflect.DeepEqual(existing, merged)` — rejected: cheaper, but a map (`Attrs`) and a `Links` map compare structurally fine either way, so there's no correctness difference here; render-and-compare was chosen instead because it is the same notion of "equal" the file on disk actually cares about (two `Node` values that would serialize identically are equal for this purpose, even if, hypothetically, some future `Attrs` value type didn't implement `==`-friendly deep equality cleanly). Tracking a per-field "changed" boolean threaded through `Merge`'s three return values — rejected: would require touching `Merge`'s signature and every call site/test asserting against it, for a check `service.Apply` can perform externally with the values `Merge` already returns.
+
+## D7: Stub detection reuses the exact shape `arc subgraph --stubs` already emits
+
+**Decision**: `isStub(node core.Node) bool` returns true when `node.Attrs` is empty, `Text`/`Notes` are empty, and `HRefs`/`Edges`/`Links` are all empty — the identical zero-beyond-`ID`/`Kind` shape `internal/app/graph/service/subgraph.go`'s `--stubs` path already constructs (`core.Node{ID: target.ID, Kind: target.Kind}`, spec 007 FR-017). `service.Apply`'s per-node loop calls this once per patch-carried node section, before deciding whether to fill `Published`/stamp `indexed`.
+
+**Rationale**: A stub's shape is already a documented, tested invariant from spec 007 (a stub carries "no attributes beyond kind/id, empty body"). Detecting it by structural shape, rather than adding an explicit `stub: true` marker to the patch-exchange format, requires no change to `RenderPatch`/`ParsePatch` and stays consistent with how stubs already round-trip today.
+
+**Alternatives considered**: An explicit boolean/marker attribute on a stub section (e.g. `Attrs["stub"] = true`) emitted by `arc subgraph --stubs` and checked by `arc apply` — rejected: would require changing spec 007's already-shipped, tested `--stubs` output format for a shape that is already unambiguous by structure alone.
+
+## D8: The `_schema/` exemption (FR-003) requires no code — it already falls out of the architecture
+
+**Decision**: No explicit "is this a schema document" check is added anywhere in this feature's code.
+
+**Rationale**: `_schema/nodes/*.md` and `_schema/predicates/*.md` documents are written exclusively through `internal/app/schema/service.RegisterKind`/`RegisterPredicate`'s own `registerIfAbsent` helper (called from `service.Apply`'s auto-discovery hook only for a *kind or predicate name*, never for an ordinary content node). That code path never runs through `service.Apply`'s per-node create/merge loop or `writeNode` — the loop this feature's `Published`/`indexed`/`updated` stamping lives in. A patch's own H1/H2 sections never declare `kind: schema` (schema documents are tool-registry entries, not patch-carried content), so there is structurally no way for a schema document to reach the code this feature adds. This is recorded explicitly so a future reader does not go looking for a schema-kind guard that was deliberately never written because it was never needed.
+
+## D9: This feature does not touch `ApplyResult.Created`/`.Merged` counting or outcome-string reporting
+
+**Decision**: `result.Merged[node.Kind]++` and the `outcome` string (`"created"`/`"merged"`/`"merged (conflict flagged)"`) reported via `reporter.Step` are left exactly as spec 003 already implemented them — incremented/set whenever `existed` is true, regardless of whether `nodeContentChanged` (D6) later determines the merge produced no byte-for-byte difference.
+
+**Rationale**: Whether a re-contribution event happened at all (spec 003's existing counters) and whether it actually changed the file's bytes (this feature's new, finer-grained `updated`-stamping signal) are different questions this feature does not need to unify. A `"none"`-kind or no-op `"union"` re-contribution can legitimately show up in the commit's stats as `"+1 merged"` with no `updated` timestamp added — that divergence is expected, not a defect this feature introduces or must fix. Changing spec 003's counting semantics would be an out-of-scope behavior change to a different, already-shipped feature.
+
+## D10: `Node.Published`'s JSON exposure — value type, `omitempty` is a documented no-op when zero
+
+**Decision**: `Published time.Time \`json:"published,omitempty"\`` — a value type, not `*time.Time`, mirroring `Patch.Published`'s existing convention and this codebase's `.IsZero()` idiom (`ast_test.go` already asserts `p.Published.IsZero()` for `Patch`).
+
+**Rationale**: Consistency with the sibling field already on `Patch` outweighs the JSON cosmetic gap this choice implies: `encoding/json`'s `omitempty` does not special-case a zero-value struct, so a `Node` with no `Published` set (a stub, a schema document, or simply a node from before this feature shipped) will render `"published":"0001-01-01T00:00:00Z"` rather than omitting the key entirely in `kernel.SubgraphResult`'s `--json` output. Flagged here explicitly, not silently accepted (matching this project's established practice, e.g. spec 003's Complexity Tracking entry for its own fetch-timeout gap) — no consumer of this brand-new field exists yet to be broken by it, and switching to a pointer later, if a real `--json` consumer needs true omission, is a backward-compatible, additive change (a field that used to always print now sometimes prints `null`/absent — not a breaking schema change under constitution Principle XIV, since nothing currently depends on its presence).
+
+**Alternatives considered**: `*time.Time` now — rejected as premature: no `--json` consumer of `kernel.SubgraphResult.Patch.Nodes` exists yet that would notice the difference, and every other optional field this same `Node` struct already exposes (`Attrs`, `Text`, `HRefs`, ...) uses `omitempty` on types where it actually works (maps, strings, slices) — introducing the one pointer-typed field among them would be a stylistic outlier without a concrete consumer motivating it.
+
+## D11: Create-path fallback — an incoming node's own `Published` wins over the patch's, when already present
+
+**Decision**: When `service.Apply` creates a brand-new node (no `existing` file), it sets `node.Published = patch.Published` **only if** `node.Published.IsZero()` — i.e. only if the patch's own H2 section did not already carry a `published` value of its own. Otherwise the node keeps whatever `Published` `parsePatchBody`/`extractPublished` (D2) already decoded from that section's yaml fence.
+
+**Rationale**: A patch produced by `arc subgraph`'s round-trip (extract from one graph, re-`apply` into another) carries each extracted node's **own already-set** `Published` value in its yaml fence (since `RenderPatch` renders every attribute a node has, including `Published` once this feature ships) — the extracting patch's own manifest-level `published` field is a synthetic "when was this extraction taken" timestamp (`subgraph.go` sets it to `time.Now()`, not a real publication date), never data about the node's true provenance. Blindly overwriting every created node's `Published` with the current patch's manifest date would silently destroy that provenance across an extract-then-reapply round trip. Falling back only when the node's own value is absent means FR-001's documented, tested behavior (an ordinary extraction-tool-authored patch, where node sections never carry their own `published`) is unaffected, while the round-trip case is handled correctly as a natural consequence of the same "fill only if zero" rule already used everywhere else in this feature (D3, D11 are the same predicate applied at create-time vs. merge-time).
+
+**Alternatives considered**: Always using `patch.Published` for every newly created node, unconditionally — rejected per the provenance-destruction scenario above, discovered by tracing `arc subgraph`'s own patch-manifest construction (`service/subgraph.go`) rather than assumed.
