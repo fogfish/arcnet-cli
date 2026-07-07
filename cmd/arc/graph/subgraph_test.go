@@ -20,8 +20,8 @@ import (
 )
 
 const subgraphEntityTLS = `---
-kind: entity
-id: Transport Layer Security
+"@id": Transport Layer Security
+"@type": entity
 category: form structure attribute process
 ---
 # Transport Layer Security
@@ -32,8 +32,8 @@ TLS is the successor to SSL.
 `
 
 const subgraphSourceTLS13 = `---
-kind: source
-id: rescorla-2026-tls13
+"@id": rescorla-2026-tls13
+"@type": source
 title: TLS 1.3
 ---
 # rescorla-2026-tls13
@@ -42,8 +42,8 @@ TLS 1.3 is the latest version of the Transport Layer Security protocol.
 `
 
 const subgraphEntitySSL = `---
-kind: entity
-id: SSL
+"@id": SSL
+"@type": entity
 ---
 # SSL
 
@@ -51,8 +51,8 @@ id: SSL
 `
 
 const subgraphIsolatedNote = `---
-kind: entity
-id: Isolated Note
+"@id": Isolated Note
+"@type": entity
 ---
 # Isolated Note
 
@@ -146,32 +146,32 @@ func TestSubgraphUnknownBasenameRefusesWithClearErrorNoOutput(t *testing.T) {
 }
 
 const subgraphChainA = `---
-kind: entity
-id: ChainA
+"@id": ChainA
+"@type": entity
 ---
 # ChainA
 
 - [[ChainB]]
 `
 const subgraphChainB = `---
-kind: entity
-id: ChainB
+"@id": ChainB
+"@type": entity
 ---
 # ChainB
 
 - [[ChainC]]
 `
 const subgraphChainC = `---
-kind: entity
-id: ChainC
+"@id": ChainC
+"@type": entity
 ---
 # ChainC
 
 - [[ChainD]]
 `
 const subgraphChainD = `---
-kind: entity
-id: ChainD
+"@id": ChainD
+"@type": entity
 ---
 # ChainD
 `
@@ -241,8 +241,8 @@ func TestSubgraphOmittingDepthBehavesAsDepthOne(t *testing.T) {
 }
 
 const subgraphDiamondA = `---
-kind: entity
-id: DiamondA
+"@id": DiamondA
+"@type": entity
 ---
 # DiamondA
 
@@ -250,24 +250,24 @@ id: DiamondA
 - [[DiamondC]]
 `
 const subgraphDiamondB = `---
-kind: entity
-id: DiamondB
+"@id": DiamondB
+"@type": entity
 ---
 # DiamondB
 
 - [[DiamondD]]
 `
 const subgraphDiamondC = `---
-kind: entity
-id: DiamondC
+"@id": DiamondC
+"@type": entity
 ---
 # DiamondC
 
 - [[DiamondD]]
 `
 const subgraphDiamondD = `---
-kind: entity
-id: DiamondD
+"@id": DiamondD
+"@type": entity
 ---
 # DiamondD
 `
@@ -293,8 +293,8 @@ func TestSubgraphMultiPathNodeAppearsExactlyOnce(t *testing.T) {
 }
 
 const subgraphResourceRFC8446 = `---
-kind: resource
-id: RFC 8446
+"@id": RFC 8446
+"@type": resource
 tags: [cryptography]
 status: draft
 ---
@@ -304,8 +304,8 @@ The TLS 1.3 RFC.
 `
 
 const subgraphSourceOther = `---
-kind: source
-id: other-2026
+"@id": other-2026
+"@type": source
 tags: [cryptography]
 status: draft
 ---
@@ -315,8 +315,8 @@ An unrelated draft source.
 `
 
 const subgraphEntityTLSWithTwoTargets = `---
-kind: entity
-id: Transport Layer Security
+"@id": Transport Layer Security
+"@type": entity
 ---
 # Transport Layer Security
 
@@ -331,8 +331,8 @@ func seedSubgraphFilterFixture(t *testing.T, dir string) {
 	t.Helper()
 	writeGrepNode(t, dir, "entities/Transport Layer Security.md", subgraphEntityTLSWithTwoTargets)
 	writeGrepNode(t, dir, "sources/rescorla-2026-tls13.md", `---
-kind: source
-id: rescorla-2026-tls13
+"@id": rescorla-2026-tls13
+"@type": source
 tags: [cryptography]
 status: mature
 ---
@@ -463,8 +463,8 @@ func TestSubgraphTargetNotAGraphRefuses(t *testing.T) {
 }
 
 const subgraphDanglingEntity = `---
-kind: entity
-id: Dangling
+"@id": Dangling
+"@type": entity
 ---
 # Dangling
 
@@ -494,16 +494,16 @@ func TestSubgraphDanglingLinkTargetExcludedCLI(t *testing.T) {
 }
 
 const subgraphCycleA = `---
-kind: entity
-id: CycleA
+"@id": CycleA
+"@type": entity
 ---
 # CycleA
 
 - [[CycleB]]
 `
 const subgraphCycleB = `---
-kind: entity
-id: CycleB
+"@id": CycleB
+"@type": entity
 ---
 # CycleB
 
@@ -551,13 +551,13 @@ func TestSubgraphTruncatedPoolReportsStatsAndStderrNotice(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	writeGrepNode(t, dir, "entities/Hub.md", `---
-kind: entity
-id: Hub
+"@id": Hub
+"@type": entity
 ---
 # Hub
 `)
 	for _, id := range []string{"P1", "P2", "P3"} {
-		writeGrepNode(t, dir, "entities/"+id+".md", "---\nkind: entity\nid: "+id+"\n---\n# "+id+"\n\n- [[Hub]]\n")
+		writeGrepNode(t, dir, "entities/"+id+".md", "---\n\"@id\": "+id+"\n\"@type\": entity\n---\n# "+id+"\n\n- [[Hub]]\n")
 	}
 	writeGrepNode(t, dir, ".arc/config.yml", "subgraph:\n  backlinkCap: 2\n")
 	chdir(t, dir)
@@ -571,8 +571,8 @@ id: Hub
 }
 
 const subgraphEntityWithPublished = `---
-kind: entity
-id: PublishedThing
+"@id": PublishedThing
+"@type": entity
 published: "2026-04-12"
 ---
 # PublishedThing

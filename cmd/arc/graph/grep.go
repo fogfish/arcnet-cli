@@ -54,9 +54,7 @@ func (o *optsFilter) apply(cmd *cobra.Command) {
 func (o optsFilter) build() (core.Filter, error) {
 	f := core.Filter{}
 
-	for _, k := range o.kind {
-		f.Kinds = append(f.Kinds, core.Kind(k))
-	}
+	f.Kinds = append(f.Kinds, o.kind...)
 	f.Tags = append(f.Tags, o.tag...)
 
 	for _, a := range o.attr {
@@ -160,7 +158,7 @@ func renderMatchRow(m kernel.Match, maxWidth int, truncate bool) string {
 		}
 		text = highlightSpan(text, start, end)
 	}
-	return fmt.Sprintf("%s  %s  %d  %s\n", m.Kind, m.ID, m.Line, text)
+	return fmt.Sprintf("%s  %s  %d  %s\n", m.Type, m.ID, m.Line, text)
 }
 
 type humanGrepPrinter struct{ maxWidth int }

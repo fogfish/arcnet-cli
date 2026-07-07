@@ -21,7 +21,7 @@ import (
 // node's document does not have exactly one graph(ingest): commit carrying
 // its Source-Id trailer (research.md D12/spec FR-010).
 func checkIngestCommit(ctx context.Context, vcs port.VCS, dir string, node core.Node, path string) ([]kernel.Violation, error) {
-	if node.Kind != "source" {
+	if node.Type != "source" {
 		return nil, nil
 	}
 

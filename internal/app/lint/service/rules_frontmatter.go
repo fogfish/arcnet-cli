@@ -46,16 +46,16 @@ func checkUniqueBasenames(index map[string][]string) []kernel.Violation {
 }
 
 // checkUnrecognizedKind reports a RuleUnrecognizedKind violation when
-// node's Kind is absent from the resolved rules (research.md D11, spec
+// node's Type is absent from the resolved rules (research.md D11, spec
 // FR-011/FR-018).
 func checkUnrecognizedKind(node core.Node, path string, rules core.MergeRuleSet) []kernel.Violation {
-	if _, ok := rules.Lookup(node.Kind); ok {
+	if _, ok := rules.Lookup(node.Type); ok {
 		return nil
 	}
 	return []kernel.Violation{{
 		Rule:    kernel.RuleUnrecognizedKind,
 		Path:    path,
 		Line:    0,
-		Message: fmt.Sprintf("kind %q is not recognized by this graph's configuration", node.Kind),
+		Message: fmt.Sprintf("kind %q is not recognized by this graph's configuration", node.Type),
 	}}
 }

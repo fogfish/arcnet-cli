@@ -64,10 +64,7 @@ func (f *mcpFilter) toCoreFilter() (core.Filter, error) {
 		return core.Filter{}, nil
 	}
 
-	out := core.Filter{Tags: f.Tags}
-	for _, k := range f.Kind {
-		out.Kinds = append(out.Kinds, core.Kind(k))
-	}
+	out := core.Filter{Tags: f.Tags, Kinds: append([]string(nil), f.Kind...)}
 	if len(f.Attrs) > 0 {
 		out.Attrs = f.Attrs
 	}
@@ -120,7 +117,7 @@ func renderMatchTable(matches []kernel.Match) string {
 	var b strings.Builder
 	b.WriteString("| id | kind | line | snippet |\n|---|---|---|---|\n")
 	for _, m := range matches {
-		fmt.Fprintf(&b, "| %s | %s | %d | %s |\n", m.ID, m.Kind, m.Line, m.Text)
+		fmt.Fprintf(&b, "| %s | %s | %d | %s |\n", m.ID, m.Type, m.Line, m.Text)
 	}
 	return b.String()
 }

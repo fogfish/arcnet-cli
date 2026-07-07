@@ -53,13 +53,21 @@ func TestCheckPredicateRegisteredAbsent(t *testing.T) {
 	it.Then(t).Should(it.Equal(kernel.RulePredicateRegistered, out[0].Rule))
 }
 
-func TestCheckPredicateFromLinksBlockKey(t *testing.T) {
-	node := core.Node{Links: map[string]core.LinkBlock{
-		"mentions": {Title: "Mentions", Seq: []core.Link{{Predicate: "mentions", Target: "X"}}},
+// Edges is the single flat collection: predicates that formerly lived
+// under distinct grouped-link headings (e.g. "mentions" and
+// "citesAsEvidence") now interleave as plain Edges entries, and the
+// registered-predicate check still flags whichever one is unregistered.
+func TestCheckPredicateRegisteredFromFormerlyDistinctGroups(t *testing.T) {
+	node := core.Node{Edges: []core.Link{
+		{Predicate: "mentions", Target: "X"},
+		{Predicate: "citesAsEvidence", Target: "Y"},
 	}}
-	raw := []byte("## Mentions\n- mentions:: [[X]]\n")
+	raw := []byte("- mentions:: [[X]]\n- citesAsEvidence:: [[Y]]\n")
 	out := checkPredicateRegistered(node, "x.md", raw, map[string]bool{"mentions": true})
-	it.Then(t).Should(it.Equal(0, len(out)))
+	it.Then(t).Should(it.Equal(1, len(out)))
+	it.Then(t).
+		Should(it.Equal(kernel.RulePredicateRegistered, out[0].Rule)).
+		Should(it.String(out[0].Message).Contain("citesAsEvidence"))
 }
 
 func TestCheckCitationPredicateValid(t *testing.T) {
@@ -80,4 +88,3 @@ func TestCheckCitationPredicateBareLinkExempt(t *testing.T) {
 	out := checkCitationPredicate(node, "x.md", []byte("[[Widget]]\n"))
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
-

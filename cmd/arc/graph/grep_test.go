@@ -31,8 +31,8 @@ func writeGrepNode(t *testing.T, dir, relPath, content string) {
 }
 
 const grepSourceTLS13 = `---
-kind: source
-id: rescorla-2026-tls13
+"@id": "rescorla-2026-tls13"
+"@type": source
 tags: [cryptography]
 status: mature
 ---
@@ -44,8 +44,8 @@ This protocol replaces earlier, now-deprecated versions.
 `
 
 const grepEntityTLS = `---
-kind: entity
-title: Transport Layer Security
+"@id": "Transport Layer Security"
+"@type": entity
 tags: [cryptography]
 status: mature
 ---
@@ -55,8 +55,8 @@ TLS is the successor to SSL.
 `
 
 const grepEntityBacklog = `---
-kind: entity
-title: Another Entity
+"@id": "Another Entity"
+"@type": entity
 tags: [cryptography]
 status: backlog
 ---
@@ -66,8 +66,8 @@ TLS appears here too, in a backlog entity.
 `
 
 const grepResourceUnrelatedTag = `---
-kind: resource
-title: Unrelated Note
+"@id": "Unrelated Note"
+"@type": resource
 tags: [other]
 status: draft
 ---
@@ -340,7 +340,7 @@ func TestGrepVerboseShowsFullLineColorModeTruncatesDefault(t *testing.T) {
 	initGraph(t, dir)
 
 	longLine := "TLS 1.3 removes support for static RSA key exchange, replacing it with ephemeral Diffie-Hellman key agreement for every handshake, a change motivated entirely by forward secrecy."
-	content := "---\nkind: source\nid: longline-2026-doc\n---\n# longline-2026-doc\n\n" + longLine + "\n"
+	content := "---\n\"@id\": longline-2026-doc\n\"@type\": source\n---\n# longline-2026-doc\n\n" + longLine + "\n"
 	writeGrepNode(t, dir, "sources/longline-2026-doc.md", content)
 	// Pinned explicitly rather than relying on the built-in default, so
 	// this test stays correct regardless of that default's own value —
@@ -373,7 +373,7 @@ func TestGrepPlainModeNeverTruncatesEvenLongLine(t *testing.T) {
 	initGraph(t, dir)
 
 	longLine := "TLS 1.3 removes support for static RSA key exchange, replacing it with ephemeral Diffie-Hellman key agreement for every handshake, a change motivated entirely by forward secrecy."
-	content := "---\nkind: source\nid: longline-2026-doc\n---\n# longline-2026-doc\n\n" + longLine + "\n"
+	content := "---\n\"@id\": longline-2026-doc\n\"@type\": source\n---\n# longline-2026-doc\n\n" + longLine + "\n"
 	writeGrepNode(t, dir, "sources/longline-2026-doc.md", content)
 	chdir(t, dir)
 

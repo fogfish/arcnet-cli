@@ -55,14 +55,14 @@ func TestCheckLinksResolveDedupSameTargetTwice(t *testing.T) {
 }
 
 func TestCheckDerivedProvenanceSourceExempt(t *testing.T) {
-	node := core.Node{Kind: "source"}
-	out := checkDerivedProvenance(node, "sources/x.md", map[string]core.Kind{})
+	node := core.Node{Type: "source"}
+	out := checkDerivedProvenance(node, "sources/x.md", map[string]string{})
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
 func TestCheckDerivedProvenanceLinksToSourcePasses(t *testing.T) {
-	node := core.Node{Kind: "entity", Edges: []core.Link{{Target: "foo-2026-x"}}}
-	kindIndex := map[string]core.Kind{"foo-2026-x": "source"}
+	node := core.Node{Type: "entity", Edges: []core.Link{{Target: "foo-2026-x"}}}
+	kindIndex := map[string]string{"foo-2026-x": "source"}
 	out := checkDerivedProvenance(node, "entities/x.md", kindIndex)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
@@ -71,16 +71,41 @@ func TestCheckDerivedProvenanceLinksToSourcePasses(t *testing.T) {
 // over many documents, never content distilled from one document, so it
 // is exempt from checkDerivedProvenance regardless of its links.
 func TestCheckDerivedProvenanceTimelineExempt(t *testing.T) {
-	node := core.Node{Kind: "timeline", Edges: []core.Link{{Target: "Other Entity"}}}
-	kindIndex := map[string]core.Kind{"Other Entity": "entity"}
+	node := core.Node{Type: "timeline", Edges: []core.Link{{Target: "Other Entity"}}}
+	kindIndex := map[string]string{"Other Entity": "entity"}
 	out := checkDerivedProvenance(node, "timeline/yearly/2026.md", kindIndex)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
 func TestCheckDerivedProvenanceNoSourceLinkFails(t *testing.T) {
-	node := core.Node{Kind: "entity", Edges: []core.Link{{Target: "Other Entity"}}}
-	kindIndex := map[string]core.Kind{"Other Entity": "entity"}
+	node := core.Node{Type: "entity", Edges: []core.Link{{Target: "Other Entity"}}}
+	kindIndex := map[string]string{"Other Entity": "entity"}
 	out := checkDerivedProvenance(node, "entities/x.md", kindIndex)
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).Should(it.Equal(kernel.RuleDerivedProvenance, out[0].Rule))
+}
+
+// Edges is the single flat collection: entries that formerly lived under
+// distinct grouped-link headings (e.g. "mentions" and "citesAsEvidence")
+// now interleave as plain Edges entries, and both still resolve.
+func TestCheckLinksResolveMultipleEdgesFromFormerlyDistinctGroups(t *testing.T) {
+	node := core.Node{
+		Edges: []core.Link{
+			{Predicate: "mentions", Target: "Widget"},
+			{Predicate: "citesAsEvidence", Target: "foo-2026-x"},
+		},
+	}
+	out := checkLinksResolve(node, "entities/x.md", []byte("- mentions:: [[Widget]]\n- citesAsEvidence:: [[foo-2026-x]]\n"), basenames)
+	it.Then(t).Should(it.Equal(0, len(out)))
+}
+
+func TestCheckLinksResolveMultipleEdgesFromFormerlyDistinctGroupsBothUnresolved(t *testing.T) {
+	node := core.Node{
+		Edges: []core.Link{
+			{Predicate: "mentions", Target: "Missing One"},
+			{Predicate: "citesAsEvidence", Target: "Missing Two"},
+		},
+	}
+	out := checkLinksResolve(node, "entities/x.md", []byte("- mentions:: [[Missing One]]\n- citesAsEvidence:: [[Missing Two]]\n"), basenames)
+	it.Then(t).Should(it.Equal(2, len(out)))
 }

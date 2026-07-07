@@ -18,11 +18,11 @@ import (
 
 func TestNewLintResultDerivesPassingFailing(t *testing.T) {
 	nodes := []kernel.NodeStatus{
-		{Path: "sources/a.md", ID: "a", Kind: "source"},
-		{Path: "entities/b.md", ID: "b", Kind: "entity", Violations: []kernel.Violation{
+		{Path: "sources/a.md", ID: "a", Type: "source"},
+		{Path: "entities/b.md", ID: "b", Type: "entity", Violations: []kernel.Violation{
 			{Rule: kernel.RuleLinkResolves, Path: "entities/b.md", Line: 3, Message: "boom"},
 		}},
-		{Path: "entities/c.md", ID: "c", Kind: "entity"},
+		{Path: "entities/c.md", ID: "c", Type: "entity"},
 	}
 
 	result := kernel.NewLintResult("/graph", nodes)

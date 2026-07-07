@@ -19,7 +19,7 @@ import (
 // node's ID does not equal its file's actual on-disk basename
 // (research.md D6).
 func checkSourceCitekey(node core.Node, path, basename string, raw []byte) []kernel.Violation {
-	if node.Kind != "source" || node.ID == basename {
+	if node.Type != "source" || node.ID == basename {
 		return nil
 	}
 	return []kernel.Violation{{
@@ -34,7 +34,7 @@ func checkSourceCitekey(node core.Node, path, basename string, raw []byte) []ker
 // entity node's category attribute is missing, is not a four-element
 // sequence, or fails the fixed positional Sowa word-sets (research.md D7).
 func checkEntityCategory(node core.Node, path string, raw []byte) []kernel.Violation {
-	if node.Kind != "entity" {
+	if node.Type != "entity" {
 		return nil
 	}
 
@@ -44,19 +44,14 @@ func checkEntityCategory(node core.Node, path string, raw []byte) []kernel.Viola
 		return []kernel.Violation{{Rule: kernel.RuleEntityCategory, Path: path, Line: line, Message: msg}}
 	}
 
-	value, ok := node.Attrs["category"]
+	items, ok := node.Attrs["category"]
 	if !ok {
 		return violation("category field is missing")
 	}
 
-	items, ok := value.([]any)
-	if !ok {
-		return violation("category must decode to exactly four Sowa words, found 0")
-	}
-
 	words := make([]string, 0, len(items))
 	for _, item := range items {
-		s, ok := item.(string)
+		s, ok := item.Value.(string)
 		if !ok {
 			return violation("category words must all be strings")
 		}

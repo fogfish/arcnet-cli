@@ -35,7 +35,7 @@ func Resolve(store fsys.Store) (core.MergeRuleSet, map[string]bool, error) {
 
 // RegisterKind creates kind's node-kind schema document if one is not
 // already present. Thin delegator into service.RegisterKind.
-func RegisterKind(store fsys.Store, kind core.Kind) (created bool, err error) {
+func RegisterKind(store fsys.Store, kind string) (created bool, err error) {
 	return service.RegisterKind(store, kind)
 }
 
@@ -52,7 +52,7 @@ func RegisterPredicate(store fsys.Store, predicate string) (created bool, err er
 // port.VCS interfaces.
 type Component struct{}
 
-func (Component) RegisterKind(store fsys.Store, kind core.Kind) (created bool, err error) {
+func (Component) RegisterKind(store fsys.Store, kind string) (created bool, err error) {
 	return RegisterKind(store, kind)
 }
 

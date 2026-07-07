@@ -8,9 +8,9 @@
 
 package core
 
-// MergeRuleSet associates a node Kind with the MergeOp arc apply uses to
-// reconcile an incoming contribution of that kind with an existing node.
-type MergeRuleSet map[Kind]MergeOp
+// MergeRuleSet associates a node Type with the MergeOp arc apply uses to
+// reconcile an incoming contribution of that type with an existing node.
+type MergeRuleSet map[string]MergeOp
 
 // Union is a pure, non-mutating merge of two rule sets, m authoritative on
 // conflict.
@@ -28,7 +28,7 @@ func (m MergeRuleSet) Union(other MergeRuleSet) MergeRuleSet {
 // Lookup reports the MergeOp registered for kind. ok is false when kind is
 // absent from the set — the condition internal/app/graph/service.Apply uses
 // to decide "apply with the safe union default and warn".
-func (m MergeRuleSet) Lookup(kind Kind) (op MergeOp, ok bool) {
+func (m MergeRuleSet) Lookup(kind string) (op MergeOp, ok bool) {
 	op, ok = m[kind]
 	return op, ok
 }

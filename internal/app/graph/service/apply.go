@@ -29,7 +29,7 @@ import (
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
-var coreKindFolders = map[core.Kind]string{
+var coreKindFolders = map[string]string{
 	"source":   "sources",
 	"entity":   "entities",
 	"resource": "resources",
@@ -43,25 +43,25 @@ var coreKindFolders = map[core.Kind]string{
 // specialized bullet-list rendering, not core.RenderNode's generic
 // serialization, so this generic per-kind folder derivation could never
 // produce a compatible file for that kind even if it recognized it.
-func nodeFolder(kind core.Kind) string {
+func nodeFolder(kind string) string {
 	if folder, ok := coreKindFolders[kind]; ok {
 		return folder
 	}
-	s := string(kind)
-	if strings.HasSuffix(s, "s") {
-		return s
+	if strings.HasSuffix(kind, "s") {
+		return kind
 	}
-	return s + "s"
+	return kind + "s"
 }
 
 func nodePath(node core.Node) string {
-	return nodeFolder(node.Kind) + "/" + node.ID + ".md"
+	return nodeFolder(node.Type) + "/" + node.ID + ".md"
 }
 
 // distinctPredicates collects every distinct predicate name node declares:
-// every Links block key, plus every non-empty Link.Predicate in Edges
-// (research.md D4). HRefs are excluded — those are citation-type
-// predicates, a separate vocabulary this feature does not seed.
+// every non-empty Link.Predicate in Edges (research.md D4, D5 — Edges is
+// now the single unioned collection, what used to be Edges+Links). HRefs
+// are excluded — those are citation-type predicates, a separate vocabulary
+// this feature does not seed.
 func distinctPredicates(node core.Node) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -73,22 +73,19 @@ func distinctPredicates(node core.Node) []string {
 		out = append(out, name)
 	}
 
-	for key := range node.Links {
-		add(key)
-	}
 	for _, l := range node.Edges {
 		add(l.Predicate)
 	}
 	return out
 }
 
-// isStub reports whether node carries no content beyond ID/Kind — the
-// exact zero-beyond-ID/Kind shape service/subgraph.go's --stubs flag
+// isStub reports whether node carries no content beyond ID/Type — the
+// exact zero-beyond-ID/Type shape service/subgraph.go's --stubs flag
 // already emits (spec 007 FR-017, research.md D7). A stub-shaped node
 // created by service.Apply gets neither Published nor an "indexed" stamp.
 func isStub(node core.Node) bool {
-	return len(node.Attrs) == 0 && node.Text == "" && node.Notes == "" &&
-		len(node.HRefs) == 0 && len(node.Edges) == 0 && len(node.Links) == 0
+	return len(node.Attrs) == 0 && len(node.Texts) == 0 &&
+		len(node.HRefs) == 0 && len(node.Edges) == 0
 }
 
 // nodeContentChanged reports whether merged's rendered content actually
@@ -107,14 +104,27 @@ func nodeContentChanged(existing, merged core.Node) (bool, error) {
 	return !bytes.Equal(existingRaw, mergedRaw), nil
 }
 
-// setAttr nil-safely sets key on attrs, allocating it if nil, and returns
-// it — used to stamp both "indexed" and "updated".
-func setAttr(attrs map[string]any, key string, value any) map[string]any {
+// setAttr nil-safely sets key on attrs to a single-valued Predicate,
+// allocating it if nil, and returns it — used to stamp both "indexed" and
+// "updated".
+func setAttr(attrs map[string][]core.Predicate, key string, value any) map[string][]core.Predicate {
 	if attrs == nil {
-		attrs = map[string]any{}
+		attrs = map[string][]core.Predicate{}
 	}
-	attrs[key] = value
+	attrs[key] = []core.Predicate{{Value: value}}
 	return attrs
+}
+
+// attrString returns node's single-valued key attribute as a string, or ""
+// when absent/not a string — used to read back "title"/"authors"-shaped
+// scalars applyTimeline needs.
+func attrString(node core.Node, key string) string {
+	preds := node.Attrs[key]
+	if len(preds) == 0 {
+		return ""
+	}
+	s, _ := preds[0].Value.(string)
+	return s
 }
 
 // Reporter phase labels (data-model.md Reporter events, research.md D9,
@@ -149,6 +159,10 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 		return kernel.ApplyResult{}, err
 	}
 
+	if err := guardNoOldFormatNodes(store); err != nil {
+		return kernel.ApplyResult{}, err
+	}
+
 	start := time.Now()
 	appliedAt := time.Now().UTC()
 	stamp := appliedAt.Format(time.RFC3339)
@@ -173,8 +187,8 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 
 	result := kernel.ApplyResult{
 		Document:  patch.Document,
-		Created:   map[core.Kind]int{},
-		Merged:    map[core.Kind]int{},
+		Created:   map[string]int{},
+		Merged:    map[string]int{},
 		Conflicts: []string{},
 		Warnings:  []string{},
 		Timeline:  []string{},
@@ -197,18 +211,18 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 		// yearly/monthly layout. Its declared period id is instead folded
 		// into applyTimeline's own derivation further below (research.md
 		// D8b revised, BUG-005/BUG-006).
-		if node.Kind == "timeline" {
+		if node.Type == "timeline" {
 			timelinePeriodsFromPatch = append(timelinePeriodsFromPatch, node.ID)
 			reporter.Step(fmt.Sprintf("%s: folded into timeline index", node.ID))
 			continue
 		}
 
-		op, ok := rules.Lookup(node.Kind)
+		op, ok := rules.Lookup(node.Type)
 		if !ok {
 			op = core.MergeUnion
 			result.Warnings = append(result.Warnings, fmt.Sprintf(
-				"%s is not a recognized node kind for this graph — applied using the default \"union\" merge behavior", node.Kind))
-			if _, err := schema.RegisterKind(store, node.Kind); err != nil {
+				"%s is not a recognized node kind for this graph — applied using the default \"union\" merge behavior", node.Type))
+			if _, err := schema.RegisterKind(store, node.Type); err != nil {
 				reporter.Error(labelApplyingNodes, err)
 				rollback(store, createdPaths)
 				return kernel.ApplyResult{}, err
@@ -234,7 +248,7 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 				rollback(store, createdPaths)
 				return kernel.ApplyResult{}, err
 			}
-			result.Merged[node.Kind]++
+			result.Merged[node.Type]++
 			outcome = "merged"
 			if len(conflicts) > 0 {
 				result.Conflicts = append(result.Conflicts, path)
@@ -251,7 +265,7 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 				merged.Attrs = setAttr(merged.Attrs, "updated", stamp)
 			}
 		} else {
-			result.Created[node.Kind]++
+			result.Created[node.Type]++
 			if !isStub(node) {
 				if merged.Published.IsZero() {
 					merged.Published = patch.Published
@@ -282,7 +296,7 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 
 		reporter.Step(fmt.Sprintf("%s: %s", node.ID, outcome))
 
-		if node.Kind == "source" && node.ID == patch.Document {
+		if node.Type == "source" && node.ID == patch.Document {
 			sourceNode = node
 		}
 	}
@@ -320,6 +334,58 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 func guardIsGraph(store fsys.Store, dir string) error {
 	if _, err := store.Stat(".arc"); err != nil {
 		return ErrNotAGraph.With(err, dir)
+	}
+	return nil
+}
+
+// validateNodeBasename enforces spec FR-002/US3 Acceptance Scenario 3:
+// core.ParseNode has no filename parameter (contracts/ast-contract.md), so
+// the "@id" == basename rule is checked here, by callers that know path.
+func validateNodeBasename(node core.Node, path string) error {
+	basename := strings.TrimSuffix(filepath.Base(path), ".md")
+	if node.ID != basename {
+		return fmt.Errorf("%q does not match this file's basename %q", node.ID, basename)
+	}
+	return nil
+}
+
+// guardNoOldFormatNodes scans every existing node file in the graph before
+// any write begins (spec FR-012/FR-013, US3 Acceptance Scenario 4,
+// quickstart.md Scenario 3): a single pre-0.5 file anywhere in the graph —
+// not just one the incoming patch happens to target — aborts the whole
+// apply with no partial write, mirroring arc lint's own whole-graph walk
+// (internal/app/lint/service.Lint). A well-formed patch/exchange document
+// (e.g. one written into the graph root before being applied, this
+// package's own writePatchFile-style convention) is not a graph node and
+// is skipped — its own "kind: patch" manifest is a distinct, still-valid
+// concept unaffected by this feature (data-model.md's Patch section).
+func guardNoOldFormatNodes(store fsys.Store) error {
+	paths, err := walkNodeFiles(store)
+	if err != nil {
+		return err
+	}
+	for _, path := range paths {
+		f, err := store.Open(path)
+		if err != nil {
+			continue
+		}
+		raw, err := io.ReadAll(f)
+		f.Close()
+		if err != nil {
+			continue
+		}
+
+		if _, perr := core.ParsePatch(bytes.NewReader(raw)); perr == nil {
+			continue
+		}
+
+		node, parseErr := core.ParseNode(bytes.NewReader(raw))
+		if parseErr != nil {
+			return ErrNodeWrite.With(parseErr, path)
+		}
+		if err := validateNodeBasename(node, path); err != nil {
+			return ErrNodeWrite.With(err, path)
+		}
 	}
 	return nil
 }
@@ -363,6 +429,10 @@ func readExistingNode(store fsys.Store, path string) (core.Node, bool, error) {
 	if err != nil {
 		return core.Node{}, false, ErrNodeWrite.With(err, path)
 	}
+	if err := validateNodeBasename(node, path); err != nil {
+		return core.Node{}, false, ErrNodeWrite.With(err, path)
+	}
+
 	return node, true, nil
 }
 
@@ -398,8 +468,8 @@ func rollback(store fsys.Store, paths []string) {
 func buildCommitMessage(patch core.Patch, result kernel.ApplyResult) string {
 	subject := fmt.Sprintf("graph(ingest): %s — %s", patch.Document, patch.Title)
 
-	kinds := make([]core.Kind, 0, len(result.Created)+len(result.Merged))
-	seen := map[core.Kind]bool{}
+	kinds := make([]string, 0, len(result.Created)+len(result.Merged))
+	seen := map[string]bool{}
 	for k := range result.Created {
 		if !seen[k] {
 			kinds = append(kinds, k)
@@ -456,14 +526,15 @@ func parseTimelineEntries(content string) []timelineEntry {
 	return out
 }
 
-func attrStringSlice(v any) []string {
-	items, ok := v.([]any)
-	if !ok {
+// attrStringSlice returns every Predicate's Value in preds, stringified —
+// used to read back a multi-valued scalar attribute like "authors".
+func attrStringSlice(preds []core.Predicate) []string {
+	if len(preds) == 0 {
 		return nil
 	}
-	out := make([]string, 0, len(items))
-	for _, item := range items {
-		out = append(out, fmt.Sprint(item))
+	out := make([]string, 0, len(preds))
+	for _, p := range preds {
+		out = append(out, fmt.Sprint(p.Value))
 	}
 	return out
 }
@@ -506,9 +577,7 @@ func applyTimeline(store fsys.Store, patch core.Patch, source core.Node, extraPe
 
 	title := patch.Title
 	if title == "" {
-		if t, ok := source.Attrs["title"].(string); ok {
-			title = t
-		}
+		title = attrString(source, "title")
 	}
 	authors := attrStringSlice(source.Attrs["authors"])
 
@@ -579,11 +648,16 @@ func upsertTimelinePeriod(store fsys.Store, path, period, granularity, heading s
 
 	var buf strings.Builder
 	buf.WriteString("---\n")
-	buf.WriteString("kind: timeline\n")
-	// period is explicitly quoted so it always decodes as a YAML string —
-	// a bare 4-digit yearly value (e.g. "2026") would otherwise decode as
-	// an integer, breaking internal/core.deriveNodeID's period fallback
-	// for any generic reader (research.md D8 Bugfix, BUG-007).
+	// "@id"/"@type" (not the old "kind" field) so this file satisfies
+	// internal/core.ParseNode's mandatory-identity rule for any generic
+	// reader (lint's own walk parses every *.md file, timeline period
+	// files included) — "@id" is period itself, which is exactly this
+	// file's own basename (research.md D7). period is additionally kept
+	// as its own quoted Attrs entry so it always decodes as a YAML string
+	// — a bare 4-digit yearly value (e.g. "2026") would otherwise decode
+	// as an integer (research.md D8 Bugfix, BUG-007).
+	buf.WriteString("\"@id\": \"" + period + "\"\n")
+	buf.WriteString("\"@type\": timeline\n")
 	buf.WriteString("period: \"" + period + "\"\n")
 	buf.WriteString("granularity: " + granularity + "\n")
 	buf.WriteString("---\n")

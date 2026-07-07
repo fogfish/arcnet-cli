@@ -14,11 +14,6 @@ package core
 
 import "time"
 
-// Kind is a node's front-matter kind. Open vocabulary (AST §4 invariant 5):
-// this feature recognizes "source", "entity", "resource", "timeline", plus
-// whatever a graph's .arc/config.yml additionally registers.
-type Kind string
-
 // MergeOp is one of CORE §10's fixed menu of merge operations.
 type MergeOp string
 
@@ -31,31 +26,39 @@ const (
 )
 
 // Link is a single reference from one node to another (AST §6.3/§6.5), used
-// for exactly one of three distinct purposes: HRefs, Edges, or a
-// LinkBlock's Seq — never two at once for the same purpose (AST §3).
+// for exactly one of two distinct purposes: HRefs or Edges — never both at
+// once for the same occurrence (AST §3).
 type Link struct {
 	Predicate string `json:"predicate,omitempty"`
 	Target    string `json:"target"`
 	Alias     string `json:"alias,omitempty"`
 }
 
-// LinkBlock is one predicate-grouped body block (AST §6.5). Title is the
-// display heading (e.g. "Mentions"), derived and never independently
-// re-derived by a consumer once parsed.
-type LinkBlock struct {
-	Title string `json:"title"`
-	Seq   []Link `json:"seq"`
+// Predicate is one value contributed to an Attrs entry (AST §7): exactly
+// one of Value/Target is set. Value holds a scalar as authored; Target
+// holds a reference-valued predicate's target basename (informative only —
+// never itself a source of a navigable edge, mirroring how Edges/HRefs
+// already separate reference kinds). Alias is meaningful only alongside
+// Target. This feature's parser only ever produces Value-set predicates;
+// Target/Alias exist so a later schema-driven reference-attribute feature
+// does not need another Node-shape change.
+type Predicate struct {
+	Value  any    `json:"value,omitempty"`
+	Target string `json:"target,omitempty"`
+	Alias  string `json:"alias,omitempty"`
 }
 
 // Node is the graph's domain-level unit (ARCNET-AST §4 "Node Object"). Its
-// json tags (specs/007-arc-subgraph) are the first exposure of this type
-// through a --json contract (kernel.SubgraphResult.Patch.Nodes) — no
-// existing --json contract embeds Node, so this is purely additive.
+// json tags (specs/007-arc-subgraph) expose this type through a --json
+// contract (kernel.SubgraphResult.Patch.Nodes) — see
+// contracts/subgraph-json-contract.md for this feature's breaking delta.
 type Node struct {
 	// ID is the basename, equal to the filename without ".md" (CORE §6, AST §4).
 	ID string `json:"id"`
-	// Kind is mandatory.
-	Kind Kind `json:"kind"`
+	// Type is mandatory, from "@type". Open vocabulary (AST §4 invariant 5):
+	// this feature recognizes "source", "entity", "resource", "timeline",
+	// plus whatever a graph's .arc/config.yml additionally registers.
+	Type string `json:"type"`
 	// Published is the source document's declared publication date,
 	// propagated to every non-stub, non-schema node the patch creates
 	// (spec 009 FR-001), and filled on a later merge that finds it
@@ -63,23 +66,24 @@ type Node struct {
 	// Zero value (IsZero()) means "not yet set" (a stub, a schema document,
 	// or a node from before spec 009).
 	Published time.Time `json:"published,omitempty"`
-	// Attrs holds front-matter scalars, excluding kind (AST §4); unrecognized
-	// keys are preserved verbatim (AST invariant 5, spec FR-017).
-	Attrs map[string]any `json:"attrs,omitempty"`
-	// Text is the leading prose block, bracket-stripped (research.md D3/D3b):
-	// any [[Target]]/[[Target|alias]] markup originally embedded in the prose
-	// is removed and recorded in HRefs instead.
-	Text string `json:"text,omitempty"`
-	// Notes is the trailing prose block, rendered after Edges/Links;
-	// bracket-stripped exactly like Text (D3b).
-	Notes string `json:"notes,omitempty"`
-	// HRefs are inline links originally embedded in Text/Notes, extracted at
-	// parse time; never a source of navigable edges (AST invariant 3).
+	// Attrs holds every front-matter key other than "@id"/"@type"/
+	// "published" (AST §7); every present key's slice is non-empty.
+	// Unrecognized keys are preserved verbatim (AST invariant 5, spec
+	// FR-017).
+	Attrs map[string][]Predicate `json:"attrs,omitempty"`
+	// Texts holds every named prose field, bracket-stripped (research.md
+	// D3/D3b): any [[Target]]/[[Target|alias]] markup originally embedded
+	// in a value is removed and recorded in HRefs instead. Keys are
+	// produced by textPredicateFor (research.md D4).
+	Texts map[string]string `json:"texts,omitempty"`
+	// HRefs are inline links originally embedded in Texts values, extracted
+	// at parse time; never a source of navigable edges (AST invariant 3).
 	HRefs []Link `json:"hrefs,omitempty"`
-	// Edges are ungrouped structural edges, order-preserving.
+	// Edges are every outgoing structural link, in document order,
+	// regardless of whether the source document wrote it as a flat bullet
+	// or grouped under a heading/bold label (research.md D5) — grouping is
+	// derived at render time, never stored (AST §3 invariant 4).
 	Edges []Link `json:"edges,omitempty"`
-	// Links are predicate-grouped structural edges.
-	Links map[string]LinkBlock `json:"links,omitempty"`
 }
 
 // Patch is one CORE §12.2 document patch: a manifest plus every H1/H2 node

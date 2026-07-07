@@ -28,26 +28,32 @@ func Seed() map[string][]byte {
 	out := make(map[string][]byte, len(kernel.CoreMergeRules)+len(kernel.CorePredicates))
 
 	for kind, op := range kernel.CoreMergeRules {
-		raw, err := core.RenderNode(core.Node{
-			ID:   string(kind),
-			Kind: kernel.SchemaKind,
-			Attrs: map[string]any{
-				"merge": string(op),
+		node := core.Node{
+			ID:   kind,
+			Type: kernel.SchemaKind,
+			Attrs: map[string][]core.Predicate{
+				"merge": {{Value: string(op)}},
 			},
-			Text: kernel.KindDescription(kind),
-		})
+		}
+		if description := kernel.KindDescription(kind); description != "" {
+			node.Texts = map[string]string{"text": description}
+		}
+		raw, err := core.RenderNode(node)
 		if err != nil {
 			panic(err)
 		}
-		out[kernel.NodesDir+"/"+string(kind)+".md"] = raw
+		out[kernel.NodesDir+"/"+kind+".md"] = raw
 	}
 
 	for predicate, description := range kernel.CorePredicates {
-		raw, err := core.RenderNode(core.Node{
+		node := core.Node{
 			ID:   predicate,
-			Kind: kernel.SchemaKind,
-			Text: description,
-		})
+			Type: kernel.SchemaKind,
+		}
+		if description != "" {
+			node.Texts = map[string]string{"text": description}
+		}
+		raw, err := core.RenderNode(node)
 		if err != nil {
 			panic(err)
 		}
@@ -76,11 +82,15 @@ func Resolve(store fsys.Store) (core.MergeRuleSet, map[string]bool, error) {
 		if !ok {
 			continue
 		}
-		op, ok := node.Attrs["merge"].(string)
+		preds := node.Attrs["merge"]
+		if len(preds) == 0 {
+			continue
+		}
+		op, ok := preds[0].Value.(string)
 		if !ok {
 			continue
 		}
-		rules[core.Kind(node.ID)] = core.MergeOp(op)
+		rules[node.ID] = core.MergeOp(op)
 	}
 
 	entries, err = readDir(store, kernel.PredicatesDir)
@@ -102,13 +112,13 @@ func Resolve(store fsys.Store) (core.MergeRuleSet, map[string]bool, error) {
 // merge: union (spec FR-010, clarified), if one is not already present.
 // created is false and no write happens when the file already exists (spec
 // FR-011 — never overwrite).
-func RegisterKind(store fsys.Store, kind core.Kind) (created bool, err error) {
-	path := kernel.NodesDir + "/" + string(kind) + ".md"
+func RegisterKind(store fsys.Store, kind string) (created bool, err error) {
+	path := kernel.NodesDir + "/" + kind + ".md"
 	return registerIfAbsent(store, path, core.Node{
-		ID:   string(kind),
-		Kind: kernel.SchemaKind,
-		Attrs: map[string]any{
-			"merge": string(core.MergeUnion),
+		ID:   kind,
+		Type: kernel.SchemaKind,
+		Attrs: map[string][]core.Predicate{
+			"merge": {{Value: string(core.MergeUnion)}},
 		},
 	})
 }
@@ -119,7 +129,7 @@ func RegisterPredicate(store fsys.Store, predicate string) (created bool, err er
 	path := kernel.PredicatesDir + "/" + predicate + ".md"
 	return registerIfAbsent(store, path, core.Node{
 		ID:   predicate,
-		Kind: kernel.SchemaKind,
+		Type: kernel.SchemaKind,
 	})
 }
 

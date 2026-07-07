@@ -26,26 +26,24 @@ import (
 	"github.com/fogfish/arcnet-cli/internal/app/graph/kernel"
 	appschema "github.com/fogfish/arcnet-cli/internal/app/schema"
 	"github.com/fogfish/arcnet-cli/internal/bios"
-	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
-func pluralizeKind(kind core.Kind, count int) string {
+func pluralizeKind(kind string, count int) string {
 	if count == 1 {
-		return string(kind)
+		return kind
 	}
 	if kind == "entity" {
 		return "entities"
 	}
-	s := string(kind)
-	if strings.HasSuffix(s, "s") {
-		return s
+	if strings.HasSuffix(kind, "s") {
+		return kind
 	}
-	return s + "s"
+	return kind + "s"
 }
 
-func sortedKindsUnion(a, b map[core.Kind]int) []core.Kind {
-	seen := map[core.Kind]bool{}
-	kinds := make([]core.Kind, 0, len(a)+len(b))
+func sortedKindsUnion(a, b map[string]int) []string {
+	seen := map[string]bool{}
+	kinds := make([]string, 0, len(a)+len(b))
 	for k := range a {
 		if !seen[k] {
 			kinds = append(kinds, k)

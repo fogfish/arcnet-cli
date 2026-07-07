@@ -129,7 +129,7 @@ func Grep(ctx context.Context, mounter fsys.Mounter, filter core.Filter, pattern
 	for _, m := range scanned.Matches {
 		node := index[m.Path]
 		matches = append(matches, kernel.Match{
-			Kind:  node.Kind,
+			Type:  node.Type,
 			ID:    node.ID,
 			Path:  m.Path,
 			Line:  m.Line,

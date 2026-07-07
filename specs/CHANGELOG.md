@@ -1,5 +1,51 @@
 # Changelog
 
+
+## 2026-07-07
+
+/speckit-specify Rewrite arc's internal graph node representation to match ARCNET-CORE v0.7 / ARCNET-AST v0.6's predicate-first data model, replacing the current pre-0.5 shape. Study the specifications:
+* https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-CORE.md
+* https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-AST.md
+
+Today every graph node file uses a "kind" front-matter field and an "id" (or, as a fallback, "title" or "period") to establish identity. The new model requires every node to declare "@id" and "@type" explicitly as quoted YAML keys in front-matter, with "@id" always equal to the file's basename — no fallback to title or period is permitted anymore.
+
+Today a node's prose is split into exactly two fixed slots ("Text" and "Notes"). The new model requires an open, predicate-keyed set of prose fields (e.g. a source's "abstract", an entity's "definition", a resource's "relevance", a hypothesis's "claim") — any number of named prose predicates, not just two.
+
+Today a node's front-matter scalar attributes (tags, category, authors, etc.) are stored internally as plain values. The new model requires every attribute to be stored as an ordered list of values, since a predicate's cardinality (single vs. multi-valued) is no longer assumed from its shape — a single-valued attribute is still a one-element list.
+
+Today outgoing links are split into two different containers depending on whether they were originally written as a flat bulleted list or grouped under a "## Heading"/bold-label block. The new model requires these to be unified into one single ordered list of links per node; whether a link renders flat or grouped under a heading when the node is written back to Markdown must be decided at render time from the target predicate's own declared role, not fixed by how the source document happened to write it.
+
+Consumers of arc (arc apply, arc lint, arc grep, arc subgraph, arc serve, and anyone who runs `arc subgraph --json`) must be able to read and write graph files in this new shape. No needs to support the old format but — arc must not silently corrupt or misread an old-format graph (exit with error is sufficient).
+
+Round-tripping a node (Markdown -> in-memory model -> Markdown) must reproduce the original file's content and connectivity losslessly, matching ARCNET-AST's own conformance checklist (§10).
+
+Out of scope for this feature: per-predicate merge behavior changes (that's a separate feature), schema-node parsing of role/merge/description (that's a separate feature), and CLI-visible flag/command changes.
+
+
+/speckit-plan Technical approach: this is entirely an internal/core change — internal/core/ast.go, internal/core/markdown.go, and their tests. No internal/app/<use-case> package needs new business logic yet; downstream packages (graph, lint, schema) will only need field-name/type updates to keep compiling, which is fine to land in the same PR since Go won't compile otherwise.
+
+Node type changes (internal/core/ast.go):
+- Replace `Kind Kind` with `Type string` (mirrors "@type"); rename `ID string` stays but is now strictly the basename, no fallback derivation.
+- Replace `Attrs map[string]any` with `Attrs map[string][]Predicate`, where `Predicate` is a new struct `{ Value any; Target string; Alias string }` — exactly one of Value/Target set per AST §7.
+- Replace `Text string` + `Notes string` with `Texts map[string]string`, keyed by predicate name (e.g. "abstract", "definition", "claim", "notes", "text" as the generic fallback per CORE §10.2).
+- Replace `Edges []Link` + `Links map[string]LinkBlock` with a single `Edges []Link` (drop the `LinkBlock`/grouping-title storage entirely — AST §3 invariant 4: "grouping is derived, not stored").
+- Keep `HRefs []Link` as-is (already matches AST §6.3 conceptually).
+
+Parser changes (internal/core/markdown.go):
+- deriveNodeID: delete the id/title/period fallback chain; read "@id" (quoted-key YAML) only, error if absent.
+- Front-matter decoding: read "@type" instead of "kind"; wrap every remaining front-matter scalar into `[]Predicate{{Value: v}}` (arrays pass through as multiple Predicate entries).
+- Body walking (walkNodeBody): today's logic already distinguishes "leading prose paragraphs" from "a bare list" from "heading/bold-label + list" blocks — keep that structural parsing (it doesn't need schema knowledge to recognize shapes), but (a) route body prose paragraphs into `Texts` keyed by a small type->text-predicate lookup table seeded with CORE/DOMAIN-ARTICLE/DOMAIN-CORE-THOUGHT's known text predicates (source->abstract, entity->definition, resource->relevance, hypothesis->claim, aporia->tension, thought->claim, generic fallback "text"/"notes"), and (b) merge what used to be two containers (bare-list edges, heading-grouped links) into one flat `Edges` slice, no longer keeping the grouping title.
+- Note the real dependency on spec 011: the type->text-predicate lookup table above is a stopgap hardcoded map for this spec; spec 011's Schema Index is the eventual source of truth and should replace the hardcoded table once it lands — call this out explicitly as a documented TODO/seam, not a silent duplication.
+
+Renderer changes (RenderNode/RenderPatch): for now, render Edges as a single flat bulleted list (correct per CORE for role="edge" predicates) — full grouped-heading rendering driven by predicate role is deliberately deferred to spec 013 to keep this spec's diff reviewable; document this scoping explicitly in the plan's Constraints section so it isn't mistaken for a completeness gap.
+
+Migration/back-compat: add a clear, tested error path (not a panic, not silent misparse) when a node's front-matter has neither "@id" nor legacy "id" — prefer failing loudly. The support of old-format ("kind"/"id") MUST NOT BE implemented, the compatibility or migration is not a concern at this phase.
+
+Testing: exhaustive table-driven round-trip tests in internal/core/ast_test.go and internal/core/markdown_test.go covering every CORE §11 worked example (source, entity, resource, timeline) and at least one DOMAIN-ARTICLE example (hypothesis with derivedFrom/assumes/addresses) to prove Texts/Attrs/Edges shapes survive Markdown -> model -> Markdown unchanged, per AST §10's checklist. Follow constitution Principle VI (TDD) — write these before the implementation.
+
+Constraints: no new third-party dependency; keep goldmark/goldmark-meta/yaml.v3 as the codec stack; Node/Patch's json tags stay additive-compatible where reasonably possible, but flag explicitly in Complexity Tracking that this feature IS a breaking change to the `arc subgraph --json` contract's Node shape (kind->type, attrs shape change, edges/links merge) — that break is unavoidable and should be called out to the user as a versioning/communication concern, not hidden.
+
+
 # 2026-07-05
 
 /speckit-specify encode timestamp attribute for graph nodes. The patch document carries on the timestamp `published`. This timestamp has to propogate to each newly created node (except stub on) in the graph. Then, it adds a new attribute for each newly created node `indexed` with ISO8601 timestamp at seconds resolution. The `indexed` timestamp is identical for all nodes in the patch. In node has been merged then `updated` with ISO8601 timestamp at seconds resolution. Both `indexed` and `updated` carries on identical timestamp for the single patch document. All node in the graph carries on `published` and `indexed`. All node been merged carries on `updated`. The `published` attribute is exported out.   
