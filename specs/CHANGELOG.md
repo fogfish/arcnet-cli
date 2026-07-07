@@ -4,7 +4,7 @@
 
 /speckit-specify encode timestamp attribute for graph nodes. The patch document carries on the timestamp `published`. This timestamp has to propogate to each newly created node (except stub on) in the graph. Then, it adds a new attribute for each newly created node `indexed` with ISO8601 timestamp at seconds resolution. The `indexed` timestamp is identical for all nodes in the patch. In node has been merged then `updated` with ISO8601 timestamp at seconds resolution. Both `indexed` and `updated` carries on identical timestamp for the single patch document. All node in the graph carries on `published` and `indexed`. All node been merged carries on `updated`. The `published` attribute is exported out.   
 
-/speckit-plan defined `published` attribute at `Node` type level, making it de-facto core standard attributed. Modify `apply` command to mandage `published`, `indexed` and `updated` attributes. Make sure that `published` and `indexed` has nor overrwiten once created at the node level.
+/speckit-plan defined `published` attribute at `Node` type level, making it de-facto core standard attributed. Modify `apply` command to mandage `published`, `indexed` and `updated` attributes. Make sure that `published` and `indexed` has not overrwiten once created at the node level.
 
 ---
 
