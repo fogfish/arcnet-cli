@@ -130,11 +130,14 @@ func TestSeedEntriesRoundTripThroughParseNode(t *testing.T) {
 	for path, raw := range seed {
 		node, err := core.ParseNode(bytes.NewReader(raw))
 		it.Then(t).Should(it.Nil(err))
-		it.Then(t).Should(it.Equal(kernel.SchemaKind, node.Kind))
+		it.Then(t).Should(it.Equal(kernel.SchemaKind, node.Type))
 
-		if op, ok := kernel.CoreMergeRules.Lookup(core.Kind(node.ID)); ok {
+		if op, ok := kernel.CoreMergeRules.Lookup(node.ID); ok {
 			it.Then(t).Should(it.Equal(kernel.NodesDir+"/"+node.ID+".md", path))
-			merge, _ := node.Attrs["merge"].(string)
+			var merge string
+			if preds := node.Attrs["merge"]; len(preds) > 0 {
+				merge, _ = preds[0].Value.(string)
+			}
 			it.Then(t).Should(it.Equal(string(op), merge))
 		}
 	}
@@ -164,7 +167,7 @@ func TestResolveRoundTripsSeedOutput(t *testing.T) {
 
 func TestResolveSkipsMalformedDocument(t *testing.T) {
 	store := newFakeStore(map[string]string{
-		kernel.NodesDir + "/source.md": "---\nid: source\nkind: schema\nmerge: none\n---\n# source\n",
+		kernel.NodesDir + "/source.md": "---\n\"@id\": source\n\"@type\": schema\nmerge: none\n---\n# source\n",
 		kernel.NodesDir + "/broken.md": "not valid front matter at all",
 	})
 
@@ -240,7 +243,7 @@ func TestRegisterPredicateWriteFailure(t *testing.T) {
 
 func TestResolveReflectsHandEditedMergeValue(t *testing.T) {
 	store := newFakeStore(map[string]string{
-		kernel.NodesDir + "/hypothesis.md": "---\nid: hypothesis\nkind: schema\nmerge: union\n---\n# hypothesis\n",
+		kernel.NodesDir + "/hypothesis.md": "---\n\"@id\": hypothesis\n\"@type\": schema\nmerge: union\n---\n# hypothesis\n",
 	})
 
 	rules, _, err := service.Resolve(store)
@@ -248,7 +251,7 @@ func TestResolveReflectsHandEditedMergeValue(t *testing.T) {
 	op, _ := rules.Lookup("hypothesis")
 	it.Then(t).Should(it.Equal(core.MergeUnion, op))
 
-	store.files[kernel.NodesDir+"/hypothesis.md"] = "---\nid: hypothesis\nkind: schema\nmerge: union-first-writer\n---\n# hypothesis\n"
+	store.files[kernel.NodesDir+"/hypothesis.md"] = "---\n\"@id\": hypothesis\n\"@type\": schema\nmerge: union-first-writer\n---\n# hypothesis\n"
 
 	rules, _, err = service.Resolve(store)
 	it.Then(t).Should(it.Nil(err))

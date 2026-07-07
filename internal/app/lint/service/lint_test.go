@@ -137,8 +137,8 @@ type memMounter struct{ store *memStore }
 func (m memMounter) Mount(root string) (fsys.Store, error) { return m.store, nil }
 
 const conformantSourceFixture = `---
-kind: source
-id: foo-2026-x
+"@id": "foo-2026-x"
+"@type": source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -146,21 +146,18 @@ published: "2026-04-12"
 # foo-2026-x
 
 A test document.
-
-## Mentions
 - mentions:: [[Widget]]
 `
 
 const conformantEntityFixture = `---
-kind: entity
+"@id": "Widget"
+"@type": entity
 title: Widget
 category: [independent, abstract, occurrent, script]
 ---
 # Widget
 
 A test entity.
-
-## Mentions
 - mentions:: [[foo-2026-x]]
 `
 
@@ -206,7 +203,7 @@ func TestLintConformantGraphAllPass(t *testing.T) {
 func TestLintExcludesArcAndSchema(t *testing.T) {
 	s := newConformantStore()
 	s.files[".arc/config.yml"] = ""
-	s.files["_schema/nodes/entity.md"] = "---\nid: entity\nkind: schema\nmerge: union\n---\n# entity\n"
+	s.files["_schema/nodes/entity.md"] = "---\n\"@id\": entity\n\"@type\": schema\nmerge: union\n---\n# entity\n"
 	vcs := &lintmock.VCS{Commits: map[string][]string{"Source-Id: foo-2026-x": {"abc123"}}}
 
 	result, err := service.Lint(context.Background(), memMounter{s}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, predicatesFixture, "/graph")
@@ -217,7 +214,7 @@ func TestLintExcludesArcAndSchema(t *testing.T) {
 
 func TestLintIncludesNodeInNonStandardFolder(t *testing.T) {
 	s := newConformantStore()
-	s.files["hypothesis/A Test Hypothesis.md"] = "---\nkind: hypothesis\ntitle: A Test Hypothesis\n---\n# A Test Hypothesis\n\nA conclusion.\n\n## Mentions\n- mentions:: [[foo-2026-x]]\n"
+	s.files["hypothesis/A Test Hypothesis.md"] = "---\n\"@id\": \"A Test Hypothesis\"\n\"@type\": hypothesis\ntitle: A Test Hypothesis\n---\n# A Test Hypothesis\n\nA conclusion.\n- mentions:: [[foo-2026-x]]\n"
 	rules := coreMergeRulesFixture.Union(core.MergeRuleSet{"hypothesis": core.MergeValidatedOverwrite})
 	vcs := &lintmock.VCS{Commits: map[string][]string{"Source-Id: foo-2026-x": {"abc123"}}}
 

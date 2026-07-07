@@ -92,14 +92,28 @@ func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios
 			continue
 		}
 
+		// ParseNode has no filename parameter (contracts/ast-contract.md), so
+		// the "@id" == basename rule (spec FR-002, US3 Acceptance Scenario 3)
+		// is enforced here, by the one caller that knows the file's actual
+		// path — universally, for every node, not just "source"-kind ones
+		// (checkSourceCitekey's own "@id"==basename check is a narrower,
+		// pre-existing CORE §11 rule specific to a source's citekey).
+		if node.ID != basename {
+			fileViolations[path] = append(fileViolations[path], kernel.Violation{
+				Rule: kernel.RuleFrontMatter, Path: path, Line: locateFrontMatterField(raw, `"@id"`),
+				Message: `"@id" ` + node.ID + ` does not match this file's basename ` + basename,
+			})
+			continue
+		}
+
 		parsed = append(parsed, parsedNode{Path: path, Basename: basename, Node: node, Raw: raw})
 	}
 	reporter.Done(labelReadingGraph, time.Since(start))
 
-	kindIndex := map[string]core.Kind{}
+	kindIndex := map[string]string{}
 	for _, p := range parsed {
 		if _, ok := kindIndex[p.Basename]; !ok {
-			kindIndex[p.Basename] = p.Node.Kind
+			kindIndex[p.Basename] = p.Node.Type
 		}
 	}
 
@@ -139,7 +153,7 @@ func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios
 		for _, p := range parsed {
 			if p.Path == path {
 				status.ID = p.Node.ID
-				status.Kind = p.Node.Kind
+				status.Type = p.Node.Type
 				break
 			}
 		}

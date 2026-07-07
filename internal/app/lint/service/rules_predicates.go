@@ -27,16 +27,14 @@ var citoPredicates = map[string]bool{
 var camelCasePattern = regexp.MustCompile(`^[a-z][a-zA-Z0-9]*$`)
 
 // predicateOccurrence is one distinct predicate token found in a node's
-// Edges/HRefs (structural, inline) or Links (predicate-grouped block key),
-// paired with the line it was located at.
+// Edges/HRefs, paired with the line it was located at.
 type predicateOccurrence struct {
 	predicate string
 	line      int
 }
 
 // predicateOccurrences collects every distinct predicate a node declares:
-// every Edges/HRefs entry with a non-empty Predicate, plus every Links
-// block key (research.md D9).
+// every Edges/HRefs entry with a non-empty Predicate (research.md D9).
 func predicateOccurrences(node core.Node, raw []byte) []predicateOccurrence {
 	var out []predicateOccurrence
 	for _, l := range node.Edges {
@@ -48,14 +46,6 @@ func predicateOccurrences(node core.Node, raw []byte) []predicateOccurrence {
 		if l.Predicate != "" {
 			out = append(out, predicateOccurrence{predicate: l.Predicate, line: locatePredicateToken(raw, l.Predicate)})
 		}
-	}
-	for _, key := range sortedLinkKeys(node.Links) {
-		block := node.Links[key]
-		line := locatePredicateToken(raw, key)
-		if line == 0 {
-			line = locateBlockLabel(raw, block.Title)
-		}
-		out = append(out, predicateOccurrence{predicate: key, line: line})
 	}
 	return out
 }

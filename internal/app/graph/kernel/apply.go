@@ -9,8 +9,6 @@
 // Package kernel holds the graph (graph I/O) domain's value types.
 package kernel
 
-import "github.com/fogfish/arcnet-cli/internal/core"
-
 // ApplyResult is the domain value component.go's Apply returns to
 // cmd/arc/graph, rendered by bios.Registry[ApplyResult].
 type ApplyResult struct {
@@ -20,9 +18,9 @@ type ApplyResult struct {
 	// document already tracked; every other field is zero-valued then.
 	Skipped bool `json:"skipped"`
 	// Created holds node counts by kind, newly created.
-	Created map[core.Kind]int `json:"created"`
+	Created map[string]int `json:"created"`
 	// Merged holds node counts by kind, merged into existing nodes.
-	Merged map[core.Kind]int `json:"merged"`
+	Merged map[string]int `json:"merged"`
 	// Conflicts holds relative paths of node files that received a
 	// conflict marker (FR-013), for the PostRunE hint.
 	Conflicts []string `json:"conflicts"`

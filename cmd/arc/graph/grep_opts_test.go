@@ -15,7 +15,6 @@ import (
 	"github.com/fogfish/it/v2"
 
 	"github.com/fogfish/arcnet-cli/internal/app/graph/service"
-	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
 func TestOptsFilterBuildParsesExactAttrValue(t *testing.T) {
@@ -56,7 +55,7 @@ func TestOptsFilterBuildComposesKindTagAttr(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
 		Should(it.Equal(2, len(f.Kinds))).
-		Should(it.Seq(f.Kinds).Equal(core.Kind("entity"), core.Kind("source"))).
+		Should(it.Seq(f.Kinds).Equal("entity", "source")).
 		Should(it.Equal(1, len(f.Tags))).
 		Should(it.Equal("mature", f.Attrs["status"]))
 }

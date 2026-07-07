@@ -218,13 +218,13 @@ func TestInitSeedsAllCoreKindsAndPredicates(t *testing.T) {
 	entity, rerr := os.ReadFile(filepath.Join(dir, "_schema", "nodes", "entity.md"))
 	it.Then(t).
 		Should(it.Nil(rerr)).
-		Should(it.String(string(entity)).Contain("kind: schema")).
+		Should(it.String(string(entity)).Contain(`"@type": schema`)).
 		Should(it.String(string(entity)).Contain("merge: union"))
 
 	related, rerr := os.ReadFile(filepath.Join(dir, "_schema", "predicates", "related.md"))
 	it.Then(t).
 		Should(it.Nil(rerr)).
-		Should(it.String(string(related)).Contain("kind: schema"))
+		Should(it.String(string(related)).Contain(`"@type": schema`))
 }
 
 // arc init
@@ -402,4 +402,3 @@ func TestInitRefusesReInitialization(t *testing.T) {
 	after := gitOutput(t, dir, "log", "--oneline")
 	it.Then(t).Should(it.Equal(before, after))
 }
-

@@ -26,7 +26,7 @@ import (
 type nodeIndex map[string]core.Node
 
 // reverseIndex maps a target ID to the IDs of every node carrying a
-// structural connection (Edges/Links) to it — the backlink adjacency
+// structural connection (Edges) to it — the backlink adjacency
 // (research.md D4).
 type reverseIndex map[string][]string
 
@@ -52,17 +52,11 @@ func enumerateNodes(store fsys.Store) (nodeIndex, error) {
 }
 
 // nodeTargets returns every structural target n points at: its own Edges
-// plus every Links block's Seq (research.md D3/D4) — HRefs are never
-// navigable structural connections.
+// (research.md D3/D4) — HRefs are never navigable structural connections.
 func nodeTargets(n core.Node) []string {
 	var out []string
 	for _, e := range n.Edges {
 		out = append(out, e.Target)
-	}
-	for _, block := range n.Links {
-		for _, l := range block.Seq {
-			out = append(out, l.Target)
-		}
 	}
 	return out
 }
@@ -79,14 +73,10 @@ func buildReverseIndex(index nodeIndex) reverseIndex {
 	return rev
 }
 
-// outDegree is n's own outgoing structural edge count: len(Edges) plus the
-// sum of every Links block's Seq length (research.md D4).
+// outDegree is n's own outgoing structural edge count: len(Edges)
+// (research.md D4).
 func outDegree(n core.Node) int {
-	d := len(n.Edges)
-	for _, block := range n.Links {
-		d += len(block.Seq)
-	}
-	return d
+	return len(n.Edges)
 }
 
 // degree is id's total structural connectivity across the whole graph —
@@ -197,7 +187,7 @@ func slugify(s string) string {
 // spec.md FR-001 through FR-016). When stubs is true (spec FR-017,
 // BUG-001), every structural link target referenced by an included node
 // but excluded from the extraction boundary also gets a minimal node
-// section (kind + id only, no other attributes, empty body, never itself
+// section (type + id only, no other attributes, empty body, never itself
 // expanded) — so every link in the output resolves to a real node section
 // even when the result is applied into a graph that does not already
 // contain the excluded targets.
@@ -254,7 +244,7 @@ func Subgraph(ctx context.Context, mounter fsys.Mounter, filter core.Filter, bas
 	if stubs {
 		for _, id := range boundaryTargets(index, included, nodes) {
 			target := index[id]
-			nodes = append(nodes, core.Node{ID: target.ID, Kind: target.Kind})
+			nodes = append(nodes, core.Node{ID: target.ID, Type: target.Type})
 			included[id] = true
 			stubCount++
 		}

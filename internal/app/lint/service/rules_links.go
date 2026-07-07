@@ -10,32 +10,16 @@ package service
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/fogfish/arcnet-cli/internal/app/lint/kernel"
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
-// sortedLinkKeys returns links' keys in a deterministic order, for stable
-// violation ordering.
-func sortedLinkKeys(links map[string]core.LinkBlock) []string {
-	keys := make([]string, 0, len(links))
-	for k := range links {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-// collectAllLinks flattens a node's HRefs, Edges, and every Links[*].Seq
-// entry, in a deterministic order.
+// collectAllLinks flattens a node's HRefs and Edges, in document order.
 func collectAllLinks(node core.Node) []core.Link {
 	var out []core.Link
 	out = append(out, node.HRefs...)
 	out = append(out, node.Edges...)
-	for _, key := range sortedLinkKeys(node.Links) {
-		out = append(out, node.Links[key].Seq...)
-	}
 	return out
 }
 
@@ -69,8 +53,8 @@ func checkLinksResolve(node core.Node, path string, raw []byte, basenames map[st
 // timeline is also exempt (research.md D8 Bugfix, BUG-001): it is the
 // tool's own chronological index over many documents, never content
 // distilled from one document, the same way source itself is exempt.
-func checkDerivedProvenance(node core.Node, path string, kindIndex map[string]core.Kind) []kernel.Violation {
-	if node.Kind == "source" || node.Kind == "timeline" {
+func checkDerivedProvenance(node core.Node, path string, kindIndex map[string]string) []kernel.Violation {
+	if node.Type == "source" || node.Type == "timeline" {
 		return nil
 	}
 

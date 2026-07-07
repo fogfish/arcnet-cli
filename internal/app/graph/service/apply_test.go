@@ -48,11 +48,11 @@ var emptyPredicates = map[string]bool{}
 // fakeSchema records every RegisterKind/RegisterPredicate call, for
 // asserting graph.Apply's auto-discovery hook (spec.md US2).
 type fakeSchema struct {
-	registeredKinds      []core.Kind
+	registeredKinds      []string
 	registeredPredicates []string
 }
 
-func (f *fakeSchema) RegisterKind(store fsys.Store, kind core.Kind) (bool, error) {
+func (f *fakeSchema) RegisterKind(store fsys.Store, kind string) (bool, error) {
 	f.registeredKinds = append(f.registeredKinds, kind)
 	return true, nil
 }
@@ -153,6 +153,8 @@ title: "A Test Document"
 
 ## foo-2026-x
 ` + "```yaml" + `
+"@id": "foo-2026-x"
+"@type": source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -171,6 +173,8 @@ title: "A Test Document"
 
 ## foo-2026-x
 ` + "```yaml" + `
+"@id": "foo-2026-x"
+"@type": source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -182,6 +186,8 @@ A test document.
 
 ## Widget
 ` + "```yaml" + `
+"@id": "Widget"
+"@type": entity
 category: [independent, abstract, occurrent, script]
 ` + "```" + `
 
@@ -190,7 +196,8 @@ A test entity.
 `
 
 const existingWidgetEntity = `---
-kind: entity
+"@id": "Widget"
+"@type": entity
 title: Widget
 category: [independent, abstract, occurrent, script]
 ---
@@ -202,7 +209,7 @@ A test entity.
 // sourceResourcePatch/existingWidgetSpecResourceWithStatus (BUG-004): a
 // "resource" node uses MergeUnionFirstWriter, untouched by BUG-004's
 // MergeUnion-only fix, so an already-populated scalar field it diverges on
-// is still flagged — unlike an "entity" (MergeUnion) node's Text/Attrs,
+// is still flagged — unlike an "entity" (MergeUnion) node's Texts/Attrs,
 // which no longer conflict at all (see internal/core/merge_test.go).
 const sourceResourcePatch = `---
 kind: patch
@@ -214,6 +221,8 @@ title: "A Test Document"
 
 ## foo-2026-x
 ` + "```yaml" + `
+"@id": "foo-2026-x"
+"@type": source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -225,6 +234,8 @@ A test document.
 
 ## Widget Spec
 ` + "```yaml" + `
+"@id": "Widget Spec"
+"@type": resource
 ref: standard
 status: backlog
 ` + "```" + `
@@ -233,7 +244,8 @@ The normative specification of Widget.
 `
 
 const existingWidgetSpecResourceWithStatus = `---
-kind: resource
+"@id": "Widget Spec"
+"@type": resource
 title: Widget Spec
 ref: standard
 status: read
@@ -253,6 +265,8 @@ title: "A Test Document"
 
 ## foo-2026-x
 ` + "```yaml" + `
+"@id": "foo-2026-x"
+"@type": source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -263,7 +277,10 @@ A test document.
 # Hypothesis
 
 ## A Test Hypothesis
-` + "```yaml\n```" + `
+` + "```yaml" + `
+"@id": "A Test Hypothesis"
+"@type": hypothesis
+` + "```" + `
 
 A conclusion.
 `
@@ -393,7 +410,7 @@ func TestApplyUnregisteredKindRegistersSchemaKind(t *testing.T) {
 	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, schema, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
-	it.Then(t).Should(it.Seq(schema.registeredKinds).Contain(core.Kind("hypothesis")))
+	it.Then(t).Should(it.Seq(schema.registeredKinds).Contain("hypothesis"))
 }
 
 // arc apply — spec.md US2: a previously-unseen predicate declared in a
@@ -454,7 +471,9 @@ func TestApplyTimelineEntriesCreated(t *testing.T) {
 // value (e.g. "2026") must round-trip through the generic
 // core.ParseNode, not just this feature's own bespoke
 // parseTimelineEntries scan — an unquoted YAML scalar would otherwise
-// decode as an integer, breaking core.deriveNodeID's period fallback.
+// decode as an integer. The file's own "@id"/"@type" (research.md D7)
+// satisfy core.ParseNode's mandatory-identity rule the same way any other
+// node file must, with "@id" equal to the file's own basename ("2026").
 func TestApplyYearlyTimelinePeriodFileParsesViaCoreParseNode(t *testing.T) {
 	store := newGraphStore()
 	store.files["patch.md"] = []byte(minimalSourcePatch)
@@ -469,7 +488,7 @@ func TestApplyYearlyTimelinePeriodFileParsesViaCoreParseNode(t *testing.T) {
 	node, err := core.ParseNode(bytes.NewReader(yearly))
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
-		Should(it.Equal(core.Kind("timeline"), node.Kind)).
+		Should(it.Equal("timeline", node.Type)).
 		Should(it.Equal("2026", node.ID))
 }
 
@@ -501,6 +520,8 @@ title: "A Test Document"
 
 ## foo-2026-x
 ` + "```yaml" + `
+"@id": "foo-2026-x"
+"@type": source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -511,11 +532,14 @@ A test document.
 # Entity
 
 ## StubEntity
-` + "```yaml\n```" + `
+` + "```yaml" + `
+"@id": "StubEntity"
+"@type": entity
+` + "```" + `
 `
 
 // spec.md US1 Acceptance Scenario 3 / FR-002: a minimal-stub patch section
-// (kind/id only) creates a node carrying neither published nor indexed.
+// (@id/@type only) creates a node carrying neither published nor indexed.
 func TestApplyStubCreatesNodeWithNeitherPublishedNorIndexed(t *testing.T) {
 	store := newGraphStore()
 	store.files["patch.md"] = []byte(stubSectionPatch)
@@ -547,7 +571,7 @@ func TestApplySchemaRegistrationCarriesNoTimestampAttrs(t *testing.T) {
 
 	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, schema, "/graph", "/patch.md")
 	it.Then(t).Should(it.Nil(err))
-	it.Then(t).Should(it.Seq(schema.registeredKinds).Contain(core.Kind("hypothesis")))
+	it.Then(t).Should(it.Seq(schema.registeredKinds).Contain("hypothesis"))
 }
 
 // spec.md US1 Acceptance Scenario 1/2 / FR-001/FR-005: every node one
@@ -566,14 +590,16 @@ func TestApplyCreatedNodesCarryPublishedAndShareIndexed(t *testing.T) {
 	entity, err := core.ParseNode(bytes.NewReader(store.files["entities/Widget.md"]))
 	it.Then(t).Should(it.Nil(err))
 
-	sourceIndexed, ok := source.Attrs["indexed"].(string)
+	sourceIndexedPreds := source.Attrs["indexed"]
+	it.Then(t).Should(it.Equal(1, len(sourceIndexedPreds)))
+	sourceIndexed, ok := sourceIndexedPreds[0].Value.(string)
 	it.Then(t).Should(it.True(ok))
 
 	it.Then(t).
 		ShouldNot(it.True(source.Published.IsZero())).
 		Should(it.Equal(source.Published, entity.Published)).
 		ShouldNot(it.Equal("", sourceIndexed)).
-		Should(it.Equal(source.Attrs["indexed"], entity.Attrs["indexed"]))
+		Should(it.Equiv(source.Attrs["indexed"], entity.Attrs["indexed"]))
 }
 
 // spec.md US2 Acceptance Scenario 1 / FR-007/FR-009: a real merge stamps
@@ -592,12 +618,14 @@ func TestApplyMergedNodeGetsUpdatedMatchingIndexed(t *testing.T) {
 	entity, err := core.ParseNode(bytes.NewReader(store.files["entities/Widget.md"]))
 	it.Then(t).Should(it.Nil(err))
 
-	sourceIndexed, ok := source.Attrs["indexed"].(string)
+	sourceIndexedPreds := source.Attrs["indexed"]
+	it.Then(t).Should(it.Equal(1, len(sourceIndexedPreds)))
+	sourceIndexed, ok := sourceIndexedPreds[0].Value.(string)
 	it.Then(t).Should(it.True(ok))
 
 	it.Then(t).
 		ShouldNot(it.Equal("", sourceIndexed)).
-		Should(it.Equal(source.Attrs["indexed"], entity.Attrs["updated"]))
+		Should(it.Equiv(source.Attrs["indexed"], entity.Attrs["updated"]))
 }
 
 const sourceOnlyReContributionPatch = `---
@@ -610,6 +638,8 @@ title: "A Second Document"
 
 ## foo-2026-x2
 ` + "```yaml" + `
+"@id": "foo-2026-x2"
+"@type": source
 title: "A Second Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -629,8 +659,8 @@ func TestApplyNoneKindMergeAddsNoUpdated(t *testing.T) {
 	store := newGraphStore()
 	store.files["patch.md"] = []byte(sourceOnlyReContributionPatch)
 	store.files["sources/foo-2026-x2.md"] = []byte(`---
-kind: source
-id: foo-2026-x2
+"@id": "foo-2026-x2"
+"@type": source
 title: "A Second Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -662,4 +692,35 @@ func TestApplyReportsStepConflictFlagged(t *testing.T) {
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal("Widget Spec: merged (conflict flagged)", reporter.steps[1]))
+}
+
+// spec.md US3 Acceptance Scenario 3/4: an existing on-disk node whose
+// "@id" does not match its own file's basename is rejected exactly like
+// any other old-format file — core.ParseNode cannot perform this check
+// itself (no filename parameter), so service.Apply enforces it at the one
+// point it has both the parsed Node and the path it was read from. The
+// whole apply aborts with no partial write: the entity file is left
+// byte-unchanged and no commit is produced.
+func TestApplyExistingNodeIdMismatchedBasenameAbortsWithNoWrites(t *testing.T) {
+	store := newGraphStore()
+	store.files["patch.md"] = []byte(sourceEntityPatch)
+	mismatched := `---
+"@id": "Some Other Id"
+"@type": entity
+category: [independent, abstract, occurrent, script]
+---
+# Widget
+
+A test entity.
+`
+	store.files["entities/Widget.md"] = []byte(mismatched)
+	vcs := &graphmock.VCS{CommitHash: "abc123"}
+
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+
+	it.Then(t).ShouldNot(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(mismatched, string(store.files["entities/Widget.md"]))).
+		Should(it.Equal(0, len(store.files["sources/foo-2026-x.md"]))).
+		ShouldNot(it.Seq(vcs.Calls).Contain("StageAll:/graph"))
 }

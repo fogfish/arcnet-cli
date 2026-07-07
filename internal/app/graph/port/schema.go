@@ -10,7 +10,6 @@ package port
 
 import (
 	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
-	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
 // SchemaRegistry is graph's own narrow, private port onto the schema
@@ -20,6 +19,6 @@ import (
 // predicate into _schema/ mid-transaction, without importing
 // internal/app/schema directly.
 type SchemaRegistry interface {
-	RegisterKind(store fsys.Store, kind core.Kind) (created bool, err error)
+	RegisterKind(store fsys.Store, kind string) (created bool, err error)
 	RegisterPredicate(store fsys.Store, predicate string) (created bool, err error)
 }

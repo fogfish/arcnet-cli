@@ -13,7 +13,7 @@ package kernel
 import "github.com/fogfish/arcnet-cli/internal/core"
 
 // SchemaKind is the front-matter kind every _schema/ document carries.
-const SchemaKind core.Kind = "schema"
+const SchemaKind string = "schema"
 
 // NodesDir/PredicatesDir are the two _schema/ subfolders, relative to a
 // graph root.
@@ -34,7 +34,7 @@ var CoreMergeRules = core.MergeRuleSet{
 // coreKindDescriptions is a one-line, informational description per fixed
 // kind, rendered only into Seed()'s Text field — never parsed back
 // structurally.
-var coreKindDescriptions = map[core.Kind]string{
+var coreKindDescriptions = map[string]string{
 	"source":   "A citable document a patch itself represents.",
 	"entity":   "A concept or subject mentioned across sources, mergeable across contributions.",
 	"resource": "A referenced material such as a standard or specification, first-writer-wins on divergence.",
@@ -43,7 +43,7 @@ var coreKindDescriptions = map[core.Kind]string{
 
 // KindDescription returns kind's one-line, informational description, if
 // any.
-func KindDescription(kind core.Kind) string {
+func KindDescription(kind string) string {
 	return coreKindDescriptions[kind]
 }
 

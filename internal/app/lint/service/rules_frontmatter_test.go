@@ -57,13 +57,13 @@ func TestCheckUniqueBasenamesThreeWayCollisionNamesEveryFile(t *testing.T) {
 }
 
 func TestCheckUnrecognizedKindRecognized(t *testing.T) {
-	node := core.Node{Kind: "source"}
+	node := core.Node{Type: "source"}
 	out := checkUnrecognizedKind(node, "sources/foo.md", coreMergeRulesFixture)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
 func TestCheckUnrecognizedKindUnrecognized(t *testing.T) {
-	node := core.Node{Kind: "hypothesis"}
+	node := core.Node{Type: "hypothesis"}
 	out := checkUnrecognizedKind(node, "hypothesis/foo.md", coreMergeRulesFixture)
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).
@@ -73,7 +73,7 @@ func TestCheckUnrecognizedKindUnrecognized(t *testing.T) {
 
 func TestCheckUnrecognizedKindConfigRegistered(t *testing.T) {
 	rules := coreMergeRulesFixture.Union(core.MergeRuleSet{"hypothesis": core.MergeValidatedOverwrite})
-	node := core.Node{Kind: "hypothesis"}
+	node := core.Node{Type: "hypothesis"}
 	out := checkUnrecognizedKind(node, "hypothesis/foo.md", rules)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }

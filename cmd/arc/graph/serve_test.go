@@ -57,8 +57,8 @@ func textOf(t *testing.T, result *mcp.CallToolResult) string {
 }
 
 const serveEntityTLS = `---
-kind: entity
-id: Transport Layer Security
+"@id": Transport Layer Security
+"@type": entity
 category: form structure attribute process
 ---
 # Transport Layer Security
@@ -69,8 +69,8 @@ TLS is the successor to SSL.
 `
 
 const serveSourceTLS13 = `---
-kind: source
-id: rescorla-2026-tls13
+"@id": rescorla-2026-tls13
+"@type": source
 title: TLS 1.3
 ---
 # rescorla-2026-tls13
@@ -105,7 +105,7 @@ func TestServeNodeGetReturnsFullNodeContent(t *testing.T) {
 	it.Then(t).ShouldNot(it.True(result.IsError))
 	text := textOf(t, result)
 	it.Then(t).
-		Should(it.String(text).Contain("id: Transport Layer Security")).
+		Should(it.String(text).Contain(`"@id": Transport Layer Security`)).
 		Should(it.String(text).Contain("TLS is the successor to SSL."))
 }
 
@@ -287,24 +287,24 @@ func TestServeSubgraphGetDefaultDepthReturnsSeedAndNeighbors(t *testing.T) {
 }
 
 const serveChainA = `---
-kind: entity
-id: ChainA
+"@id": ChainA
+"@type": entity
 ---
 # ChainA
 
 - [[ChainB]]
 `
 const serveChainB = `---
-kind: entity
-id: ChainB
+"@id": ChainB
+"@type": entity
 ---
 # ChainB
 
 - [[ChainC]]
 `
 const serveChainC = `---
-kind: entity
-id: ChainC
+"@id": ChainC
+"@type": entity
 ---
 # ChainC
 `
@@ -343,8 +343,8 @@ func TestServeSubgraphGetExplicitDepthWidensSet(t *testing.T) {
 }
 
 const serveDiamondA = `---
-kind: entity
-id: DiamondA
+"@id": DiamondA
+"@type": entity
 ---
 # DiamondA
 
@@ -352,24 +352,24 @@ id: DiamondA
 - [[DiamondC]]
 `
 const serveDiamondB = `---
-kind: entity
-id: DiamondB
+"@id": DiamondB
+"@type": entity
 ---
 # DiamondB
 
 - [[DiamondD]]
 `
 const serveDiamondC = `---
-kind: entity
-id: DiamondC
+"@id": DiamondC
+"@type": entity
 ---
 # DiamondC
 
 - [[DiamondD]]
 `
 const serveDiamondD = `---
-kind: entity
-id: DiamondD
+"@id": DiamondD
+"@type": entity
 ---
 # DiamondD
 `
@@ -552,8 +552,8 @@ func TestRenderMatchTableZeroMatchesHeaderOnly(t *testing.T) {
 
 func TestRenderMatchTableMultipleMatchesOneRowEachInOrder(t *testing.T) {
 	out := renderMatchTable([]kernel.Match{
-		{ID: "a", Kind: "source", Line: 1, Text: "first"},
-		{ID: "b", Kind: "entity", Line: 2, Text: "second"},
+		{ID: "a", Type: "source", Line: 1, Text: "first"},
+		{ID: "b", Type: "entity", Line: 2, Text: "second"},
 	})
 
 	firstIdx := strings.Index(out, "| a | source | 1 | first |")

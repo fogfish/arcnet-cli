@@ -27,7 +27,7 @@ import (
 type grepStore struct{ fstest.MapFS }
 
 func (grepStore) Create(name string) (fsys.File, error) { return nil, errors.New("read-only store") }
-func (grepStore) Remove(name string) error               { return errors.New("read-only store") }
+func (grepStore) Remove(name string) error              { return errors.New("read-only store") }
 
 type grepMounter struct{ store grepStore }
 
@@ -42,8 +42,8 @@ func newGrepGraph(files map[string]string) grepMounter {
 }
 
 const grepSourceNodeA = `---
-kind: source
-id: a
+"@id": a
+"@type": source
 ---
 # a
 
@@ -51,8 +51,8 @@ TLS 1.3 is great.
 `
 
 const grepSourceNodeMultiLine = `---
-kind: source
-id: multi
+"@id": multi
+"@type": source
 ---
 # multi
 
@@ -62,12 +62,26 @@ TLS appears again.
 `
 
 const grepEntityNodeB = `---
-kind: entity
-title: b
+"@id": b
+"@type": entity
 ---
 # b
 
 No match here.
+`
+
+// grepEntityNodeDefinition carries its prose in the "definition" Texts
+// predicate (textPredicateFor's leading slot for "@type": entity) — TLS
+// appears only there, never in a generically-named "text" key, so a match
+// here confirms Grep's underlying content scan reaches every named Texts
+// predicate, not just a single default one (spec.md US1, tasks.md T048).
+const grepEntityNodeDefinition = `---
+"@id": c
+"@type": entity
+---
+# c
+
+TLS 1.3 is defined here.
 `
 
 func TestGrepGuardNotAGraph(t *testing.T) {
@@ -89,7 +103,7 @@ func TestGrepEmptyFilterScansEveryNode(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, len(result.Matches)))
 	it.Then(t).
-		Should(it.Equal(core.Kind("source"), result.Matches[0].Kind)).
+		Should(it.Equal("source", result.Matches[0].Type)).
 		Should(it.Equal("a", result.Matches[0].ID)).
 		Should(it.Equal("sources/a.md", result.Matches[0].Path))
 }
@@ -99,7 +113,7 @@ func TestGrepFilterExcludesNonMatchingNodesFromScan(t *testing.T) {
 		"sources/a.md":  grepSourceNodeA,
 		"entities/b.md": grepEntityNodeB,
 	})
-	filter := core.Filter{Kinds: []core.Kind{"entity"}}
+	filter := core.Filter{Kinds: []string{"entity"}}
 
 	result, err := service.Grep(context.Background(), mounter, filter, "TLS", configkernel.GrepConfig{}, "/graph")
 
@@ -142,7 +156,7 @@ func TestGrepMultiLineNodeProducesOneMatchPerLineInOrder(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(2, len(result.Matches)))
 	it.Then(t).
-		Should(it.Equal("source", string(result.Matches[0].Kind))).
+		Should(it.Equal("source", result.Matches[0].Type)).
 		Should(it.Equal("multi", result.Matches[0].ID)).
 		Should(it.True(result.Matches[0].Line < result.Matches[1].Line))
 }
@@ -152,10 +166,30 @@ func TestGrepCombinedFilterMatchesZeroNodes(t *testing.T) {
 		"sources/a.md":  grepSourceNodeA,
 		"entities/b.md": grepEntityNodeB,
 	})
-	filter := core.Filter{Kinds: []core.Kind{"resource"}}
+	filter := core.Filter{Kinds: []string{"resource"}}
 
 	result, err := service.Grep(context.Background(), mounter, filter, "TLS", configkernel.GrepConfig{}, "/graph")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(0, len(result.Matches)))
+}
+
+// arc grep TLS
+// tasks.md T048: a match inside a non-default named Texts predicate
+// ("definition", entity's leading slot) must be found exactly like a match
+// in any other node — Grep's content scan is not limited to a single
+// hardcoded Texts key.
+func TestGrepMatchesNonDefaultNamedTextsPredicate(t *testing.T) {
+	mounter := newGrepGraph(map[string]string{
+		"entities/c.md": grepEntityNodeDefinition,
+	})
+
+	result, err := service.Grep(context.Background(), mounter, core.Filter{}, "TLS", configkernel.GrepConfig{}, "/graph")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(1, len(result.Matches)))
+	it.Then(t).
+		Should(it.Equal("entity", result.Matches[0].Type)).
+		Should(it.Equal("c", result.Matches[0].ID)).
+		Should(it.Equal("entities/c.md", result.Matches[0].Path))
 }

@@ -12,8 +12,6 @@ package kernel
 
 import (
 	"fmt"
-
-	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
 // Rule identifies exactly one CORE §14 checklist item, so every Violation
@@ -60,8 +58,8 @@ type NodeStatus struct {
 	// ID is the parsed node identity; empty when RuleFrontMatter itself
 	// failed and core.ParseNode never ran.
 	ID string `json:"id"`
-	// Kind is empty when unparseable.
-	Kind core.Kind `json:"kind"`
+	// Type is empty when unparseable.
+	Type string `json:"type"`
 	// Violations is empty when this node passed every applicable check.
 	Violations []Violation `json:"violations"`
 }

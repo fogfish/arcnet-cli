@@ -54,7 +54,7 @@ func parseDocument(source []byte) (ast.Node, map[string]any, error) {
 }
 
 // ParsePatch parses a CORE §12.2 document patch: the front-matter manifest,
-// plus every H1-kind/H2-node body section.
+// plus every H1-type/H2-node body section.
 func ParsePatch(r io.Reader) (Patch, error) {
 	source, err := io.ReadAll(r)
 	if err != nil {
@@ -93,25 +93,20 @@ func ParseNode(r io.Reader) (Node, error) {
 		return Node{}, ErrManifestInvalid.With(err)
 	}
 
-	kindValue, _ := manifest["kind"].(string)
-	if kindValue == "" {
-		return Node{}, ErrManifestInvalid.With(errNoCause)
+	id, typ, manifest, err := identityFields(manifest)
+	if err != nil {
+		return Node{}, ErrManifestInvalid.With(err)
 	}
-
-	id := deriveNodeID(manifest)
-	if id == "" {
-		return Node{}, ErrManifestInvalid.With(errNoCause)
-	}
+	// AST §4: a standalone node file's "@id" MUST equal its own filename
+	// (basename, extension stripped) — but ParseNode's signature is pinned
+	// with no filename parameter (contracts/ast-contract.md), so it cannot
+	// perform that comparison itself. That check is enforced by the caller
+	// (internal/app/graph/service.Apply), which does have the filename;
+	// everything ParseNode can validate from the document's own bytes alone
+	// (legacy "kind" field, absent/empty "@id"/"@type") is validated here.
 
 	published, manifest := extractPublished(manifest)
-
-	attrs := map[string]any{}
-	for k, v := range manifest {
-		if k == "kind" {
-			continue
-		}
-		attrs[k] = v
-	}
+	attrs := wrapAttrs(manifest)
 
 	children := childSlice(doc)
 	if len(children) > 0 {
@@ -120,19 +115,97 @@ func ParseNode(r io.Reader) (Node, error) {
 		}
 	}
 
-	text, notes, hrefs, edges, links := walkNodeBody(children, source)
+	texts, hrefs, edges := walkNodeBody(children, source, typ)
 
 	return Node{
 		ID:        id,
-		Kind:      Kind(kindValue),
+		Type:      typ,
 		Published: published,
 		Attrs:     attrs,
-		Text:      text,
-		Notes:     notes,
+		Texts:     texts,
 		HRefs:     hrefs,
 		Edges:     edges,
-		Links:     links,
 	}, nil
+}
+
+// identityFields extracts and validates a node's mandatory "@id"/"@type"
+// fields out of its own front-matter/yaml-fence map (research.md D7,
+// contracts/ast-contract.md "Old-format rejection"): a legacy "kind" key
+// present at all, or an absent/empty "@id"/"@type", is rejected with a
+// descriptive error before any body-walking begins — no partial Node is
+// ever constructed. Returns the remaining manifest with "@id"/"@type"
+// removed, ready for extractPublished/wrapAttrs.
+func identityFields(manifest map[string]any) (id, typ string, rest map[string]any, err error) {
+	if _, hasKind := manifest["kind"]; hasKind {
+		return "", "", nil, fmt.Errorf("legacy %q field present, expected \"@id\"/\"@type\"", "kind")
+	}
+
+	id, _ = manifest["@id"].(string)
+	if id == "" {
+		return "", "", nil, fmt.Errorf("missing mandatory %q field", "@id")
+	}
+
+	typ, _ = manifest["@type"].(string)
+	if typ == "" {
+		return "", "", nil, fmt.Errorf("missing mandatory %q field", "@type")
+	}
+
+	rest = make(map[string]any, len(manifest))
+	for k, v := range manifest {
+		if k == "@id" || k == "@type" {
+			continue
+		}
+		rest[k] = v
+	}
+	return id, typ, rest, nil
+}
+
+// patchNodeIdentity resolves one patch node section's "@id"/"@type"
+// (BUG-001): unlike a standalone file, a patch section's "## <ID>" heading
+// and enclosing "# <Type>" heading satisfy "@id"/"@type" by themselves —
+// CORE §12.2's own convention, and the shape every pre-existing patch
+// fixture (and real external patch producers, e.g. fogfish/bots) already
+// use. An explicit "@id"/"@type" key inside the node's own yaml fence is
+// optional; if present, it MUST agree with the corresponding heading or
+// the contribution is rejected as inconsistent. A legacy "kind" key
+// present at all is still rejected unconditionally, exactly like
+// identityFields. Returns the remaining manifest with "@id"/"@type"
+// removed (if present), ready for extractPublished/wrapAttrs.
+func patchNodeIdentity(manifest map[string]any, idHeading, typeHeading string) (id, typ string, rest map[string]any, err error) {
+	if _, hasKind := manifest["kind"]; hasKind {
+		return "", "", nil, fmt.Errorf("legacy %q field present, expected \"@id\"/\"@type\"", "kind")
+	}
+
+	id = idHeading
+	if explicit, ok := manifest["@id"].(string); ok && explicit != "" {
+		if explicit != idHeading {
+			return "", "", nil, fmt.Errorf("\"@id\" %q does not match section heading %q", explicit, idHeading)
+		}
+		id = explicit
+	}
+	if id == "" {
+		return "", "", nil, fmt.Errorf("missing mandatory %q field", "@id")
+	}
+
+	typ = strings.ToLower(typeHeading)
+	if explicit, ok := manifest["@type"].(string); ok && explicit != "" {
+		if !strings.EqualFold(explicit, typeHeading) {
+			return "", "", nil, fmt.Errorf("\"@type\" %q does not match section heading %q", explicit, typeHeading)
+		}
+		typ = explicit
+	}
+	if typ == "" {
+		return "", "", nil, fmt.Errorf("missing mandatory %q field", "@type")
+	}
+
+	rest = make(map[string]any, len(manifest))
+	for k, v := range manifest {
+		if k == "@id" || k == "@type" {
+			continue
+		}
+		rest[k] = v
+	}
+	return id, typ, rest, nil
 }
 
 // extractPublished pulls a "published" key out of a raw front-matter/yaml-
@@ -155,13 +228,60 @@ func extractPublished(manifest map[string]any) (time.Time, map[string]any) {
 	return published, out
 }
 
-func deriveNodeID(manifest map[string]any) string {
-	for _, key := range []string{"id", "title", "period"} {
-		if v, ok := manifest[key].(string); ok && v != "" {
-			return v
-		}
+// wrapAttrs converts a raw front-matter/yaml-fence map (with "@id"/"@type"/
+// "published" already removed) into Attrs' map[string][]Predicate shape
+// (research.md D3): a YAML scalar value becomes a one-element list; a YAML
+// sequence becomes one Predicate per element, in order.
+func wrapAttrs(manifest map[string]any) map[string][]Predicate {
+	if len(manifest) == 0 {
+		return nil
 	}
-	return ""
+	attrs := make(map[string][]Predicate, len(manifest))
+	for k, v := range manifest {
+		attrs[k] = wrapPredicateValue(v)
+	}
+	return attrs
+}
+
+func wrapPredicateValue(v any) []Predicate {
+	if seq, ok := v.([]any); ok {
+		out := make([]Predicate, 0, len(seq))
+		for _, elem := range seq {
+			out = append(out, Predicate{Value: elem})
+		}
+		return out
+	}
+	return []Predicate{{Value: v}}
+}
+
+// textPredicateFor is a small, explicitly temporary "@type"->text-predicate
+// lookup table (research.md D4): it names the leading and trailing prose
+// slots walkNodeBody still recognizes structurally, so a node's stored
+// prose keys are domain-appropriate (a source's leading prose really is its
+// "abstract") rather than the old fixed "text"/"notes" pair. This is a
+// stopgap superseded by spec 011's Schema Index, which will derive text
+// predicate names from a graph's actual schema instead of a hardcoded
+// table.
+func textPredicateFor(nodeType string, leading bool) string {
+	if !leading {
+		return "notes"
+	}
+	switch nodeType {
+	case "source":
+		return "abstract"
+	case "entity":
+		return "definition"
+	case "resource":
+		return "relevance"
+	case "hypothesis":
+		return "claim"
+	case "aporia":
+		return "tension"
+	case "thought":
+		return "claim"
+	default:
+		return "text"
+	}
 }
 
 func decodePatchManifest(manifest map[string]any) (Patch, error) {
@@ -267,9 +387,15 @@ func linesText(n ast.Node, source []byte) string {
 	return strings.TrimSpace(strings.Join(parts, " "))
 }
 
-// parsePatchBody walks a patch's body: one or more H1-kind sections, each
+// parsePatchBody walks a patch's body: one or more H1-type sections, each
 // containing one or more H2-node sections (a heading immediately followed
-// by a fenced ```yaml block), per CORE §12.2/research.md D3.
+// by a fenced ```yaml block), per CORE §12.2/research.md D3. Per BUG-001,
+// each node's "@id"/"@type" are satisfied by its own "## <ID>" heading and
+// the enclosing "# <Type>" heading — CORE §12.2's own convention, and the
+// shape every pre-existing patch fixture (and real external patch
+// producers) already use — an explicit "@id"/"@type" key inside the node's
+// own yaml fence is optional, and if present MUST agree with the
+// corresponding heading (see patchNodeIdentity).
 func parsePatchBody(doc ast.Node, source []byte) ([]Node, error) {
 	children := childSlice(doc)
 	if len(children) == 0 {
@@ -283,7 +409,7 @@ func parsePatchBody(doc ast.Node, source []byte) ([]Node, error) {
 		if !ok || h1.Level != 1 {
 			return nil, ErrPatchStructure.With(errNoCause)
 		}
-		currentKind := Kind(strings.ToLower(linesText(h1, source)))
+		typeHeading := linesText(h1, source)
 		i++
 
 		sawNode := false
@@ -300,12 +426,19 @@ func parsePatchBody(doc ast.Node, source []byte) ([]Node, error) {
 				return nil, ErrPatchStructure.With(errNoCause)
 			}
 
-			id := linesText(h2, source)
-			attrs, err := decodeYAMLBlock(fence, source)
+			idHeading := linesText(h2, source)
+			manifest, err := decodeYAMLBlock(fence, source)
 			if err != nil {
 				return nil, ErrPatchStructure.With(err)
 			}
-			published, attrs := extractPublished(attrs)
+
+			id, typ, manifest, err := patchNodeIdentity(manifest, idHeading, typeHeading)
+			if err != nil {
+				return nil, ErrManifestInvalid.With(err)
+			}
+
+			published, manifest := extractPublished(manifest)
+			attrs := wrapAttrs(manifest)
 
 			i += 2
 
@@ -314,18 +447,16 @@ func parsePatchBody(doc ast.Node, source []byte) ([]Node, error) {
 				i++
 			}
 
-			text, notes, hrefs, edges, links := walkNodeBody(children[start:i], source)
+			texts, hrefs, edges := walkNodeBody(children[start:i], source, typ)
 
 			nodes = append(nodes, Node{
 				ID:        id,
-				Kind:      currentKind,
+				Type:      typ,
 				Published: published,
 				Attrs:     attrs,
-				Text:      text,
-				Notes:     notes,
+				Texts:     texts,
 				HRefs:     hrefs,
 				Edges:     edges,
-				Links:     links,
 			})
 			sawNode = true
 		}
@@ -341,7 +472,7 @@ func isYAMLFence(fence *ast.FencedCodeBlock, source []byte) bool {
 	return strings.TrimSpace(string(fence.Language(source))) == "yaml"
 }
 
-// isSectionBoundary reports whether children[i] opens a new H1-kind section
+// isSectionBoundary reports whether children[i] opens a new H1-type section
 // or a new H2-node section (heading immediately followed by a yaml fence) —
 // as opposed to an H2 heading with no yaml fence following, which is a
 // link-block heading nested within the current node's body.
@@ -379,10 +510,16 @@ func decodeYAMLBlock(fence *ast.FencedCodeBlock, source []byte) (map[string]any,
 
 // walkNodeBody parses a node's body span (everything after its identity
 // heading/yaml-fence, for a patch; everything after the derived H1 title,
-// for an on-disk node file) into Text/Notes/HRefs/Edges/Links per AST §6:
-// leading prose (Text), an optional bare edge list (Edges), zero or more
-// heading+list link blocks (Links), then trailing prose (Notes).
-func walkNodeBody(children []ast.Node, source []byte) (text, notes string, hrefs, edges []Link, links map[string]LinkBlock) {
+// for an on-disk node file) into Texts/HRefs/Edges per AST §6: leading
+// prose, an optional bare edge list, zero or more heading+list link blocks,
+// then trailing prose. The structural recognition (leading paragraphs /
+// optional bare list / heading-or-bold-label-plus-list blocks / trailing
+// paragraphs) is unchanged from specs/003; only what it produces changed
+// (research.md D4/D5): the two prose slots are now named via
+// textPredicateFor instead of two fixed fields, and every link — whether
+// from the bare list or from a heading/bold-label block — flattens into one
+// Edges slice, in the order encountered, with no grouping key retained.
+func walkNodeBody(children []ast.Node, source []byte, nodeType string) (texts map[string]string, hrefs, edges []Link) {
 	idx := 0
 
 	var leading []string
@@ -394,7 +531,7 @@ func walkNodeBody(children []ast.Node, source []byte) (text, notes string, hrefs
 		// A bold-label paragraph (BUG-003) immediately followed by a list
 		// opens a predicate-grouped block, not more leading prose — leave
 		// it for the headed/labeled-blocks loop below to claim, so its
-		// list is captured as a Links entry rather than swept into Text
+		// list is captured as Edges entries rather than swept into Texts
 		// or misclassified as the ungrouped bare-edges list.
 		if _, isLabel := boldLabel(p, source); isLabel && idx+1 < len(children) {
 			if _, isList := children[idx+1].(*ast.List); isList {
@@ -413,9 +550,8 @@ func walkNodeBody(children []ast.Node, source []byte) (text, notes string, hrefs
 		}
 	}
 
-	links = map[string]LinkBlock{}
 	for idx < len(children) {
-		title, matched := blockTitle(children[idx], source)
+		_, matched := blockTitle(children[idx], source)
 		if !matched || idx+1 >= len(children) {
 			break
 		}
@@ -424,9 +560,7 @@ func walkNodeBody(children []ast.Node, source []byte) (text, notes string, hrefs
 			break
 		}
 
-		seq := collectListLinks(list, source)
-		key := linkBlockKey(title, seq)
-		links[key] = LinkBlock{Title: title, Seq: seq}
+		edges = append(edges, collectListLinks(list, source)...)
 		idx += 2
 	}
 
@@ -453,7 +587,18 @@ func walkNodeBody(children []ast.Node, source []byte) (text, notes string, hrefs
 	hrefs = append(hrefs, textHRefs...)
 	hrefs = append(hrefs, notesHRefs...)
 
-	return strippedText, strippedNotes, hrefs, edges, links
+	texts = map[string]string{}
+	if strippedText != "" {
+		texts[textPredicateFor(nodeType, true)] = strippedText
+	}
+	if strippedNotes != "" {
+		texts[textPredicateFor(nodeType, false)] = strippedNotes
+	}
+	if len(texts) == 0 {
+		texts = nil
+	}
+
+	return texts, hrefs, edges
 }
 
 func collectListLinks(list *ast.List, source []byte) []Link {
@@ -486,7 +631,10 @@ func listItemText(item ast.Node, source []byte) string {
 // (BUG-003): a "## Label" H2 heading (this feature's own convention), or
 // a "**Label**" bold-text paragraph — CORE §12.2's canonical convention
 // ("node bodies use bold labels, never headings"). Both are recognized so
-// a patch node's body may freely use either or mix both across blocks.
+// a patch node's body may freely use either or mix both across blocks. The
+// title text itself is no longer retained anywhere (research.md D5 —
+// grouping is derived at render time, never stored), only used to decide
+// whether the following list belongs to a link block at all.
 func blockTitle(n ast.Node, source []byte) (string, bool) {
 	switch v := n.(type) {
 	case *ast.Heading:
@@ -518,32 +666,6 @@ func parseListItemLink(line string) (Link, bool) {
 		return Link{}, false
 	}
 	return Link{Predicate: m[1], Target: m[2], Alias: m[3]}, true
-}
-
-func linkBlockKey(title string, seq []Link) string {
-	for _, l := range seq {
-		if l.Predicate != "" {
-			return l.Predicate
-		}
-	}
-	return camelizeTitle(title)
-}
-
-func camelizeTitle(title string) string {
-	words := strings.Fields(title)
-	if len(words) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	b.WriteString(strings.ToLower(words[0]))
-	for _, w := range words[1:] {
-		if w == "" {
-			continue
-		}
-		b.WriteString(strings.ToUpper(w[:1]))
-		b.WriteString(strings.ToLower(w[1:]))
-	}
-	return b.String()
 }
 
 // inlineLinkPattern recognizes, within already-isolated prose text, either
@@ -590,10 +712,10 @@ func extractInlineLinks(text string) (string, []Link) {
 	return b.String(), hrefs
 }
 
-// RenderNode serializes n back to Markdown: front-matter (sorted attribute
-// keys, kind first) + Text + Edges + Links (edges first, then blocks sorted
-// by Title) + Notes, per contracts/ast-contract.md. Inline wikilink markup
-// is reconstructed into Text/Notes from HRefs (research.md D3b).
+// RenderNode serializes n back to Markdown: front-matter ("@id"/"@type"
+// first, then sorted attribute keys) + Texts + Edges (one flat bulleted
+// list), per contracts/ast-contract.md. Inline wikilink markup is
+// reconstructed into Texts values from HRefs (research.md D3b).
 func RenderNode(n Node) ([]byte, error) {
 	frontMatter, err := renderFrontMatter(n)
 	if err != nil {
@@ -610,23 +732,56 @@ func RenderNode(n Node) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// renderNodeBody renders n's Text/Edges/Links/Notes (with HRefs
-// reconstructed into Text/Notes), shared verbatim by RenderNode's on-disk
-// single-node shape and RenderPatch's per-node patch-exchange section
-// (specs/007-arc-subgraph, research.md D2/D9) — the only difference between
-// the two callers is what precedes this body (a "# <ID>" H1 heading vs. a
-// "## <ID>" H2 heading plus a fenced yaml block).
+// renderNodeBody renders n's Texts/Edges (with HRefs reconstructed into
+// Texts), shared verbatim by RenderNode's on-disk single-node shape and
+// RenderPatch's per-node patch-exchange section (specs/007-arc-subgraph,
+// research.md D2/D9) — the only difference between the two callers is what
+// precedes this body (a "# <ID>" H1 heading vs. a "## <ID>" H2 heading plus
+// a fenced yaml block).
+//
+// Physical layout (contracts/ast-contract.md: "matching the original
+// leading-prose/edges/trailing-prose visual layout"): the leading-slot key
+// (textPredicateFor(n.Type, true)) renders first if present, then any other
+// Texts keys sorted alphabetically, then Edges as one flat bulleted list
+// (research.md D6 — no "## <Label>" grouped rendering), then the
+// trailing-slot key (textPredicateFor(n.Type, false)) last if present. This
+// ordering is load-bearing, not cosmetic: walkNodeBody's structural parser
+// only recognizes leading-paragraphs/list/trailing-paragraphs in that
+// physical sequence, so rendering every Texts value before Edges (rather
+// than sandwiching Edges between the leading and trailing slots) would
+// break FR-014's round-trip by merging the trailing prose back into the
+// leading slot on re-parse.
 func renderNodeBody(n Node) []byte {
 	var buf bytes.Buffer
 
 	consumed := make([]bool, len(n.HRefs))
-	renderedText := reconstructHRefs(n.Text, n.HRefs, consumed)
-	renderedNotes := reconstructHRefs(n.Notes, n.HRefs, consumed)
+	writeText := func(key string) {
+		rendered := reconstructHRefs(n.Texts[key], n.HRefs, consumed)
+		if rendered == "" {
+			return
+		}
+		buf.WriteString("\n")
+		buf.WriteString(rendered)
+		buf.WriteString("\n")
+	}
 
-	if renderedText != "" {
-		buf.WriteString("\n")
-		buf.WriteString(renderedText)
-		buf.WriteString("\n")
+	leadingKey := textPredicateFor(n.Type, true)
+	trailingKey := textPredicateFor(n.Type, false)
+
+	if _, ok := n.Texts[leadingKey]; ok {
+		writeText(leadingKey)
+	}
+
+	var other []string
+	for k := range n.Texts {
+		if k == leadingKey || k == trailingKey {
+			continue
+		}
+		other = append(other, k)
+	}
+	sort.Strings(other)
+	for _, k := range other {
+		writeText(k)
 	}
 
 	if len(n.Edges) > 0 {
@@ -637,19 +792,8 @@ func renderNodeBody(n Node) []byte {
 		}
 	}
 
-	for _, key := range sortedLinkBlockKeys(n.Links) {
-		block := n.Links[key]
-		buf.WriteString("\n## " + block.Title + "\n")
-		for _, l := range block.Seq {
-			buf.WriteString(renderLinkBullet(l))
-			buf.WriteString("\n")
-		}
-	}
-
-	if renderedNotes != "" {
-		buf.WriteString("\n")
-		buf.WriteString(renderedNotes)
-		buf.WriteString("\n")
+	if _, ok := n.Texts[trailingKey]; ok {
+		writeText(trailingKey)
 	}
 
 	return buf.Bytes()
@@ -657,11 +801,13 @@ func renderNodeBody(n Node) []byte {
 
 // RenderPatch is the structural inverse of ParsePatch (research.md D2): a
 // `---`-delimited manifest (kind: patch, document, published, title,
-// stats), then p.Nodes grouped by Kind (sorted alphabetically) under
-// "# <Kind>" headings, each node (sorted alphabetically by ID within its
-// kind — research.md D9) under a "## <ID>" heading with a fenced yaml
-// block (attributes only, kind excluded — implied by the enclosing H1) and
-// its body via the same renderNodeBody RenderNode uses.
+// stats), then p.Nodes grouped by Type (sorted alphabetically) under
+// "# <Type>" headings, each node (sorted alphabetically by ID within its
+// type — research.md D9) under a "## <ID>" heading with a fenced yaml block
+// (attributes plus "@id"/"@type" — parsePatchBody reads "@type" from each
+// node's own fence, not from the enclosing H1, so it must be present there
+// too, unlike the old "kind"-omitted-under-H1 convention) and its body via
+// the same renderNodeBody RenderNode uses.
 func RenderPatch(p Patch) ([]byte, error) {
 	manifest, err := renderPatchManifest(p)
 	if err != nil {
@@ -673,16 +819,16 @@ func RenderPatch(p Patch) ([]byte, error) {
 	buf.Write(manifest)
 	buf.WriteString("---\n")
 
-	for i, kind := range sortedPatchKinds(p.Nodes) {
-		nodes := nodesOfKind(p.Nodes, kind)
+	for i, typ := range sortedPatchTypes(p.Nodes) {
+		nodes := nodesOfType(p.Nodes, typ)
 
 		if i > 0 {
 			buf.WriteString("\n")
 		}
-		buf.WriteString("# " + titleCaseKind(string(kind)) + "\n")
+		buf.WriteString("# " + titleCaseType(typ) + "\n")
 
 		for _, n := range nodes {
-			fence, err := renderAttrYAML("", n.ID, n.Published, n.Attrs)
+			fence, err := renderAttrYAML(n.ID, n.Type, n.Published, n.Attrs)
 			if err != nil {
 				return nil, err
 			}
@@ -698,27 +844,27 @@ func RenderPatch(p Patch) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// sortedPatchKinds returns every distinct Kind present in nodes, sorted
+// sortedPatchTypes returns every distinct Type present in nodes, sorted
 // alphabetically (research.md D9).
-func sortedPatchKinds(nodes []Node) []Kind {
-	seen := map[Kind]bool{}
-	var kinds []Kind
+func sortedPatchTypes(nodes []Node) []string {
+	seen := map[string]bool{}
+	var types []string
 	for _, n := range nodes {
-		if !seen[n.Kind] {
-			seen[n.Kind] = true
-			kinds = append(kinds, n.Kind)
+		if !seen[n.Type] {
+			seen[n.Type] = true
+			types = append(types, n.Type)
 		}
 	}
-	sort.Slice(kinds, func(i, j int) bool { return kinds[i] < kinds[j] })
-	return kinds
+	sort.Strings(types)
+	return types
 }
 
-// nodesOfKind returns every node of kind, sorted alphabetically by ID
+// nodesOfType returns every node of typ, sorted alphabetically by ID
 // (research.md D9).
-func nodesOfKind(nodes []Node, kind Kind) []Node {
+func nodesOfType(nodes []Node, typ string) []Node {
 	var out []Node
 	for _, n := range nodes {
-		if n.Kind == kind {
+		if n.Type == typ {
 			out = append(out, n)
 		}
 	}
@@ -726,15 +872,16 @@ func nodesOfKind(nodes []Node, kind Kind) []Node {
 	return out
 }
 
-// titleCaseKind renders a Kind for display as a section heading ("entity"
-// -> "Entity") — ParsePatch's own parsePatchBody lowercases whatever
-// heading text it finds, so this casing choice is cosmetic, not load-
-// bearing for the round-trip property.
-func titleCaseKind(k string) string {
-	if k == "" {
-		return k
+// titleCaseType renders a Type for display as a section heading ("entity"
+// -> "Entity") — this is purely a cosmetic organizational label now
+// (parsePatchBody reads each node's actual Type from its own yaml fence,
+// not from this heading), so this casing choice is not load-bearing for the
+// round-trip property.
+func titleCaseType(t string) string {
+	if t == "" {
+		return t
 	}
-	r := []rune(k)
+	r := []rune(t)
 	return strings.ToUpper(string(r[0])) + string(r[1:])
 }
 
@@ -783,17 +930,6 @@ func renderPatchManifest(p Patch) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func sortedLinkBlockKeys(links map[string]LinkBlock) []string {
-	keys := make([]string, 0, len(links))
-	for k := range links {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		return links[keys[i]].Title < links[keys[j]].Title
-	})
-	return keys
-}
-
 func renderLinkBullet(l Link) string {
 	return "- " + markupFor(l)
 }
@@ -811,57 +947,42 @@ func markupFor(l Link) string {
 }
 
 func renderFrontMatter(n Node) ([]byte, error) {
-	return renderAttrYAML(n.Kind, n.ID, n.Published, n.Attrs)
+	return renderAttrYAML(n.ID, n.Type, n.Published, n.Attrs)
 }
 
-// renderAttrYAML renders a YAML mapping: kind first (when non-empty — a
-// patch-exchange node section's fence deliberately omits it, research.md
-// D2, by passing kind ""), then id, then every other attribute — including
-// published, when non-zero — sorted alphabetically. Shared by RenderNode's
-// front-matter and RenderPatch's per-node fence (research.md D2/D9), so
-// both stay the single, structurally correct place this shape is produced.
-//
-// AST §4: the identity field (id) MAY be repeated in attrs "for
-// convenience" — it is not mandatory there, since a node's true identity is
-// its filename. But ParseNode has no filename parameter (ast-contract.md),
-// so it can only recover a node's ID from the front matter itself:
-// guarantee an explicit "id" survives whenever it is not already present,
-// so every node this package renders remains parseable by ParseNode.
-// "title" is a separate, human-readable attribute (e.g. a source's
-// citation title) and is never a substitute for "id" — a node's title and
-// its citekey/identity commonly differ, so treating title-present as
-// id-present here silently dropped the real id (source-kind nodes hit this
-// in practice: their patch yaml fence always carries "title").
-func renderAttrYAML(kind Kind, id string, published time.Time, attrs map[string]any) ([]byte, error) {
+// renderAttrYAML renders a YAML mapping: "@id" and "@type" first (both
+// quoted YAML keys — a leading "@" is a reserved plain-scalar indicator, so
+// these keys must be rendered with explicit quoting to stay valid,
+// unambiguous YAML), then every other Attrs key sorted alphabetically (a
+// single-element []Predicate as a bare scalar, a multi-element list as a
+// YAML sequence — research.md D3), then "published" last when non-zero.
+// Shared by RenderNode's front matter and RenderPatch's per-node fence
+// (research.md D2/D9), so both stay the single, structurally correct place
+// this shape is produced.
+func renderAttrYAML(id, typ string, published time.Time, attrs map[string][]Predicate) ([]byte, error) {
 	root := &yaml.Node{Kind: yaml.MappingNode}
 
-	if kind != "" {
-		if err := appendYAMLPair(root, "kind", string(kind)); err != nil {
-			return nil, err
-		}
+	if err := appendQuotedKeyYAMLPair(root, "@id", id); err != nil {
+		return nil, err
+	}
+	if err := appendQuotedKeyYAMLPair(root, "@type", typ); err != nil {
+		return nil, err
 	}
 
-	if _, hasID := attrs["id"]; !hasID {
-		if err := appendYAMLPair(root, "id", id); err != nil {
-			return nil, err
-		}
-	}
-
-	keys := make([]string, 0, len(attrs)+1)
+	keys := make([]string, 0, len(attrs))
 	for k := range attrs {
 		keys = append(keys, k)
-	}
-	if !published.IsZero() {
-		keys = append(keys, "published")
 	}
 	sort.Strings(keys)
 
 	for _, k := range keys {
-		value := attrs[k]
-		if k == "published" && !published.IsZero() {
-			value = published.Format("2006-01-02")
+		if err := appendYAMLPair(root, k, encodePredicateList(attrs[k])); err != nil {
+			return nil, err
 		}
-		if err := appendYAMLPair(root, k, value); err != nil {
+	}
+
+	if !published.IsZero() {
+		if err := appendYAMLPair(root, "published", published.Format("2006-01-02")); err != nil {
 			return nil, err
 		}
 	}
@@ -877,11 +998,39 @@ func renderAttrYAML(kind Kind, id string, published time.Time, attrs map[string]
 	return buf.Bytes(), nil
 }
 
+// encodePredicateList collapses a single-element []Predicate back to its
+// bare scalar Value, and renders a multi-element list as a plain []any
+// sequence of each element's Value (research.md D3) — the render-time
+// inverse of wrapPredicateValue.
+func encodePredicateList(preds []Predicate) any {
+	if len(preds) == 1 {
+		return preds[0].Value
+	}
+	values := make([]any, len(preds))
+	for i, p := range preds {
+		values[i] = p.Value
+	}
+	return values
+}
+
 func appendYAMLPair(root *yaml.Node, key string, value any) error {
 	keyNode, err := encodeYAMLNode(key)
 	if err != nil {
 		return err
 	}
+	valNode, err := encodeYAMLNode(value)
+	if err != nil {
+		return err
+	}
+	root.Content = append(root.Content, keyNode, valNode)
+	return nil
+}
+
+// appendQuotedKeyYAMLPair is appendYAMLPair's variant for a key that must be
+// rendered with explicit double-quote styling ("@id"/"@type" — a leading
+// "@" is a YAML reserved indicator character in a plain scalar).
+func appendQuotedKeyYAMLPair(root *yaml.Node, key string, value any) error {
+	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key, Style: yaml.DoubleQuotedStyle}
 	valNode, err := encodeYAMLNode(value)
 	if err != nil {
 		return err

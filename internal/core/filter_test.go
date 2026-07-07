@@ -18,16 +18,16 @@ import (
 )
 
 func TestFilterZeroValueMatchesEveryNode(t *testing.T) {
-	node := core.Node{Kind: "entity", Attrs: map[string]any{"status": "mature"}}
+	node := core.Node{Type: "entity", Attrs: map[string][]core.Predicate{"status": {{Value: "mature"}}}}
 
 	it.Then(t).Should(it.True(core.Filter{}.Match(node)))
 }
 
 func TestFilterKindsIsOR(t *testing.T) {
-	source := core.Node{Kind: "source"}
-	entity := core.Node{Kind: "entity"}
-	resource := core.Node{Kind: "resource"}
-	f := core.Filter{Kinds: []core.Kind{"source", "entity"}}
+	source := core.Node{Type: "source"}
+	entity := core.Node{Type: "entity"}
+	resource := core.Node{Type: "resource"}
+	f := core.Filter{Kinds: []string{"source", "entity"}}
 
 	it.Then(t).
 		Should(it.True(f.Match(source))).
@@ -36,7 +36,7 @@ func TestFilterKindsIsOR(t *testing.T) {
 }
 
 func TestFilterTagsIsAND(t *testing.T) {
-	node := core.Node{Attrs: map[string]any{"tags": []any{"cryptography", "protocols"}}}
+	node := core.Node{Attrs: map[string][]core.Predicate{"tags": {{Value: "cryptography"}, {Value: "protocols"}}}}
 	f := core.Filter{Tags: []string{"cryptography", "protocols"}}
 	fMissing := core.Filter{Tags: []string{"cryptography", "unrelated"}}
 
@@ -46,7 +46,7 @@ func TestFilterTagsIsAND(t *testing.T) {
 }
 
 func TestFilterAttrsExactMatchCaseInsensitiveScalar(t *testing.T) {
-	node := core.Node{Attrs: map[string]any{"status": "Mature"}}
+	node := core.Node{Attrs: map[string][]core.Predicate{"status": {{Value: "Mature"}}}}
 	f := core.Filter{Attrs: map[string]string{"status": "mature"}}
 	fMismatch := core.Filter{Attrs: map[string]string{"status": "backlog"}}
 
@@ -56,7 +56,7 @@ func TestFilterAttrsExactMatchCaseInsensitiveScalar(t *testing.T) {
 }
 
 func TestFilterAttrsExactMatchArrayMembership(t *testing.T) {
-	node := core.Node{Attrs: map[string]any{"category": []any{"independent", "abstract"}}}
+	node := core.Node{Attrs: map[string][]core.Predicate{"category": {{Value: "independent"}, {Value: "abstract"}}}}
 	f := core.Filter{Attrs: map[string]string{"category": "abstract"}}
 	fMismatch := core.Filter{Attrs: map[string]string{"category": "relative"}}
 
@@ -66,8 +66,8 @@ func TestFilterAttrsExactMatchArrayMembership(t *testing.T) {
 }
 
 func TestFilterAttrPatternsRegexpMatchScalarAndArray(t *testing.T) {
-	scalarNode := core.Node{Attrs: map[string]any{"title": "TLS 1.3: Design and Rationale"}}
-	arrayNode := core.Node{Attrs: map[string]any{"category": []any{"independent", "abstract"}}}
+	scalarNode := core.Node{Attrs: map[string][]core.Predicate{"title": {{Value: "TLS 1.3: Design and Rationale"}}}}
+	arrayNode := core.Node{Attrs: map[string][]core.Predicate{"category": {{Value: "independent"}, {Value: "abstract"}}}}
 	f := core.Filter{AttrPatterns: map[string]*regexp.Regexp{"title": regexp.MustCompile(`^TLS 1\.3`)}}
 	fArray := core.Filter{AttrPatterns: map[string]*regexp.Regexp{"category": regexp.MustCompile(`^abs`)}}
 	fMismatch := core.Filter{AttrPatterns: map[string]*regexp.Regexp{"title": regexp.MustCompile(`^SSL`)}}
@@ -80,16 +80,19 @@ func TestFilterAttrPatternsRegexpMatchScalarAndArray(t *testing.T) {
 
 func TestFilterCombinedGroupsAreANDed(t *testing.T) {
 	node := core.Node{
-		Kind:  "entity",
-		Attrs: map[string]any{"tags": []any{"cryptography"}, "status": "mature"},
+		Type: "entity",
+		Attrs: map[string][]core.Predicate{
+			"tags":   {{Value: "cryptography"}},
+			"status": {{Value: "mature"}},
+		},
 	}
 	f := core.Filter{
-		Kinds:        []core.Kind{"entity"},
+		Kinds:        []string{"entity"},
 		Tags:         []string{"cryptography"},
 		Attrs:        map[string]string{"status": "mature"},
 		AttrPatterns: map[string]*regexp.Regexp{"status": regexp.MustCompile(`^mat`)},
 	}
-	fWrongKind := core.Filter{Kinds: []core.Kind{"resource"}, Tags: []string{"cryptography"}}
+	fWrongKind := core.Filter{Kinds: []string{"resource"}, Tags: []string{"cryptography"}}
 
 	it.Then(t).
 		Should(it.True(f.Match(node))).
@@ -97,8 +100,29 @@ func TestFilterCombinedGroupsAreANDed(t *testing.T) {
 }
 
 func TestFilterMatchingZeroNodes(t *testing.T) {
-	node := core.Node{Kind: "source"}
-	f := core.Filter{Kinds: []core.Kind{"resource"}}
+	node := core.Node{Type: "source"}
+	f := core.Filter{Kinds: []string{"resource"}}
+
+	it.Then(t).Should(it.True(!f.Match(node)))
+}
+
+func TestFilterAttrsListValuedSingleValue(t *testing.T) {
+	node := core.Node{Attrs: map[string][]core.Predicate{"status": {{Value: "mature"}}}}
+	f := core.Filter{Attrs: map[string]string{"status": "mature"}}
+
+	it.Then(t).Should(it.True(f.Match(node)))
+}
+
+func TestFilterAttrsListValuedMultipleValuesMatchesAny(t *testing.T) {
+	node := core.Node{Attrs: map[string][]core.Predicate{"category": {{Value: "independent"}, {Value: "abstract"}, {Value: "protocol"}}}}
+	f := core.Filter{Attrs: map[string]string{"category": "protocol"}}
+
+	it.Then(t).Should(it.True(f.Match(node)))
+}
+
+func TestFilterAttrsListValuedNoMatch(t *testing.T) {
+	node := core.Node{Attrs: map[string][]core.Predicate{"category": {{Value: "independent"}, {Value: "abstract"}}}}
+	f := core.Filter{Attrs: map[string]string{"category": "relative"}}
 
 	it.Then(t).Should(it.True(!f.Match(node)))
 }

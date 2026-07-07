@@ -80,7 +80,7 @@ func initGraph(t *testing.T, dir string) {
 	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(".arc/\n"), 0o644)))
 
 	for name, op := range map[string]string{"source": "none", "entity": "union", "resource": "union-first-writer", "timeline": "append"} {
-		writeNode(t, dir, "_schema/nodes/"+name+".md", "---\nid: "+name+"\nkind: schema\nmerge: "+op+"\n---\n# "+name+"\n")
+		writeNode(t, dir, "_schema/nodes/"+name+".md", "---\n\"@id\": "+name+"\n\"@type\": schema\nmerge: "+op+"\n---\n# "+name+"\n")
 	}
 
 	runGit(t, dir, "init")
@@ -97,7 +97,7 @@ func writeNode(t *testing.T, dir, relPath, content string) {
 
 func registerPredicate(t *testing.T, dir, name string) {
 	t.Helper()
-	writeNode(t, dir, "_schema/predicates/"+name+".md", "---\nid: "+name+"\nkind: schema\n---\n# "+name+"\n")
+	writeNode(t, dir, "_schema/predicates/"+name+".md", "---\n\"@id\": "+name+"\n\"@type\": schema\n---\n# "+name+"\n")
 }
 
 // ingestSource writes a source node and commits it with the exact
@@ -117,8 +117,8 @@ func commitAll(t *testing.T, dir, message string) {
 }
 
 const conformantSource = `---
-kind: source
-id: foo-2026-x
+"@id": foo-2026-x
+"@type": source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -132,7 +132,8 @@ A test document.
 `
 
 const conformantEntity = `---
-kind: entity
+"@id": Widget
+"@type": entity
 title: Widget
 category: [independent, abstract, occurrent, script]
 ---
@@ -198,8 +199,8 @@ func TestLintSchemaBasenameDoesNotCollideWithContentNode(t *testing.T) {
 	dir := t.TempDir()
 	buildConformantGraph(t, dir)
 	registerPredicate(t, dir, "related")
-	writeNode(t, dir, "_schema/nodes/hypothesis.md", "---\nid: hypothesis\nkind: schema\nmerge: union\n---\n# hypothesis\n")
-	writeNode(t, dir, "entities/hypothesis.md", "---\nkind: entity\ntitle: hypothesis\ncategory: [independent, abstract, occurrent, script]\n---\n# hypothesis\n\nA namesake entity, unrelated to the schema kind of the same name.\n\n## Mentions\n- mentions:: [[foo-2026-x]]\n")
+	writeNode(t, dir, "_schema/nodes/hypothesis.md", "---\n\"@id\": hypothesis\n\"@type\": schema\nmerge: union\n---\n# hypothesis\n")
+	writeNode(t, dir, "entities/hypothesis.md", "---\n\"@id\": hypothesis\n\"@type\": entity\ntitle: hypothesis\ncategory: [independent, abstract, occurrent, script]\n---\n# hypothesis\n\nA namesake entity, unrelated to the schema kind of the same name.\n\n## Mentions\n- mentions:: [[foo-2026-x]]\n")
 	commitAll(t, dir, "seed: hypothesis entity and schema doc")
 	chdir(t, dir)
 
@@ -219,7 +220,8 @@ func TestLintReportsEveryViolationAcrossRulesInSameFile(t *testing.T) {
 	buildConformantGraph(t, dir)
 
 	broken := `---
-kind: entity
+"@id": Widget
+"@type": entity
 title: Widget
 category: [independent, abstract, occurrent]
 ---
@@ -253,7 +255,8 @@ func TestLintUnresolvedLinkReportedPrecisely(t *testing.T) {
 	buildConformantGraph(t, dir)
 
 	broken := `---
-kind: entity
+"@id": Widget
+"@type": entity
 title: Widget
 category: [independent, abstract, occurrent, script]
 ---
@@ -351,6 +354,92 @@ func TestLintNoConflictMarkersReportsNone(t *testing.T) {
 		ShouldNot(it.String(out).Contain("mergeConflict"))
 }
 
+// arc lint
+// Acceptance Scenario 1 from spec.md US3: a node file using the legacy
+// "kind" front-matter field (with no "@id"/"@type") is rejected as an
+// unsupported pre-0.5 format, reported under the frontMatter rule, naming
+// the offending file. Also confirms lint made no write to the graph (spec
+// FR-012, US3 Acceptance Scenario 4) by comparing `git status --porcelain`
+// before and after the run.
+func TestLintOldFormatKindFieldReportsFrontMatterViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	legacy := "---\nkind: entity\ntitle: Legacy\ncategory: [independent]\n---\n# Legacy\n\nAn entity written before this feature shipped.\n"
+	writeNode(t, dir, "entities/Legacy.md", legacy)
+	chdir(t, dir)
+
+	before := runGit(t, dir, "status", "--porcelain")
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("entities/Legacy.md")).
+		Should(it.String(out).Contain("[frontMatter]")).
+		Should(it.String(out).Contain(`legacy "kind" field present`))
+
+	after := runGit(t, dir, "status", "--porcelain")
+	it.Then(t).Should(it.Equal(before, after))
+}
+
+// arc lint
+// Acceptance Scenario 2 from spec.md US3: a node file declaring "@type" but
+// missing "@id" is rejected rather than falling back to any other field
+// (e.g. title), reported under the frontMatter rule, naming the offending
+// file.
+func TestLintMissingIdReportsFrontMatterViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	missingID := "---\n\"@type\": entity\ntitle: Legacy\ncategory: [independent]\n---\n# Legacy\n\nAn entity missing its mandatory \"@id\" field.\n"
+	writeNode(t, dir, "entities/Legacy.md", missingID)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("entities/Legacy.md")).
+		Should(it.String(out).Contain("[frontMatter]")).
+		Should(it.String(out).Contain(`missing mandatory "@id" field`))
+}
+
+// arc lint
+// Acceptance Scenario 3 from spec.md US3: a node file whose "@id" does not
+// equal its own filename basename is rejected rather than the mismatch
+// being silently accepted. core.ParseNode itself cannot perform this check
+// (it has no filename parameter — see internal/core/markdown.go's ParseNode
+// doc comment); arc lint enforces it universally, for every node type, via
+// a frontMatter violation in internal/app/lint/service.Lint itself (not
+// just for "source" nodes via the narrower, pre-existing sourceCitekey
+// rule) — any node type demonstrates the behavior.
+func TestLintIdMismatchedBasenameReportsFrontMatterViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	mismatched := `---
+"@id": wrong-id
+"@type": source
+title: "A Mismatched Source"
+published: "2026-04-12"
+---
+# wrong-id
+
+A source whose "@id" does not equal its own filename basename.
+`
+	writeNode(t, dir, "sources/mismatched-2026-x.md", mismatched)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("sources/mismatched-2026-x.md")).
+		Should(it.String(out).Contain("[frontMatter]")).
+		Should(it.String(out).Contain(`"@id" wrong-id does not match this file's basename mismatched-2026-x`))
+}
+
 // arc lint --verbose
 // User's explicit -v requirement: verbose mode lists every node's status;
 // default mode lists only the failing node, same summary line closes both
@@ -359,7 +448,8 @@ func TestLintVerboseListsEveryNodeDefaultListsOnlyFailing(t *testing.T) {
 	buildConformantGraph(t, dir)
 
 	broken := `---
-kind: entity
+"@id": Widget
+"@type": entity
 title: Widget
 category: [independent, abstract, occurrent, script]
 ---

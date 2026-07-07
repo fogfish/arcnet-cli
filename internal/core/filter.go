@@ -20,18 +20,18 @@ import (
 // node.
 type Filter struct {
 	// Kinds is empty-matches-every-kind, otherwise OR'd: a node matches if
-	// its Kind is any listed value.
-	Kinds []Kind
+	// its Type is any listed value.
+	Kinds []string
 	// Tags is empty-matches-every-node, otherwise AND'd: every listed tag
-	// must be present in node.Attrs["tags"].
+	// must be present among the values of node.Attrs["tags"].
 	Tags []string
 	// Attrs is empty-matches-every-node, otherwise AND'd: name=value,
-	// case-insensitive equality for a scalar attribute, membership test for
-	// an array attribute.
+	// case-insensitive equality against any Predicate value in
+	// node.Attrs[name].
 	Attrs map[string]string
 	// AttrPatterns is empty-matches-every-node, otherwise AND'd:
-	// name~=pattern, regexp match against a scalar, or against any element
-	// of an array attribute.
+	// name~=pattern, regexp match against any Predicate value in
+	// node.Attrs[name].
 	AttrPatterns map[string]*regexp.Regexp
 }
 
@@ -46,7 +46,7 @@ func (f Filter) matchKinds(node Node) bool {
 		return true
 	}
 	for _, k := range f.Kinds {
-		if node.Kind == k {
+		if node.Type == k {
 			return true
 		}
 	}
@@ -84,22 +84,17 @@ func (f Filter) matchAttrPatterns(node Node) bool {
 	return true
 }
 
-// attrStrings normalizes a front-matter value into a string slice: a scalar
-// becomes a single-element slice, an array becomes its stringified
-// elements, anything else (including nil) becomes empty.
-func attrStrings(v any) []string {
-	switch val := v.(type) {
-	case []any:
-		out := make([]string, 0, len(val))
-		for _, item := range val {
-			out = append(out, toString(item))
+// attrStrings converts a Predicate slice into its stringified values,
+// skipping any reference-valued Predicate (nil Value, non-empty Target).
+func attrStrings(preds []Predicate) []string {
+	out := make([]string, 0, len(preds))
+	for _, p := range preds {
+		if p.Value == nil {
+			continue
 		}
-		return out
-	case nil:
-		return nil
-	default:
-		return []string{toString(val)}
+		out = append(out, toString(p.Value))
 	}
+	return out
 }
 
 func toString(v any) string {
@@ -118,34 +113,26 @@ func containsFold(items []string, want string) bool {
 	return false
 }
 
-func matchAttrValue(v any, want string) bool {
-	switch val := v.(type) {
-	case []any:
-		for _, item := range val {
-			if strings.EqualFold(toString(item), want) {
-				return true
-			}
+func matchAttrValue(preds []Predicate, want string) bool {
+	for _, p := range preds {
+		if p.Value == nil {
+			continue
 		}
-		return false
-	case nil:
-		return false
-	default:
-		return strings.EqualFold(toString(val), want)
+		if strings.EqualFold(toString(p.Value), want) {
+			return true
+		}
 	}
+	return false
 }
 
-func matchAttrPattern(v any, want *regexp.Regexp) bool {
-	switch val := v.(type) {
-	case []any:
-		for _, item := range val {
-			if want.MatchString(toString(item)) {
-				return true
-			}
+func matchAttrPattern(preds []Predicate, want *regexp.Regexp) bool {
+	for _, p := range preds {
+		if p.Value == nil {
+			continue
 		}
-		return false
-	case nil:
-		return false
-	default:
-		return want.MatchString(toString(val))
+		if want.MatchString(toString(p.Value)) {
+			return true
+		}
 	}
+	return false
 }

@@ -22,12 +22,12 @@ func TestNodeZeroValue(t *testing.T) {
 
 	it.Then(t).
 		Should(it.Equal("", n.ID)).
-		Should(it.Equal(core.Kind(""), n.Kind)).
+		Should(it.Equal("", n.Type)).
 		Should(it.True(n.Published.IsZero())).
 		Should(it.Equal(0, len(n.Attrs))).
+		Should(it.Equal(0, len(n.Texts))).
 		Should(it.Equal(0, len(n.HRefs))).
-		Should(it.Equal(0, len(n.Edges))).
-		Should(it.Equal(0, len(n.Links)))
+		Should(it.Equal(0, len(n.Edges)))
 }
 
 // data-model.md: Node.Published is a typed field, mirroring Patch's own
@@ -35,11 +35,82 @@ func TestNodeZeroValue(t *testing.T) {
 // ordinary struct field, no different from any other typed field.
 func TestNodePublishedRetainsSetValue(t *testing.T) {
 	published := time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)
-	n := core.Node{ID: "x", Kind: "source", Published: published}
+	n := core.Node{ID: "x", Type: "source", Published: published}
 
 	it.Then(t).
 		ShouldNot(it.True(n.Published.IsZero())).
 		Should(it.Equal(published, n.Published))
+}
+
+// data-model.md/research.md D2: a Predicate with only Value set represents
+// a scalar attribute value; one with only Target set represents a
+// reference-valued predicate (Value/Target are exactly-one-of, this
+// feature's parser only ever populates Value).
+func TestPredicateValueOnly(t *testing.T) {
+	p := core.Predicate{Value: "cryptography"}
+
+	it.Then(t).
+		Should(it.Equal("cryptography", p.Value)).
+		Should(it.Equal("", p.Target)).
+		Should(it.Equal("", p.Alias))
+}
+
+func TestPredicateTargetOnly(t *testing.T) {
+	p := core.Predicate{Target: "Transport Layer Security", Alias: "TLS"}
+
+	it.Then(t).
+		Should(it.Equal(nil, p.Value)).
+		Should(it.Equal("Transport Layer Security", p.Target)).
+		Should(it.Equal("TLS", p.Alias))
+}
+
+// data-model.md: an Attrs entry is a non-empty ordered list of Predicate —
+// one element for a single-valued attribute, several for a multi-valued one.
+func TestAttrsSingleAndMultiValued(t *testing.T) {
+	n := core.Node{
+		Attrs: map[string][]core.Predicate{
+			"year": {{Value: 2018}},
+			"tags": {{Value: "cryptography"}, {Value: "networking"}},
+		},
+	}
+
+	it.Then(t).
+		Should(it.Equal(1, len(n.Attrs["year"]))).
+		Should(it.Equal(2, len(n.Attrs["tags"]))).
+		Should(it.Equal("cryptography", n.Attrs["tags"][0].Value)).
+		Should(it.Equal("networking", n.Attrs["tags"][1].Value))
+}
+
+// data-model.md: Texts is an open, name-keyed map — a node can carry
+// several independently named prose fields simultaneously.
+func TestTextsMultipleDistinctKeys(t *testing.T) {
+	n := core.Node{
+		Texts: map[string]string{
+			"abstract": "A cryptographic protocol.",
+			"notes":    "Superseded by TLS 1.3.",
+		},
+	}
+
+	it.Then(t).
+		Should(it.Equal(2, len(n.Texts))).
+		Should(it.Equal("A cryptographic protocol.", n.Texts["abstract"])).
+		Should(it.Equal("Superseded by TLS 1.3.", n.Texts["notes"]))
+}
+
+// research.md D5: a single Edges slice mixes what were previously bare and
+// grouped links, in document order, with no per-block grouping retained.
+func TestEdgesUnifiesBareAndGroupedLinks(t *testing.T) {
+	n := core.Node{
+		Edges: []core.Link{
+			{Target: "SSL Protocol"},
+			{Predicate: "mentionedIn", Target: "rescorla-2026-tls13"},
+		},
+	}
+
+	it.Then(t).
+		Should(it.Equal(2, len(n.Edges))).
+		Should(it.Equal("SSL Protocol", n.Edges[0].Target)).
+		Should(it.Equal("mentionedIn", n.Edges[1].Predicate))
 }
 
 func TestPatchZeroValue(t *testing.T) {
@@ -58,15 +129,4 @@ func TestMergeOpConstants(t *testing.T) {
 		Should(it.Equal(core.MergeOp("union-first-writer"), core.MergeUnionFirstWriter)).
 		Should(it.Equal(core.MergeOp("append"), core.MergeAppend)).
 		Should(it.Equal(core.MergeOp("validated-overwrite"), core.MergeValidatedOverwrite))
-}
-
-func TestLinkBlockShape(t *testing.T) {
-	lb := core.LinkBlock{
-		Title: "Mentions",
-		Seq:   []core.Link{{Predicate: "mentions", Target: "Transport Layer Security"}},
-	}
-
-	it.Then(t).
-		Should(it.Equal("Mentions", lb.Title)).
-		Should(it.Equal(1, len(lb.Seq)))
 }

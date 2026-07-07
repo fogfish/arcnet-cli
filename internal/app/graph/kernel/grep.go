@@ -8,13 +8,11 @@
 
 package kernel
 
-import "github.com/fogfish/arcnet-cli/internal/core"
-
 // Match is one reported line, in one node's file, that matched arc grep's
 // pattern — the row cmd/arc/graph renders as "<kind>  <id>  <line>  <text>".
 type Match struct {
-	// Kind is the owning node's kind.
-	Kind core.Kind `json:"kind"`
+	// Type is the owning node's kind.
+	Type string `json:"type"`
 	// ID is the owning node's parsed identity.
 	ID string `json:"id"`
 	// Path is the node file path, relative to the graph root.
