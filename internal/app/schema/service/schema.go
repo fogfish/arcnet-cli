@@ -10,126 +10,268 @@
 package service
 
 import (
-	"errors"
-	"io/fs"
-
 	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
 	"github.com/fogfish/arcnet-cli/internal/app/schema/kernel"
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
-// Seed renders every core kind's node-kind schema document and every core
-// predicate's predicate schema document, keyed by their on-disk path. Pure:
-// no I/O, no context.Context, no network call (research.md D5). Rendering a
-// fixed, always-valid built-in value never fails in practice — a failure
-// here would be a programming error, not a runtime condition callers need
-// to handle.
-func Seed() map[string][]byte {
-	out := make(map[string][]byte, len(kernel.CoreMergeRules)+len(kernel.CorePredicates))
+// propertyType/classType are CORE §9.1/§9.2's literal "@type" values for a
+// predicate/type schema node.
+const (
+	propertyType = "Property"
+	classType    = "Class"
+)
 
-	for kind, op := range kernel.CoreMergeRules {
-		node := core.Node{
-			ID:   kind,
-			Type: kernel.SchemaKind,
-			Attrs: map[string][]core.Predicate{
-				"merge": {{Value: string(op)}},
-			},
-		}
-		if description := kernel.KindDescription(kind); description != "" {
-			node.Texts = map[string]string{"text": description}
-		}
-		raw, err := core.RenderNode(node)
+// descriptionKey is the Texts key a Property/Class node's mandatory
+// description prose decodes into. internal/core.ParseNode/RenderNode's
+// textPredicateFor has no Property/Class case of its own (research.md D3 —
+// this feature adds zero parser/renderer code to internal/core), so a
+// Property/Class node's leading prose falls through to the default text
+// key, "text" — this constant names that fact once rather than repeating
+// the literal at every call site.
+const descriptionKey = "text"
+
+const (
+	autoRegisteredPredicateDescription = "Auto-registered by arc apply; describe this predicate's meaning here."
+	autoRegisteredTypeDescription      = "Auto-registered by arc apply; describe this type's meaning here."
+)
+
+var validRoles = map[string]bool{"meta": true, "text": true, "href": true, "edge": true, "link": true}
+
+var validMergeOps = map[core.MergeOp]bool{
+	core.MergeNone:               true,
+	core.MergeUnion:              true,
+	core.MergeUnionFirstWriter:   true,
+	core.MergeAppend:             true,
+	core.MergeValidatedOverwrite: true,
+}
+
+// Seed renders every CorePredicateDefs/CoreTypeDefs entry as a conformant
+// Property/Class schema document, keyed by on-disk path. Pure: no I/O, no
+// context.Context, no network call. Rendering a fixed, always-valid
+// built-in value never fails in practice — a failure here would be a
+// programming error, not a runtime condition callers need to handle.
+func Seed() map[string][]byte {
+	out := make(map[string][]byte, len(kernel.CorePredicateDefs)+len(kernel.CoreTypeDefs))
+
+	for name, def := range kernel.CorePredicateDefs {
+		raw, err := core.RenderNode(predicateNode(name, def))
 		if err != nil {
 			panic(err)
 		}
-		out[kernel.NodesDir+"/"+kind+".md"] = raw
+		out[kernel.PredicatesDir+"/"+name+".md"] = raw
 	}
 
-	for predicate, description := range kernel.CorePredicates {
-		node := core.Node{
-			ID:   predicate,
-			Type: kernel.SchemaKind,
-		}
-		if description != "" {
-			node.Texts = map[string]string{"text": description}
-		}
-		raw, err := core.RenderNode(node)
+	for name, def := range kernel.CoreTypeDefs {
+		raw, err := core.RenderNode(typeNode(name, def))
 		if err != nil {
 			panic(err)
 		}
-		out[kernel.PredicatesDir+"/"+predicate+".md"] = raw
+		out[kernel.TypesDir+"/"+name+".md"] = raw
 	}
 
 	return out
 }
 
-// Resolve walks _schema/nodes/ and _schema/predicates/, parsing each file
-// back into the graph's effective merge-rule set and registered predicate
-// set. A file that fails to parse is skipped, not an error — that
-// kind/predicate is simply absent from the returned set (spec.md Edge
-// Cases). An absent _schema/ folder resolves to two empty results, not an
-// error.
-func Resolve(store fsys.Store) (core.MergeRuleSet, map[string]bool, error) {
-	rules := core.MergeRuleSet{}
-	predicates := map[string]bool{}
-
-	entries, err := readDir(store, kernel.NodesDir)
-	if err != nil {
-		return nil, nil, err
+func predicateNode(name string, def core.PredicateDef) core.Node {
+	attrs := map[string][]core.Predicate{
+		"role":  {{Value: def.Role}},
+		"merge": {{Value: string(def.Merge)}},
 	}
-	for _, name := range entries {
-		node, ok := parseNode(store, kernel.NodesDir+"/"+name)
-		if !ok {
-			continue
-		}
-		preds := node.Attrs["merge"]
-		if len(preds) == 0 {
-			continue
-		}
-		op, ok := preds[0].Value.(string)
-		if !ok {
-			continue
-		}
-		rules[node.ID] = core.MergeOp(op)
+	if def.Label != "" {
+		attrs["label"] = []core.Predicate{{Value: def.Label}}
 	}
-
-	entries, err = readDir(store, kernel.PredicatesDir)
-	if err != nil {
-		return nil, nil, err
+	if def.Aligned != "" {
+		attrs["aligned"] = []core.Predicate{{Value: def.Aligned}}
 	}
-	for _, name := range entries {
-		node, ok := parseNode(store, kernel.PredicatesDir+"/"+name)
-		if !ok {
-			continue
-		}
-		predicates[node.ID] = true
+	return core.Node{
+		ID:    name,
+		Type:  propertyType,
+		Attrs: attrs,
+		Texts: map[string]string{descriptionKey: def.Description},
 	}
-
-	return rules, predicates, nil
 }
 
-// RegisterKind creates kind's node-kind schema document, always with
-// merge: union (spec FR-010, clarified), if one is not already present.
-// created is false and no write happens when the file already exists (spec
-// FR-011 — never overwrite).
-func RegisterKind(store fsys.Store, kind string) (created bool, err error) {
-	path := kernel.NodesDir + "/" + kind + ".md"
+func typeNode(name string, def core.TypeDef) core.Node {
+	edges := make([]core.Link, 0, len(def.Required)+len(def.Optional))
+	for _, predicate := range def.Required {
+		edges = append(edges, core.Link{Predicate: "required", Target: predicate})
+	}
+	for _, predicate := range def.Optional {
+		edges = append(edges, core.Link{Predicate: "optional", Target: predicate})
+	}
+	return core.Node{
+		ID:   name,
+		Type: classType,
+		Attrs: map[string][]core.Predicate{
+			"merge": {{Value: string(def.Merge)}},
+		},
+		Texts: map[string]string{descriptionKey: def.Description},
+		Edges: edges,
+	}
+}
+
+// Resolve checks .arc/ presence first (research.md D2), returning
+// ErrNotAGraph if absent; then walks _schema/predicates/ and
+// _schema/types/, decoding each document into a PredicateDef/TypeDef. A
+// missing schema folder, or any document missing/invalid role/merge/
+// description, fails the entire load — never skipped (spec FR-014). Never
+// returns a partially-populated Index.
+func Resolve(store fsys.Store) (core.Index, error) {
+	if _, err := store.Stat(".arc"); err != nil {
+		return core.Index{}, ErrNotAGraph.With(err)
+	}
+
+	predicates, err := resolvePredicates(store)
+	if err != nil {
+		return core.Index{}, err
+	}
+
+	types, err := resolveTypes(store)
+	if err != nil {
+		return core.Index{}, err
+	}
+
+	return core.Index{Predicates: predicates, Types: types}, nil
+}
+
+func resolvePredicates(store fsys.Store) (map[string]core.PredicateDef, error) {
+	names, err := readSchemaDir(store, kernel.PredicatesDir)
+	if err != nil {
+		return nil, err
+	}
+
+	defs := make(map[string]core.PredicateDef, len(names))
+	for _, name := range names {
+		path := kernel.PredicatesDir + "/" + name
+		node, perr := parseNode(store, path)
+		if perr != nil {
+			return nil, ErrSchemaInvalid.With(perr, path, "document")
+		}
+
+		def, invalid := decodePredicateDef(node)
+		if invalid != "" {
+			return nil, ErrSchemaInvalid.With(errNoCause, path, invalid)
+		}
+		defs[node.ID] = def
+	}
+	return defs, nil
+}
+
+func resolveTypes(store fsys.Store) (map[string]core.TypeDef, error) {
+	names, err := readSchemaDir(store, kernel.TypesDir)
+	if err != nil {
+		return nil, err
+	}
+
+	defs := make(map[string]core.TypeDef, len(names))
+	for _, name := range names {
+		path := kernel.TypesDir + "/" + name
+		node, perr := parseNode(store, path)
+		if perr != nil {
+			return nil, ErrSchemaInvalid.With(perr, path, "document")
+		}
+
+		def, invalid := decodeTypeDef(node)
+		if invalid != "" {
+			return nil, ErrSchemaInvalid.With(errNoCause, path, invalid)
+		}
+		defs[node.ID] = def
+	}
+	return defs, nil
+}
+
+func decodePredicateDef(node core.Node) (core.PredicateDef, string) {
+	role, ok := attrString(node, "role")
+	if !ok || !validRoles[role] {
+		return core.PredicateDef{}, "role"
+	}
+	merge, ok := attrString(node, "merge")
+	if !ok || !validMergeOps[core.MergeOp(merge)] {
+		return core.PredicateDef{}, "merge"
+	}
+	description := node.Texts[descriptionKey]
+	if description == "" {
+		return core.PredicateDef{}, "description"
+	}
+
+	label, _ := attrString(node, "label")
+	aligned, _ := attrString(node, "aligned")
+	return core.PredicateDef{
+		Role:        role,
+		Merge:       core.MergeOp(merge),
+		Label:       label,
+		Aligned:     aligned,
+		Description: description,
+	}, ""
+}
+
+func decodeTypeDef(node core.Node) (core.TypeDef, string) {
+	merge, ok := attrString(node, "merge")
+	if !ok || !validMergeOps[core.MergeOp(merge)] {
+		return core.TypeDef{}, "merge"
+	}
+	description := node.Texts[descriptionKey]
+	if description == "" {
+		return core.TypeDef{}, "description"
+	}
+
+	var required, optional []string
+	for _, edge := range node.Edges {
+		switch edge.Predicate {
+		case "required":
+			required = append(required, edge.Target)
+		case "optional":
+			optional = append(optional, edge.Target)
+		}
+	}
+
+	return core.TypeDef{
+		Merge:       core.MergeOp(merge),
+		Required:    required,
+		Optional:    optional,
+		Description: description,
+	}, ""
+}
+
+func attrString(node core.Node, key string) (string, bool) {
+	preds := node.Attrs[key]
+	if len(preds) == 0 {
+		return "", false
+	}
+	s, ok := preds[0].Value.(string)
+	return s, ok
+}
+
+// RegisterType creates typ's type schema document — merge: union, empty
+// Required/Optional, a placeholder description (research.md D5) — if one
+// is not already present. created is false and no write happens when the
+// file already exists (spec FR-011 — never overwrite).
+func RegisterType(store fsys.Store, typ string) (created bool, err error) {
+	path := kernel.TypesDir + "/" + typ + ".md"
 	return registerIfAbsent(store, path, core.Node{
-		ID:   kind,
-		Type: kernel.SchemaKind,
+		ID:   typ,
+		Type: classType,
 		Attrs: map[string][]core.Predicate{
 			"merge": {{Value: string(core.MergeUnion)}},
 		},
+		Texts: map[string]string{descriptionKey: autoRegisteredTypeDescription},
 	})
 }
 
-// RegisterPredicate creates predicate's predicate schema document if one is
-// not already present.
+// RegisterPredicate creates predicate's predicate schema document — role:
+// edge, merge: union, a placeholder description (research.md D5) — if one
+// is not already present.
 func RegisterPredicate(store fsys.Store, predicate string) (created bool, err error) {
 	path := kernel.PredicatesDir + "/" + predicate + ".md"
 	return registerIfAbsent(store, path, core.Node{
 		ID:   predicate,
-		Type: kernel.SchemaKind,
+		Type: propertyType,
+		Attrs: map[string][]core.Predicate{
+			"role":  {{Value: "edge"}},
+			"merge": {{Value: string(core.MergeUnion)}},
+		},
+		Texts: map[string]string{descriptionKey: autoRegisteredPredicateDescription},
 	})
 }
 
@@ -158,13 +300,10 @@ func registerIfAbsent(store fsys.Store, path string, node core.Node) (bool, erro
 	return true, nil
 }
 
-func readDir(store fsys.Store, dir string) ([]string, error) {
+func readSchemaDir(store fsys.Store, dir string) ([]string, error) {
 	entries, err := store.ReadDir(dir)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, nil
-		}
-		return nil, err
+		return nil, ErrSchemaMissing.With(err, dir)
 	}
 
 	names := make([]string, 0, len(entries))
@@ -177,16 +316,12 @@ func readDir(store fsys.Store, dir string) ([]string, error) {
 	return names, nil
 }
 
-func parseNode(store fsys.Store, path string) (core.Node, bool) {
+func parseNode(store fsys.Store, path string) (core.Node, error) {
 	f, err := store.Open(path)
 	if err != nil {
-		return core.Node{}, false
+		return core.Node{}, err
 	}
 	defer f.Close()
 
-	node, err := core.ParseNode(f)
-	if err != nil {
-		return core.Node{}, false
-	}
-	return node, true
+	return core.ParseNode(f)
 }

@@ -177,7 +177,7 @@ func TestInitSuccessWritesLayoutAndCommits(t *testing.T) {
 	it.Then(t).Should(it.Equal("abc123", result.CommitHash))
 	it.Then(t).Should(it.Equal("/target", result.Root.Root))
 	it.Then(t).Should(it.True(store.written["sources/.gitkeep"]))
-	it.Then(t).Should(it.True(store.written["_schema/nodes/.gitkeep"]))
+	it.Then(t).Should(it.True(store.written["_schema/types/.gitkeep"]))
 	it.Then(t).Should(it.True(store.written[".arc/.gitkeep"]))
 	it.Then(t).Should(it.True(store.written[".gitignore"]))
 	it.Then(t).
@@ -196,7 +196,7 @@ func TestInitRollsBackOnCommitFailureWithoutCreatedRoot(t *testing.T) {
 
 	it.Then(t).ShouldNot(it.Nil(err))
 	it.Then(t).Should(it.Seq(store.removed).Contain(
-		"sources/.gitkeep", "_schema/nodes/.gitkeep", ".arc/.gitkeep", ".gitignore",
+		"sources/.gitkeep", "_schema/types/.gitkeep", ".arc/.gitkeep", ".gitignore",
 	))
 }
 
@@ -204,14 +204,14 @@ func TestInitWritesSchemaSeedVerbatim(t *testing.T) {
 	withStubbedResolve(t, false, nil)
 	store := newFakeStore()
 	vcs := &mock.VCS{CommitHash: "abc123"}
-	seed := map[string]string{"_schema/nodes/source.md": "---\nid: source\nkind: schema\nmerge: none\n---\n# source\n"}
+	seed := map[string]string{"_schema/types/source.md": "---\nid: source\nkind: schema\nmerge: none\n---\n# source\n"}
 
 	_, err := Init(context.Background(), fakeMounter{store: store}, vcs, "/target", seed)
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
-		Should(it.True(store.written["_schema/nodes/source.md"])).
-		Should(it.Equal(seed["_schema/nodes/source.md"], string(store.content["_schema/nodes/source.md"])))
+		Should(it.True(store.written["_schema/types/source.md"])).
+		Should(it.Equal(seed["_schema/types/source.md"], string(store.content["_schema/types/source.md"])))
 }
 
 func TestInitRollsBackViaRemoveLocalRootWhenCreated(t *testing.T) {

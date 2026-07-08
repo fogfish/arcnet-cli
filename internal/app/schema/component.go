@@ -7,11 +7,11 @@
 //
 
 // Package schema is the graph schema domain use-case: it isolates
-// ARCNET-CORE's declared vocabulary of node kinds, merge behaviors, and
-// predicates as _schema/nodes/*.md and _schema/predicates/*.md — one
-// versioned, human-readable document per node kind and predicate. No
-// port/adapter subdirectory: its only I/O is the already-shared
-// internal/adapter/fsys, consumed directly.
+// ARCNET-CORE's declared vocabulary of predicates and types as
+// _schema/predicates/*.md and _schema/types/*.md — one versioned,
+// human-readable document per predicate and type. No port/adapter
+// subdirectory: its only I/O is the already-shared internal/adapter/fsys,
+// consumed directly.
 package schema
 
 import (
@@ -20,23 +20,22 @@ import (
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
-// Seed renders every core kind/predicate's built-in schema document,
-// keyed by on-disk path. Thin delegator into service.Seed.
+// Seed renders every core predicate/type's built-in schema document, keyed
+// by on-disk path. Thin delegator into service.Seed.
 func Seed() map[string][]byte {
 	return service.Seed()
 }
 
-// Resolve returns the graph's effective merge-rule set and registered
-// predicate set, read back from _schema/. Thin delegator into
-// service.Resolve.
-func Resolve(store fsys.Store) (core.MergeRuleSet, map[string]bool, error) {
+// Resolve returns the graph's effective schema index, read back from
+// _schema/. Thin delegator into service.Resolve.
+func Resolve(store fsys.Store) (core.Index, error) {
 	return service.Resolve(store)
 }
 
-// RegisterKind creates kind's node-kind schema document if one is not
-// already present. Thin delegator into service.RegisterKind.
-func RegisterKind(store fsys.Store, kind string) (created bool, err error) {
-	return service.RegisterKind(store, kind)
+// RegisterType creates typ's type schema document if one is not already
+// present. Thin delegator into service.RegisterType.
+func RegisterType(store fsys.Store, typ string) (created bool, err error) {
+	return service.RegisterType(store, typ)
 }
 
 // RegisterPredicate creates predicate's predicate schema document if one is
@@ -52,8 +51,8 @@ func RegisterPredicate(store fsys.Store, predicate string) (created bool, err er
 // port.VCS interfaces.
 type Component struct{}
 
-func (Component) RegisterKind(store fsys.Store, kind string) (created bool, err error) {
-	return RegisterKind(store, kind)
+func (Component) RegisterType(store fsys.Store, typ string) (created bool, err error) {
+	return RegisterType(store, typ)
 }
 
 func (Component) RegisterPredicate(store fsys.Store, predicate string) (created bool, err error) {

@@ -14,11 +14,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fogfish/it/v2"
 	"github.com/spf13/cobra"
 
+	appschema "github.com/fogfish/arcnet-cli/internal/app/schema"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
 
@@ -69,18 +71,21 @@ func runGit(t *testing.T, dir string, args ...string) string {
 }
 
 // initGraph builds a minimal, real, git-committed graph root — equivalent
-// to arc init's own layout — without depending on cmd/arc/ctrl.
+// to arc init's own layout — without depending on cmd/arc/ctrl. _schema/ is
+// seeded with appschema.Seed()'s own real output — the full CORE
+// vocabulary, matching arc init's actual behavior — so Resolve's fail-fast
+// validation never rejects this fixture.
 func initGraph(t *testing.T, dir string) {
 	t.Helper()
-	for _, folder := range []string{"sources", "entities", "resources", "timeline/yearly", "timeline/monthly", "_schema/nodes", "_schema/predicates"} {
+	for _, folder := range []string{"sources", "entities", "resources", "timeline/yearly", "timeline/monthly", "_schema/types", "_schema/predicates"} {
 		it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, folder), 0o755)))
 	}
 	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, ".arc"), 0o755)))
 	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(dir, ".arc", ".gitkeep"), nil, 0o644)))
 	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(".arc/\n"), 0o644)))
 
-	for name, op := range map[string]string{"source": "none", "entity": "union", "resource": "union-first-writer", "timeline": "append"} {
-		writeNode(t, dir, "_schema/nodes/"+name+".md", "---\n\"@id\": "+name+"\n\"@type\": schema\nmerge: "+op+"\n---\n# "+name+"\n")
+	for path, raw := range appschema.Seed() {
+		writeNode(t, dir, path, string(raw))
 	}
 
 	runGit(t, dir, "init")
@@ -93,11 +98,6 @@ func writeNode(t *testing.T, dir, relPath, content string) {
 	full := filepath.Join(dir, filepath.FromSlash(relPath))
 	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Dir(full), 0o755)))
 	it.Then(t).Should(it.Nil(os.WriteFile(full, []byte(content), 0o644)))
-}
-
-func registerPredicate(t *testing.T, dir, name string) {
-	t.Helper()
-	writeNode(t, dir, "_schema/predicates/"+name+".md", "---\n\"@id\": "+name+"\n\"@type\": schema\n---\n# "+name+"\n")
 }
 
 // ingestSource writes a source node and commits it with the exact
@@ -153,8 +153,6 @@ A test entity.
 func buildConformantGraph(t *testing.T, dir string) {
 	t.Helper()
 	initGraph(t, dir)
-	registerPredicate(t, dir, "mentions")
-	commitAll(t, dir, "seed: predicates registry")
 	ingestSource(t, dir, "foo-2026-x", "A Test Document", conformantSource)
 	writeNode(t, dir, "entities/Widget.md", conformantEntity)
 	commitAll(t, dir, "seed: Widget entity")
@@ -194,12 +192,11 @@ func TestLintExcludesSchemaDocumentsFromCheckedCount(t *testing.T) {
 // arc lint
 // spec.md Clarifications Q3: an ordinary content node sharing a basename
 // with a schema document (e.g. entities/hypothesis.md vs.
-// _schema/nodes/hypothesis.md) is not reported as a basename collision.
+// _schema/types/hypothesis.md) is not reported as a basename collision.
 func TestLintSchemaBasenameDoesNotCollideWithContentNode(t *testing.T) {
 	dir := t.TempDir()
 	buildConformantGraph(t, dir)
-	registerPredicate(t, dir, "related")
-	writeNode(t, dir, "_schema/nodes/hypothesis.md", "---\n\"@id\": hypothesis\n\"@type\": schema\nmerge: union\n---\n# hypothesis\n")
+	writeNode(t, dir, "_schema/types/hypothesis.md", "---\n\"@id\": hypothesis\n\"@type\": Class\nmerge: union\n---\n# hypothesis\n\nA domain type registered by this test fixture.\n")
 	writeNode(t, dir, "entities/hypothesis.md", "---\n\"@id\": hypothesis\n\"@type\": entity\ntitle: hypothesis\ncategory: [independent, abstract, occurrent, script]\n---\n# hypothesis\n\nA namesake entity, unrelated to the schema kind of the same name.\n\n## Mentions\n- mentions:: [[foo-2026-x]]\n")
 	commitAll(t, dir, "seed: hypothesis entity and schema doc")
 	chdir(t, dir)
@@ -490,6 +487,22 @@ func TestLintTargetNotAGraphRefuses(t *testing.T) {
 	out, err := sut(NewLintCmd(), nil)
 
 	it.Then(t).Should(it.Error(out, err).Contain("initialized graph"))
+}
+
+// arc lint
+// spec.md US2 Acceptance Scenario 5 / FR-014, mirrored read-only: a
+// malformed _schema/ document aborts arc lint (which never writes to the
+// graph regardless, but must still refuse to run against a broken schema).
+func TestLintMalformedSchemaDocumentRefuses(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	entityDoc := readFile(t, filepath.Join(dir, "_schema", "types", "entity.md"))
+	writeNode(t, dir, "_schema/types/entity.md", strings.ReplaceAll(entityDoc, "merge: union", "merge: bogus"))
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).Should(it.Error(out, err).Contain("_schema/types/entity.md"))
 }
 
 // arc lint --json

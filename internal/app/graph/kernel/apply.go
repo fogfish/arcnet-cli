@@ -24,9 +24,9 @@ type ApplyResult struct {
 	// Conflicts holds relative paths of node files that received a
 	// conflict marker (FR-013), for the PostRunE hint.
 	Conflicts []string `json:"conflicts"`
-	// Warnings holds one sentence per node whose kind was not found in
-	// the resolved MergeRuleSet and was therefore applied using the
-	// default union behavior (spec FR-018); empty when every kind was
+	// Warnings holds one sentence per node whose type was not found in
+	// the resolved core.Index and was therefore applied using the
+	// default union behavior (spec FR-018); empty when every type was
 	// recognized.
 	Warnings []string `json:"warnings"`
 	// CommitHash is the short hash of the single resulting commit; empty

@@ -44,7 +44,7 @@ type parsedNode struct {
 // Lint mounts dir, walks every node file, and checks it against the full
 // CORE §14 conformance checklist, never stopping at the first violation
 // found (spec FR-013). It never writes to the graph (spec FR-014).
-func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, rules core.MergeRuleSet, predicates map[string]bool, dir string) (kernel.LintResult, error) {
+func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, index core.Index, dir string) (kernel.LintResult, error) {
 	store, err := mounter.Mount(dir)
 	if err != nil {
 		return kernel.LintResult{}, err
@@ -120,7 +120,7 @@ func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios
 	start = time.Now()
 	graphSpanning := checkUniqueBasenames(basenameIndex)
 	for _, p := range parsed {
-		fileViolations[p.Path] = append(fileViolations[p.Path], checkUnrecognizedKind(p.Node, p.Path, rules)...)
+		fileViolations[p.Path] = append(fileViolations[p.Path], checkUnrecognizedKind(p.Node, p.Path, index)...)
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkLinksResolve(p.Node, p.Path, p.Raw, basenameIndex)...)
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkDerivedProvenance(p.Node, p.Path, kindIndex)...)
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkSourceCitekey(p.Node, p.Path, p.Basename, p.Raw)...)
@@ -131,7 +131,7 @@ func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios
 	start = time.Now()
 	for _, p := range parsed {
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkPredicateCase(p.Node, p.Path, p.Raw)...)
-		fileViolations[p.Path] = append(fileViolations[p.Path], checkPredicateRegistered(p.Node, p.Path, p.Raw, predicates)...)
+		fileViolations[p.Path] = append(fileViolations[p.Path], checkPredicateRegistered(p.Node, p.Path, p.Raw, index.Predicates)...)
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkCitationPredicate(p.Node, p.Path, p.Raw)...)
 	}
 	reporter.Done(labelCheckingPredicates, time.Since(start))

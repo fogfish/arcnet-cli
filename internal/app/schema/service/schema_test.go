@@ -60,6 +60,7 @@ func (f *fakeWriteFile) Discard() error             { return nil }
 
 type fakeStore struct {
 	files     map[string]string
+	dirs      map[string]bool
 	written   map[string]string
 	createErr error
 }
@@ -68,7 +69,7 @@ func newFakeStore(files map[string]string) *fakeStore {
 	if files == nil {
 		files = map[string]string{}
 	}
-	return &fakeStore{files: files, written: map[string]string{}}
+	return &fakeStore{files: files, dirs: map[string]bool{".arc": true}, written: map[string]string{}}
 }
 
 func (s *fakeStore) Open(name string) (fs.File, error) {
@@ -80,6 +81,9 @@ func (s *fakeStore) Open(name string) (fs.File, error) {
 }
 
 func (s *fakeStore) Stat(name string) (fs.FileInfo, error) {
+	if s.dirs[name] {
+		return fakeFileInfo{name: name}, nil
+	}
 	if _, ok := s.files[name]; ok {
 		return fakeFileInfo{name: name}, nil
 	}
@@ -101,7 +105,7 @@ func (s *fakeStore) ReadDir(name string) ([]fs.DirEntry, error) {
 		seen[rest] = true
 		out = append(out, fakeDirEntry{name: rest})
 	}
-	if len(out) == 0 {
+	if len(out) == 0 && !s.dirs[name] {
 		return nil, fs.ErrNotExist
 	}
 	return out, nil
@@ -119,9 +123,24 @@ func (s *fakeStore) Create(name string) (fsys.File, error) {
 
 func (s *fakeStore) Remove(name string) error { return nil }
 
-func TestSeedReturnsSeventeenEntries(t *testing.T) {
+// newSeededStore builds a fake graph root whose _schema/ folders already
+// carry every built-in document from service.Seed(), the baseline every
+// Resolve-focused test case starts from.
+func newSeededStore() *fakeStore {
+	store := newFakeStore(nil)
+	store.dirs[kernel.PredicatesDir] = true
+	store.dirs[kernel.TypesDir] = true
+	for path, raw := range service.Seed() {
+		f, _ := store.Create(path)
+		_, _ = f.Write(raw)
+		_ = f.Close()
+	}
+	return store
+}
+
+func TestSeedReturnsOneEntryPerPredicateAndType(t *testing.T) {
 	seed := service.Seed()
-	it.Then(t).Should(it.Equal(17, len(seed)))
+	it.Then(t).Should(it.Equal(len(kernel.CorePredicateDefs)+len(kernel.CoreTypeDefs), len(seed)))
 }
 
 func TestSeedEntriesRoundTripThroughParseNode(t *testing.T) {
@@ -130,78 +149,109 @@ func TestSeedEntriesRoundTripThroughParseNode(t *testing.T) {
 	for path, raw := range seed {
 		node, err := core.ParseNode(bytes.NewReader(raw))
 		it.Then(t).Should(it.Nil(err))
-		it.Then(t).Should(it.Equal(kernel.SchemaKind, node.Type))
 
-		if op, ok := kernel.CoreMergeRules.Lookup(node.ID); ok {
-			it.Then(t).Should(it.Equal(kernel.NodesDir+"/"+node.ID+".md", path))
-			var merge string
-			if preds := node.Attrs["merge"]; len(preds) > 0 {
-				merge, _ = preds[0].Value.(string)
-			}
-			it.Then(t).Should(it.Equal(string(op), merge))
+		if def, ok := kernel.CorePredicateDefs[node.ID]; ok {
+			it.Then(t).
+				Should(it.Equal(kernel.PredicatesDir+"/"+node.ID+".md", path)).
+				Should(it.Equal("Property", node.Type))
+			role, _ := node.Attrs["role"][0].Value.(string)
+			it.Then(t).Should(it.Equal(def.Role, role))
+			continue
+		}
+
+		if def, ok := kernel.CoreTypeDefs[node.ID]; ok {
+			it.Then(t).
+				Should(it.Equal(kernel.TypesDir+"/"+node.ID+".md", path)).
+				Should(it.Equal("Class", node.Type))
+			merge, _ := node.Attrs["merge"][0].Value.(string)
+			it.Then(t).Should(it.Equal(string(def.Merge), merge))
 		}
 	}
 }
 
 func TestResolveRoundTripsSeedOutput(t *testing.T) {
-	store := newFakeStore(nil)
-	for path, raw := range service.Seed() {
-		f, err := store.Create(path)
-		it.Then(t).Should(it.Nil(err))
-		_, err = f.Write(raw)
-		it.Then(t).Should(it.Nil(err))
-		it.Then(t).Should(it.Nil(f.Close()))
-	}
+	store := newSeededStore()
 
-	rules, predicates, err := service.Resolve(store)
-
-	it.Then(t).Should(it.Nil(err))
-	it.Then(t).Should(it.Equal(len(kernel.CoreMergeRules), len(rules)))
-	it.Then(t).Should(it.Equal(len(kernel.CorePredicates), len(predicates)))
-
-	op, ok := rules.Lookup("entity")
-	it.Then(t).
-		Should(it.True(ok)).
-		Should(it.Equal(core.MergeUnion, op))
-}
-
-func TestResolveSkipsMalformedDocument(t *testing.T) {
-	store := newFakeStore(map[string]string{
-		kernel.NodesDir + "/source.md": "---\n\"@id\": source\n\"@type\": schema\nmerge: none\n---\n# source\n",
-		kernel.NodesDir + "/broken.md": "not valid front matter at all",
-	})
-
-	rules, _, err := service.Resolve(store)
-
-	it.Then(t).Should(it.Nil(err))
-	it.Then(t).Should(it.Equal(1, len(rules)))
-	_, ok := rules.Lookup("broken")
-	it.Then(t).Should(it.True(!ok))
-}
-
-func TestResolveAbsentFolderReturnsEmptyResults(t *testing.T) {
-	store := newFakeStore(nil)
-
-	rules, predicates, err := service.Resolve(store)
+	index, err := service.Resolve(store)
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
-		Should(it.Equal(0, len(rules))).
-		Should(it.Equal(0, len(predicates)))
+		Should(it.Equal(len(kernel.CorePredicateDefs), len(index.Predicates))).
+		Should(it.Equal(len(kernel.CoreTypeDefs), len(index.Types)))
+
+	entity, ok := index.Types["entity"]
+	it.Then(t).Should(it.True(ok))
+	it.Then(t).
+		Should(it.Equal(core.MergeUnion, entity.Merge)).
+		Should(it.Seq(entity.Required).Equal("category", "definition", "mentionedIn")).
+		ShouldNot(it.Equal("", entity.Description))
+
+	isPartOf, ok := index.Predicates["isPartOf"]
+	it.Then(t).Should(it.True(ok))
+	it.Then(t).
+		Should(it.Equal("edge", isPartOf.Role)).
+		Should(it.Equal(core.MergeUnion, isPartOf.Merge)).
+		ShouldNot(it.Equal("", isPartOf.Description))
 }
 
-func TestRegisterKindCreatesFileOnce(t *testing.T) {
+func TestResolveNotAGraph(t *testing.T) {
+	store := newFakeStore(nil)
+	delete(store.dirs, ".arc")
+
+	_, err := service.Resolve(store)
+
+	it.Then(t).Should(it.True(errors.Is(err, service.ErrNotAGraph)))
+}
+
+func TestResolveMissingSchemaFolderFails(t *testing.T) {
 	store := newFakeStore(nil)
 
-	created, err := service.RegisterKind(store, "hypothesis")
+	_, err := service.Resolve(store)
+
+	it.Then(t).Should(it.True(errors.Is(err, service.ErrSchemaMissing)))
+}
+
+func TestResolveMalformedDocumentFails(t *testing.T) {
+	store := newSeededStore()
+	store.files[kernel.PredicatesDir+"/broken.md"] = "not valid front matter at all"
+
+	_, err := service.Resolve(store)
+
+	it.Then(t).Should(it.True(errors.Is(err, service.ErrSchemaInvalid)))
+}
+
+func TestResolveDocumentMissingRoleFails(t *testing.T) {
+	store := newSeededStore()
+	store.files[kernel.PredicatesDir+"/broken.md"] = "---\n\"@id\": broken\n\"@type\": Property\nmerge: union\n---\n# broken\n\nSome text.\n"
+
+	_, err := service.Resolve(store)
+
+	it.Then(t).Should(it.True(errors.Is(err, service.ErrSchemaInvalid)))
+}
+
+func TestResolveDocumentMissingDescriptionFails(t *testing.T) {
+	store := newSeededStore()
+	store.files[kernel.PredicatesDir+"/broken.md"] = "---\n\"@id\": broken\n\"@type\": Property\nrole: edge\nmerge: union\n---\n# broken\n"
+
+	_, err := service.Resolve(store)
+
+	it.Then(t).Should(it.True(errors.Is(err, service.ErrSchemaInvalid)))
+}
+
+func TestRegisterTypeCreatesFileOnce(t *testing.T) {
+	store := newFakeStore(nil)
+
+	created, err := service.RegisterType(store, "hypothesis")
 	it.Then(t).
 		Should(it.Nil(err)).
 		Should(it.True(created))
 
-	content := store.written[kernel.NodesDir+"/hypothesis.md"]
-	it.Then(t).Should(it.String(content).Contain("merge: union"))
+	content := store.written[kernel.TypesDir+"/hypothesis.md"]
+	it.Then(t).
+		Should(it.String(content).Contain(`"@type": Class`)).
+		Should(it.String(content).Contain("merge: union"))
 
-	created, err = service.RegisterKind(store, "hypothesis")
+	created, err = service.RegisterType(store, "hypothesis")
 	it.Then(t).
 		Should(it.Nil(err)).
 		Should(it.True(!created))
@@ -216,6 +266,12 @@ func TestRegisterPredicateCreatesFileOnce(t *testing.T) {
 		Should(it.Nil(err)).
 		Should(it.True(created))
 
+	content := store.written[kernel.PredicatesDir+"/relatesTo.md"]
+	it.Then(t).
+		Should(it.String(content).Contain(`"@type": Property`)).
+		Should(it.String(content).Contain("role: edge")).
+		Should(it.String(content).Contain("merge: union"))
+
 	created, err = service.RegisterPredicate(store, "relatesTo")
 	it.Then(t).
 		Should(it.Nil(err)).
@@ -223,11 +279,11 @@ func TestRegisterPredicateCreatesFileOnce(t *testing.T) {
 	it.Then(t).Should(it.Equal(1, len(store.written)))
 }
 
-func TestRegisterKindWriteFailure(t *testing.T) {
+func TestRegisterTypeWriteFailure(t *testing.T) {
 	store := newFakeStore(nil)
 	store.createErr = errors.New("disk full")
 
-	_, err := service.RegisterKind(store, "hypothesis")
+	_, err := service.RegisterType(store, "hypothesis")
 
 	it.Then(t).Should(it.True(errors.Is(err, service.ErrSchemaWrite)))
 }
@@ -241,20 +297,17 @@ func TestRegisterPredicateWriteFailure(t *testing.T) {
 	it.Then(t).Should(it.True(errors.Is(err, service.ErrSchemaWrite)))
 }
 
-func TestResolveReflectsHandEditedMergeValue(t *testing.T) {
-	store := newFakeStore(map[string]string{
-		kernel.NodesDir + "/hypothesis.md": "---\n\"@id\": hypothesis\n\"@type\": schema\nmerge: union\n---\n# hypothesis\n",
-	})
+func TestResolveReflectsHandEditedRoleValue(t *testing.T) {
+	store := newSeededStore()
+	store.files[kernel.PredicatesDir+"/isPartOf.md"] = "---\n\"@id\": isPartOf\n\"@type\": Property\nrole: edge\nmerge: union\n---\n# isPartOf\n\nComposition.\n"
 
-	rules, _, err := service.Resolve(store)
+	index, err := service.Resolve(store)
 	it.Then(t).Should(it.Nil(err))
-	op, _ := rules.Lookup("hypothesis")
-	it.Then(t).Should(it.Equal(core.MergeUnion, op))
+	it.Then(t).Should(it.Equal("edge", index.Predicates["isPartOf"].Role))
 
-	store.files[kernel.NodesDir+"/hypothesis.md"] = "---\n\"@id\": hypothesis\n\"@type\": schema\nmerge: union-first-writer\n---\n# hypothesis\n"
+	store.files[kernel.PredicatesDir+"/isPartOf.md"] = "---\n\"@id\": isPartOf\n\"@type\": Property\nrole: link\nmerge: union\n---\n# isPartOf\n\nComposition.\n"
 
-	rules, _, err = service.Resolve(store)
+	index, err = service.Resolve(store)
 	it.Then(t).Should(it.Nil(err))
-	op, _ = rules.Lookup("hypothesis")
-	it.Then(t).Should(it.Equal(core.MergeUnionFirstWriter, op))
+	it.Then(t).Should(it.Equal("link", index.Predicates["isPartOf"].Role))
 }

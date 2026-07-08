@@ -17,11 +17,13 @@ import (
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
-var coreMergeRulesFixture = core.MergeRuleSet{
-	"source":   core.MergeNone,
-	"entity":   core.MergeUnion,
-	"resource": core.MergeUnionFirstWriter,
-	"timeline": core.MergeAppend,
+var coreIndexFixture = core.Index{
+	Types: map[string]core.TypeDef{
+		"source":   {Merge: core.MergeNone},
+		"entity":   {Merge: core.MergeUnion},
+		"resource": {Merge: core.MergeUnionFirstWriter},
+		"timeline": {Merge: core.MergeAppend},
+	},
 }
 
 func TestCheckUniqueBasenamesNoCollision(t *testing.T) {
@@ -58,13 +60,13 @@ func TestCheckUniqueBasenamesThreeWayCollisionNamesEveryFile(t *testing.T) {
 
 func TestCheckUnrecognizedKindRecognized(t *testing.T) {
 	node := core.Node{Type: "source"}
-	out := checkUnrecognizedKind(node, "sources/foo.md", coreMergeRulesFixture)
+	out := checkUnrecognizedKind(node, "sources/foo.md", coreIndexFixture)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
 func TestCheckUnrecognizedKindUnrecognized(t *testing.T) {
 	node := core.Node{Type: "hypothesis"}
-	out := checkUnrecognizedKind(node, "hypothesis/foo.md", coreMergeRulesFixture)
+	out := checkUnrecognizedKind(node, "hypothesis/foo.md", coreIndexFixture)
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).
 		Should(it.Equal(kernel.RuleUnrecognizedKind, out[0].Rule)).
@@ -72,8 +74,14 @@ func TestCheckUnrecognizedKindUnrecognized(t *testing.T) {
 }
 
 func TestCheckUnrecognizedKindConfigRegistered(t *testing.T) {
-	rules := coreMergeRulesFixture.Union(core.MergeRuleSet{"hypothesis": core.MergeValidatedOverwrite})
+	index := core.Index{Types: map[string]core.TypeDef{
+		"source":     {Merge: core.MergeNone},
+		"entity":     {Merge: core.MergeUnion},
+		"resource":   {Merge: core.MergeUnionFirstWriter},
+		"timeline":   {Merge: core.MergeAppend},
+		"hypothesis": {Merge: core.MergeValidatedOverwrite},
+	}}
 	node := core.Node{Type: "hypothesis"}
-	out := checkUnrecognizedKind(node, "hypothesis/foo.md", rules)
+	out := checkUnrecognizedKind(node, "hypothesis/foo.md", index)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
