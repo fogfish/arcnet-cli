@@ -15,100 +15,129 @@ import (
 	"time"
 )
 
-// mergePublished fills Published from incoming only when existing is not
-// yet set — first-writer-wins forever after, never flagged as a conflict
-// regardless of the calling op's own fillEmpty/flagConflicts rules
-// (research.md D3).
-func mergePublished(existing, incoming time.Time) time.Time {
-	if !existing.IsZero() {
-		return existing
-	}
-	return incoming
+// PredicateOutcome records how one predicate present on either side of a
+// merge reconciled: its name, the MergeOp it resolved to (via
+// index.Predicates, per FR-013), and a short Outcome label (one of the
+// Outcome* constants, spec.md FR-017/BUG-001). Surfaced by
+// internal/app/graph/service.Apply's --verbose report as one additional
+// line per predicate, alongside the existing per-node summary — never
+// rendered into a Node itself. Scoped to Attrs/Texts/Published, the
+// predicates whose reconciliation genuinely varies by declared MergeOp;
+// Edges/HRefs always union unconditionally regardless of op (research.md
+// D5d), so there is no per-predicate algorithm choice there to report.
+type PredicateOutcome struct {
+	Name    string
+	Op      MergeOp
+	Outcome string
 }
 
-// Merge reconciles incoming into existing per CORE §10's fixed menu of
-// merge operations (research.md D6). existing is the zero Node (ID == "")
-// only when no node with incoming's identity exists yet — the caller
-// (internal/app/graph/service.Apply) treats that case as a plain create,
-// never calling Merge. conflicts is the list of Texts/Attrs keys
-// (research.md D6/D7) whose value was flagged; empty when nothing
-// diverged. For MergeUnion, a Texts key other than "notes" is never
-// flagged and instead reconciled paragraph-by-paragraph through mergeText
-// (BUG-004, spec.md FR-023/FR-024); "notes" always goes through the scalar
-// path regardless of the op. Attrs — now list-valued per key — merges a
-// single-valued key (exactly one Predicate on both sides) through the same
-// scalar fillEmpty/flagConflicts policy a bare scalar used before this
-// feature; a key that is multi-valued on either side is always merged as
-// a plain list union, never flagged, exactly as before this feature. Merge
-// performs no I/O.
-func Merge(existing, incoming Node, op MergeOp, sourceID string) (Node, []string, error) {
-	switch op {
-	case MergeNone:
-		return existing, nil, nil
-	case MergeUnion:
-		// A union kind's scalar Texts/Attrs are never flagged (BUG-004,
-		// spec.md FR-023/FR-024): unlike a fact a human sets once, a union
-		// kind's scalar content is understood to be recomputable/regenerable
-		// by its own producing pipeline on every contribution (e.g. a
-		// derived score, or a resynthesized paragraph of prose), so a
-		// divergence there is the expected steady state, not a genuine
-		// conflict between two writers.
-		merged, conflicts := mergeCore(existing, incoming, sourceID, false, true, true)
-		return merged, conflicts, nil
-	case MergeUnionFirstWriter:
-		merged, conflicts := mergeCore(existing, incoming, sourceID, true, true, false)
-		return merged, conflicts, nil
-	case MergeAppend:
-		// Identical to MergeUnion's multi-valued field/edge union (BUG-002,
-		// spec.md FR-022): a domain/extension kind registered with append
-		// is ordinary patch-carried content, not the format's own excluded
-		// timeline index (CORE §12.2), so it must be mergeable. CORE §10
-		// describes append purely as ordered-list insertion ("keyed for
-		// uniqueness so re-insertion is a no-op") with no concept of a
-		// single authoritative scalar value, so — unlike MergeUnion — no
-		// scalar field is ever flagged as a conflict.
-		merged, _ := mergeCore(existing, incoming, sourceID, false, false, false)
-		return merged, nil, nil
-	case MergeValidatedOverwrite:
-		// Multi-valued fields union exactly as MergeUnion; every scalar
-		// field is first-writer-wins with conflicts never flagged, since
-		// CORE §10 reserves overwriting a validation-owned scalar for an
-		// optional validation pass this feature does not implement
-		// (research.md D6) — no domain-profile schema exists yet to say
-		// which fields are validation-owned.
-		merged, _ := mergeCore(existing, incoming, sourceID, true, false, false)
-		return merged, nil, nil
-	default:
-		return Node{}, nil, ErrUnknownMergeOp.With(errNoCause, string(op))
-	}
-}
+// Outcome labels a PredicateOutcome.Outcome MUST be one of (spec.md
+// FR-017).
+const (
+	OutcomeCreated     = "created"     // key absent from existing, contributed for the first time by this merge
+	OutcomeUnchanged   = "unchanged"   // existing value (or its absence) carried through untouched
+	OutcomeFilled      = "filled"      // existing was empty/zero; incoming supplied its first value
+	OutcomeOverwritten = "overwritten" // lastWriteWin took a differing incoming value
+	OutcomeAppended    = "appended"    // union/append list or paragraph dispatch
+	OutcomeFlagged     = "flagged"     // a genuine divergence was wrapped in a conflict marker
+)
 
-// mergeCore merges existing/incoming per one MergeOp's (fillEmpty,
-// flagConflicts) rule pair. unionText is true only for MergeUnion
-// (BUG-004, spec.md FR-023/FR-024): it routes every Texts key other than
-// "notes" through the paragraph-level mergeText instead of a scalar
-// compare-or-flag — "notes" is unaffected either way.
-func mergeCore(existing, incoming Node, sourceID string, fillEmpty, flagConflicts, unionText bool) (Node, []string) {
+// Merge reconciles incoming into existing per CORE §9.3's per-predicate
+// merge model (contracts/merge-behavior-contract.md): every predicate
+// present in Attrs, Texts, Edges, or HRefs on either side is reconciled
+// individually according to its own MergeOp, looked up in
+// index.Predicates — never by one behavior applied to the whole node. A
+// predicate absent from index.Predicates falls back to MergeUnion
+// (research.md D6). Published is reconciled the same way, keyed by
+// index.Predicates["published"].Merge. existing is the zero Node
+// (ID == "") only when no node with incoming's identity exists yet — the
+// caller (internal/app/graph/service.Apply) treats that case as a plain
+// create, never calling Merge. conflicts lists every predicate name whose
+// value was flagged (firstWriteWin/fillIfEmpty divergence only); empty
+// when nothing diverged. outcomes is one PredicateOutcome per predicate
+// present in Attrs/Texts on either side plus Published, sorted by name
+// (spec.md FR-017/BUG-001) — additive relative to conflicts, which it
+// subsumes. Merge performs no I/O and is commutative and idempotent for
+// every MergeOp except lastWriteWin, which is intentionally
+// application-order-sensitive (research.md D5a).
+func Merge(existing, incoming Node, index Index, sourceID string) (Node, []string, []PredicateOutcome, error) {
 	merged := existing
 
-	merged.Published = mergePublished(existing.Published, incoming.Published)
-
 	var conflicts []string
-	merged.Texts, conflicts = mergeTexts(existing.Texts, incoming.Texts, sourceID, fillEmpty, flagConflicts, unionText)
+	var outcomes []PredicateOutcome
 
-	// A union kind's Attrs are never flagged (BUG-004, spec.md FR-023/
-	// FR-024), same as its Texts — attrsFlagConflicts mirrors the pre-
-	// feature scalar-Attrs rule exactly (attrsFlagConflicts := flagConflicts
-	// && !unionText).
-	attrsFlagConflicts := flagConflicts && !unionText
+	publishedOp := resolveMergeOp(index, "published")
+	published, diverges, publishedOutcome := mergeScalar(existing.Published, incoming.Published, time.Time{}, publishedOp)
+	merged.Published = published
+	if diverges {
+		conflicts = append(conflicts, "published")
+	}
+	outcomes = append(outcomes, PredicateOutcome{Name: "published", Op: publishedOp, Outcome: publishedOutcome})
+
+	var textConflicts []string
+	var textOutcomes []PredicateOutcome
+	merged.Texts, textConflicts, textOutcomes = mergeTexts(existing.Texts, incoming.Texts, index, sourceID)
+	conflicts = append(conflicts, textConflicts...)
+	outcomes = append(outcomes, textOutcomes...)
+
 	var attrConflicts []string
-	merged.Attrs, attrConflicts = mergeAttrs(existing.Attrs, incoming.Attrs, sourceID, fillEmpty, attrsFlagConflicts)
+	var attrOutcomes []PredicateOutcome
+	merged.Attrs, attrConflicts, attrOutcomes = mergeAttrs(existing.Attrs, incoming.Attrs, index, sourceID)
 	conflicts = append(conflicts, attrConflicts...)
+	outcomes = append(outcomes, attrOutcomes...)
 
 	merged.Edges = unionLinks(existing.Edges, incoming.Edges)
 	merged.HRefs = unionLinks(existing.HRefs, incoming.HRefs)
 
-	return merged, conflicts
+	sort.Slice(outcomes, func(i, j int) bool { return outcomes[i].Name < outcomes[j].Name })
+
+	return merged, conflicts, outcomes, nil
+}
+
+// resolveMergeOp looks up predicate's declared MergeOp in index, falling
+// back to MergeUnion (research.md D6) when the predicate has no schema
+// document yet — mirroring apply.go's own unrecognized-type fallback
+// precedent.
+func resolveMergeOp(index Index, predicate string) MergeOp {
+	if def, ok := index.Predicates[predicate]; ok {
+		return def.Merge
+	}
+	return MergeUnion
+}
+
+// isListMerge reports whether op reconciles a predicate as a deduplicated
+// list rather than a single scalar value (research.md D5): every seeded
+// link/edge-role predicate declares one of these two, and Edges/HRefs
+// always union regardless of op (D5d).
+func isListMerge(op MergeOp) bool {
+	return op == MergeUnion || op == MergeAppend
+}
+
+// mergeScalar implements research.md D5's three scalar dispatch classes,
+// chosen by op: freeze (immutable, validatedOverwrite) — existing, once
+// non-empty, is permanent, never flagged; flagOnDiverge (firstWriteWin,
+// fillIfEmpty) — same freeze rule, except a later genuine divergence is
+// reported via diverges; alwaysOverwrite (lastWriteWin) — incoming,
+// whenever non-empty, always replaces existing, never flagged. Every
+// class accepts incoming unconditionally, without flagging, when existing
+// is still the zero value — "first write" for freeze/flagOnDiverge,
+// simply "no prior value to overwrite" for lastWriteWin. outcome is one
+// of the Outcome* constants (spec.md FR-017/BUG-001), derived from the
+// same branch that decided merged/diverges — never computed separately.
+func mergeScalar[T comparable](existing, incoming, zero T, op MergeOp) (merged T, diverges bool, outcome string) {
+	if incoming == zero || incoming == existing {
+		return existing, false, OutcomeUnchanged
+	}
+	if existing == zero {
+		return incoming, false, OutcomeFilled
+	}
+	if op == MergeLastWriteWin {
+		return incoming, false, OutcomeOverwritten
+	}
+	if op == MergeFirstWriteWin || op == MergeFillIfEmpty {
+		return existing, true, OutcomeFlagged
+	}
+	return existing, false, OutcomeUnchanged
 }
 
 // paragraphSimilarityThreshold is the Jaccard-over-3-word-shingles score
@@ -121,14 +150,15 @@ const paragraphSimilarityThreshold = 0.8
 // compares paragraphs by.
 const paragraphShingleSize = 3
 
-// mergeTexts merges the Texts map key-by-key over the union of both nodes'
-// keys (data-model.md "Relationships / Lifecycle" > "Merge"). Every key
-// literally named "notes" always goes through the scalar mergeScalarInto
-// path, regardless of unionText; every other key goes through mergeText's
-// paragraph-level reconciliation when unionText, or mergeScalarInto
-// otherwise. A key present on only one side behaves like a scalar merge
-// against "" on the other.
-func mergeTexts(existing, incoming map[string]string, sourceID string, fillEmpty, flagConflicts, unionText bool) (map[string]string, []string) {
+// mergeTexts merges the Texts map key-by-key over the union of both
+// nodes' keys: a key declared append (or union, D5b's documented
+// fallback) is reconciled paragraph-by-paragraph through mergeText; every
+// other key goes through the scalar dispatch classes (mergeScalar),
+// keyed by that key's own declared MergeOp — no key is special-cased by
+// name (research.md D5b: "notes" needs no carve-out anymore, since its own
+// predicate already declares firstWriteWin). A key present on only one
+// side behaves like a scalar/paragraph merge against "" on the other.
+func mergeTexts(existing, incoming map[string]string, index Index, sourceID string) (map[string]string, []string, []PredicateOutcome) {
 	merged := make(map[string]string, len(existing)+len(incoming))
 
 	keys := make(map[string]bool, len(existing)+len(incoming))
@@ -145,29 +175,39 @@ func mergeTexts(existing, incoming map[string]string, sourceID string, fillEmpty
 	sort.Strings(sortedKeys)
 
 	var conflicts []string
+	var outcomes []PredicateOutcome
 	for _, k := range sortedKeys {
 		ev := existing[k]
 		iv := incoming[k]
+		op := resolveMergeOp(index, k)
+		_, existed := existing[k]
 
-		if unionText && k != "notes" {
+		if isListMerge(op) {
 			merged[k] = mergeText(ev, iv)
+			outcome := OutcomeAppended
+			if !existed {
+				outcome = OutcomeCreated
+			}
+			outcomes = append(outcomes, PredicateOutcome{Name: k, Op: op, Outcome: outcome})
 			continue
 		}
 
-		merged[k], conflicts = mergeScalarInto(ev, iv, k, sourceID, fillEmpty, flagConflicts, conflicts)
+		var textOutcome string
+		merged[k], conflicts, textOutcome = mergeScalarInto(ev, iv, k, sourceID, op, conflicts)
+		outcomes = append(outcomes, PredicateOutcome{Name: k, Op: op, Outcome: textOutcome})
 	}
 
-	return merged, conflicts
+	return merged, conflicts, outcomes
 }
 
-// mergeText reconciles a "union" kind's body prose paragraph-by-paragraph
-// (spec.md FR-024, research.md D6 Bugfix — BUG-004) instead of as one
-// scalar: entity-shaped Text is routinely regenerated wholesale by its
-// producing pipeline, so comparing it as a single value guarantees a
-// false-positive conflict on nearly every re-application. Splitting on
-// paragraph boundaries and dropping any incoming paragraph that is a
-// near-duplicate of one already present keeps the reconciliation additive
-// and silent — never flagged, never lossy on either side.
+// mergeText reconciles an append/union-declared Texts key paragraph-by-
+// paragraph (spec.md FR-008, research.md D5b) instead of as one scalar:
+// prose is routinely regenerated wholesale by its producing pipeline, so
+// comparing it as a single value guarantees a false-positive conflict on
+// nearly every re-application. Splitting on paragraph boundaries and
+// dropping any incoming paragraph that is a near-duplicate of one already
+// present keeps the reconciliation additive and silent — never flagged,
+// never lossy on either side.
 func mergeText(existingText, incomingText string) string {
 	if incomingText == "" {
 		return existingText
@@ -260,34 +300,21 @@ func jaccardSimilarity(a, b []string) float64 {
 	return float64(intersection) / float64(union)
 }
 
-func mergeScalarInto(existingVal, incomingVal, field, sourceID string, fillEmpty, flagConflicts bool, conflicts []string) (string, []string) {
-	merged, diverges := mergeScalarString(existingVal, incomingVal, fillEmpty)
-	if !diverges {
-		return merged, conflicts
+// mergeScalarInto flags a genuine divergence via conflictMarker, except
+// when existingVal is already the marker a previous merge produced for
+// this exact incomingVal (spec.md US3 Acceptance Scenario 4/FR-010): that
+// case is idempotent replay, not a fresh divergence, so the marker is
+// re-flagged in conflicts without being wrapped again.
+func mergeScalarInto(existingVal, incomingVal, field, sourceID string, op MergeOp, conflicts []string) (string, []string, string) {
+	if embedded, ok := incomingFromConflictMarker(existingVal); ok && embedded == incomingVal {
+		return existingVal, append(conflicts, field), OutcomeFlagged
 	}
-	if !flagConflicts {
-		return existingVal, conflicts
-	}
-	return conflictMarker(existingVal, incomingVal, sourceID), append(conflicts, field)
-}
 
-// mergeScalarString implements CORE §10's scalar rule: incoming identical
-// or empty changes nothing; an empty existing is filled only when
-// fillEmpty (MergeUnionFirstWriter/MergeValidatedOverwrite); any other
-// divergence is reported via the second return value, for the caller to
-// decide whether to flag it.
-func mergeScalarString(existingVal, incomingVal string, fillEmpty bool) (merged string, diverges bool) {
-	switch {
-	case incomingVal == "" || incomingVal == existingVal:
-		return existingVal, false
-	case existingVal == "":
-		if fillEmpty {
-			return incomingVal, false
-		}
-		return existingVal, false
-	default:
-		return existingVal, true
+	merged, diverges, outcome := mergeScalar(existingVal, incomingVal, "", op)
+	if !diverges {
+		return merged, conflicts, outcome
 	}
+	return conflictMarker(existingVal, incomingVal, sourceID), append(conflicts, field), outcome
 }
 
 // conflictMarker reproduces VISION.md's documented git-style conflict
@@ -298,26 +325,54 @@ func conflictMarker(existingVal, incomingVal, incomingSourceID string) string {
 	return fmt.Sprintf("<<<<<<< existing\n%s\n=======\n%s\n>>>>>>> %s", existingVal, incomingVal, incomingSourceID)
 }
 
-// mergeAttrs merges the Attrs map key-by-key over the union of keys
-// (data-model.md "Relationships / Lifecycle" > "Merge", ast-contract.md
-// "Merge"): a key present on only one side is taken unchanged. A key
-// present on both sides that is multi-valued on either side (more than one
-// Predicate) is merged as one list union, deduplicated per Predicate
-// (research.md — this feature does not change per-predicate merge policy,
-// only the shape it applies to) — a list union is inherently non-
-// conflicting, matching this feature's own multi-valued attrs behavior
-// unchanged from before it. A key that is single-valued on both sides
-// (exactly one Predicate each) is merged through the same scalar
-// fillEmpty/flagConflicts policy a bare scalar attribute used before this
-// feature, so e.g. MergeUnionFirstWriter still flags a genuinely diverging
-// single-valued attribute as a conflict, exactly as it did pre-feature.
-func mergeAttrs(existing, incoming map[string][]Predicate, sourceID string, fillEmpty, flagConflicts bool) (map[string][]Predicate, []string) {
+const (
+	conflictMarkerOpen  = "<<<<<<< existing\n"
+	conflictMarkerSep   = "\n=======\n"
+	conflictMarkerClose = "\n>>>>>>> "
+)
+
+// incomingFromConflictMarker extracts the incoming-side value embedded in
+// a previously-produced conflictMarker, so a replayed merge can recognize
+// "this exact divergence was already flagged" instead of nesting a new
+// marker around the old one.
+func incomingFromConflictMarker(value string) (incoming string, ok bool) {
+	if !strings.HasPrefix(value, conflictMarkerOpen) {
+		return "", false
+	}
+	rest := value[len(conflictMarkerOpen):]
+	sepIdx := strings.Index(rest, conflictMarkerSep)
+	if sepIdx < 0 {
+		return "", false
+	}
+	rest = rest[sepIdx+len(conflictMarkerSep):]
+	closeIdx := strings.LastIndex(rest, conflictMarkerClose)
+	if closeIdx < 0 {
+		return "", false
+	}
+	return rest[:closeIdx], true
+}
+
+// mergeAttrs merges the Attrs map key-by-key over the union of keys: a
+// key present on only one side is taken unchanged. A key declared union
+// or append always reconciles as one deduplicated list union
+// (unionPredicates), regardless of how many values happen to be present
+// on either side right now (research.md D5c — a documented, intentional
+// behavior change from arity-based dispatch). Every other key reconciles
+// through mergeScalar's scalar dispatch classes (freeze/flagOnDiverge/
+// alwaysOverwrite) on the key's whole value — a single Predicate for an
+// ordinary scalar attribute, or the whole list verbatim for a seeded
+// multi-valued-by-nature key that nonetheless declares a scalar-dispatch
+// op (e.g. "category"), never truncated to its first element.
+func mergeAttrs(existing, incoming map[string][]Predicate, index Index, sourceID string) (map[string][]Predicate, []string, []PredicateOutcome) {
 	merged := make(map[string][]Predicate, len(existing)+len(incoming))
 	for k, v := range existing {
 		merged[k] = v
 	}
 
-	keys := make(map[string]bool, len(incoming))
+	keys := make(map[string]bool, len(existing)+len(incoming))
+	for k := range existing {
+		keys[k] = true
+	}
 	for k := range incoming {
 		keys[k] = true
 	}
@@ -328,58 +383,128 @@ func mergeAttrs(existing, incoming map[string][]Predicate, sourceID string, fill
 	sort.Strings(sortedKeys)
 
 	var conflicts []string
+	var outcomes []PredicateOutcome
 	for _, k := range sortedKeys {
-		iv := incoming[k]
+		iv, incomingPresent := incoming[k]
 		ev, existed := existing[k]
+		op := resolveMergeOp(index, k)
+
+		if !incomingPresent {
+			// Present only in existing: carried through untouched by this
+			// merge — nothing for this predicate to decide.
+			outcomes = append(outcomes, PredicateOutcome{Name: k, Op: op, Outcome: OutcomeUnchanged})
+			continue
+		}
 
 		if !existed {
 			merged[k] = iv
+			outcomes = append(outcomes, PredicateOutcome{Name: k, Op: op, Outcome: OutcomeCreated})
 			continue
 		}
 
-		if len(ev) != 1 || len(iv) != 1 {
+		if isListMerge(op) {
 			merged[k] = unionPredicates(ev, iv)
+			outcomes = append(outcomes, PredicateOutcome{Name: k, Op: op, Outcome: OutcomeAppended})
 			continue
 		}
 
-		mergedPred, diverges := mergeScalarPredicate(ev[0], iv[0], fillEmpty)
-		if !diverges {
-			merged[k] = []Predicate{mergedPred}
-			continue
+		mergedPreds, flagged, outcome := mergeScalarPredicate(ev, iv, sourceID, op)
+		merged[k] = mergedPreds
+		if flagged {
+			conflicts = append(conflicts, k)
 		}
-		if !flagConflicts {
-			merged[k] = ev
-			continue
-		}
-		merged[k] = []Predicate{{Value: conflictMarker(fmt.Sprint(ev[0].Value), fmt.Sprint(iv[0].Value), sourceID)}}
-		conflicts = append(conflicts, k)
+		outcomes = append(outcomes, PredicateOutcome{Name: k, Op: op, Outcome: outcome})
 	}
 
-	return merged, conflicts
+	return merged, conflicts, outcomes
 }
 
-// mergeScalarPredicate implements CORE §10's scalar rule (pre-feature
-// mergeAnyScalar, generalized to Predicate.Value): incoming nil or
-// identical to existing changes nothing; an empty/nil existing is filled
-// only when fillEmpty; any other divergence is reported via the second
-// return value, for the caller to decide whether to flag it.
-func mergeScalarPredicate(existing, incoming Predicate, fillEmpty bool) (merged Predicate, diverges bool) {
-	if incoming.Value == nil || fmt.Sprint(incoming.Value) == fmt.Sprint(existing.Value) {
-		return existing, false
+func firstPredicate(preds []Predicate) Predicate {
+	if len(preds) == 0 {
+		return Predicate{}
 	}
-	if existing.Value == nil || fmt.Sprint(existing.Value) == "" {
-		if fillEmpty {
-			return incoming, false
-		}
-		return existing, false
+	return preds[0]
+}
+
+// mergeScalarPredicate dispatches a whole Attrs key's Predicate list
+// through mergeScalar's scalar classes (freeze/flagOnDiverge/
+// alwaysOverwrite). The common case — at most one Predicate per side, an
+// ordinary scalar attribute — compares/merges the bare Value (via
+// fmt.Sprint, mirroring how a scalar Attrs value already compares today)
+// and, on divergence, wraps a conflict marker exactly as before. A key
+// that is multi-valued on either side despite declaring a scalar op
+// (research.md's "category" — a seeded word-bag predicate declared
+// firstWriteWin) is compared/merged as one whole list instead, so a
+// genuinely unchanged multi-valued list is recognized as equal rather
+// than truncated to its first element. Mirrors mergeScalarInto's
+// replay-idempotency guard: re-merging the exact incoming value a
+// previous marker already recorded re-flags it without wrapping a second
+// marker around the first (spec.md US3 Acceptance Scenario 4).
+func mergeScalarPredicate(existing, incoming []Predicate, sourceID string, op MergeOp) (merged []Predicate, flagged bool, outcome string) {
+	if len(existing) <= 1 && len(incoming) <= 1 {
+		mergedPred, flag, out := mergeScalarPredicateValue(firstPredicate(existing), firstPredicate(incoming), sourceID, op)
+		return []Predicate{mergedPred}, flag, out
 	}
-	return existing, true
+
+	evKey, ivKey := predicateSliceKey(existing), predicateSliceKey(incoming)
+
+	if embedded, ok := incomingFromConflictMarker(evKey); ok && embedded == ivKey {
+		return existing, true, OutcomeFlagged
+	}
+
+	mergedKey, diverges, mergeOutcome := mergeScalar(evKey, ivKey, "", op)
+	if diverges {
+		return []Predicate{{Value: conflictMarker(evKey, ivKey, sourceID)}}, true, mergeOutcome
+	}
+	if mergedKey == ivKey {
+		return incoming, false, mergeOutcome
+	}
+	return existing, false, mergeOutcome
+}
+
+// mergeScalarPredicateValue implements mergeScalar's rule generalized to
+// a single Predicate.Value: incoming nil or identical to existing changes
+// nothing; an empty/nil existing is filled unconditionally; any other
+// divergence is wrapped in a conflict marker and reported via flagged —
+// never for lastWriteWin, which always overwrites.
+func mergeScalarPredicateValue(existing, incoming Predicate, sourceID string, op MergeOp) (merged Predicate, flagged bool, outcome string) {
+	ev, iv := fmt.Sprint(existing.Value), fmt.Sprint(incoming.Value)
+	if existing.Value == nil {
+		ev = ""
+	}
+	if incoming.Value == nil {
+		iv = ""
+	}
+
+	if embedded, ok := incomingFromConflictMarker(ev); ok && embedded == iv {
+		return existing, true, OutcomeFlagged
+	}
+
+	mergedVal, diverges, mergeOutcome := mergeScalar(ev, iv, "", op)
+	if diverges {
+		return Predicate{Value: conflictMarker(ev, iv, sourceID)}, true, mergeOutcome
+	}
+	if mergedVal == ev {
+		return existing, false, mergeOutcome
+	}
+	return incoming, false, mergeOutcome
+}
+
+// predicateSliceKey builds a stable, order-sensitive comparison key for a
+// whole Attrs Predicate list, reusing predicateDedupeKey per element —
+// used only to detect whether two same-shaped multi-valued lists are
+// equal or genuinely diverge, never rendered into a Node.
+func predicateSliceKey(preds []Predicate) string {
+	parts := make([]string, len(preds))
+	for i, p := range preds {
+		parts[i] = predicateDedupeKey(p)
+	}
+	return strings.Join(parts, "\x1f")
 }
 
 // unionPredicates unions two Predicate lists, deduplicated by Value's
-// fmt.Sprint representation, or by Target when Value is nil (mirrors the
-// prior scalar-slice dedup-by-string-representation approach, applied
-// per-Predicate), existing entries first.
+// fmt.Sprint representation, or by Target when Value is nil, existing
+// entries first.
 func unionPredicates(existing, incoming []Predicate) []Predicate {
 	var out []Predicate
 	seen := map[string]bool{}
@@ -408,7 +533,10 @@ func predicateDedupeKey(p Predicate) string {
 }
 
 // unionLinks unions two ordered Link lists by the (predicate, target) pair
-// (AST §6.5), deduplicated, order-preserving, existing entries first.
+// (AST §6.5), deduplicated, order-preserving, existing entries first —
+// unconditional regardless of any predicate's declared MergeOp (research.md
+// D5d): no seeded link/edge predicate uses a scalar-natured op, and a link
+// has no single "slot" to freeze or overwrite.
 func unionLinks(existing, incoming []Link) []Link {
 	var out []Link
 	seen := map[[2]string]bool{}

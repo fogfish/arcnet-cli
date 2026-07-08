@@ -19,78 +19,96 @@ import (
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
-func TestMergeNoneNoOp(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "source", Texts: map[string]string{"abstract": "original"}}
-	incoming := core.Node{ID: "x", Type: "source", Texts: map[string]string{"abstract": "different"}}
-
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeNone, "incoming-doc")
-
-	it.Then(t).
-		Should(it.Nil(err)).
-		Should(it.Equal(0, len(conflicts))).
-		Should(it.Equal("original", merged.Texts["abstract"]))
+// indexWith builds a minimal core.Index declaring a single Attrs/Texts-role
+// predicate against op — every test below only ever needs one declared
+// predicate at a time (data-model.md's per-shape × per-op reconciliation
+// table is the authoritative source for every case here).
+func indexWith(predicate string, op core.MergeOp) core.Index {
+	return core.Index{Predicates: map[string]core.PredicateDef{predicate: {Merge: op}}}
 }
 
-// data-model.md/ast-contract.md "Merge": Edges is now the single unioned
-// Link collection (what used to be Edges+Links) — every documented MergeOp
-// unions it identically, except MergeNone which leaves existing untouched.
-func TestMergeEdgesUnionAcrossOps(t *testing.T) {
-	existingEdges := []core.Link{{Predicate: "replaces", Target: "SSL"}}
-	incomingEdges := []core.Link{{Predicate: "replaces", Target: "SSL"}, {Predicate: "conformsTo", Target: "RFC 8446"}}
+// --- FR-001/FR-013: per-predicate independence, not by node type ---
 
-	tests := []struct {
-		name    string
-		op      core.MergeOp
-		wantLen int
-	}{
-		{"MergeNone", core.MergeNone, 1},
-		{"MergeUnion", core.MergeUnion, 2},
-		{"MergeUnionFirstWriter", core.MergeUnionFirstWriter, 2},
-		{"MergeAppend", core.MergeAppend, 2},
-		{"MergeValidatedOverwrite", core.MergeValidatedOverwrite, 2},
-	}
+// spec.md US1 Acceptance Scenario 4: a single merge simultaneously
+// dispatches an immutable, a lastWriteWin, and a union predicate on the
+// same node, each producing its own rule's outcome independently.
+func TestMergeThreePredicatesEachFollowOwnRuleInOneApplication(t *testing.T) {
+	index := core.Index{Predicates: map[string]core.PredicateDef{
+		"ref":    {Merge: core.MergeImmutable},
+		"status": {Merge: core.MergeLastWriteWin},
+		"tags":   {Merge: core.MergeUnion},
+	}}
+	existing := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{
+		"ref":    {{Value: "book"}},
+		"status": {{Value: "backlog"}},
+		"tags":   {{Value: "ai"}},
+	}}
+	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{
+		"ref":    {{Value: "article"}},
+		"status": {{Value: "read"}},
+		"tags":   {{Value: "ml"}},
+	}}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			existing := core.Node{ID: "TLS", Type: "entity", Edges: existingEdges}
-			incoming := core.Node{ID: "TLS", Type: "entity", Edges: incomingEdges}
-
-			merged, _, err := core.Merge(existing, incoming, tt.op, "incoming-doc")
-
-			it.Then(t).
-				Should(it.Nil(err)).
-				Should(it.Equal(tt.wantLen, len(merged.Edges)))
-		})
-	}
-}
-
-// data-model.md "Merge": Attrs merges key-by-key over the union of keys.
-// A single-valued key (exactly one Predicate per side) is merged through
-// the same scalar policy a bare scalar attribute used before this feature
-// (mergeScalarPredicate) — under MergeUnion, a genuinely diverging
-// single-valued key is never flagged (BUG-004), but it is NOT unioned into
-// a multi-element list either: existing wins silently, exactly as the old
-// scalar-Attrs path did (unlike a multi-valued key, which is always a
-// plain list union — see TestMergeAttrsMultiValuedKeyUnionDedup).
-func TestMergeAttrsSingleValuedKeyUnion(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"score-c": {{Value: "0.134"}}}}
-	incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"score-c": {{Value: "0.281"}}}}
-
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeUnion, "incoming-doc")
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "patch-2")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
 		Should(it.Equal(0, len(conflicts))).
-		Should(it.Equiv(merged.Attrs["score-c"], []core.Predicate{{Value: "0.134"}}))
+		Should(it.Equiv(merged.Attrs["ref"], []core.Predicate{{Value: "book"}})).
+		Should(it.Equiv(merged.Attrs["status"], []core.Predicate{{Value: "read"}})).
+		Should(it.Equiv(merged.Attrs["tags"], []core.Predicate{{Value: "ai"}, {Value: "ml"}}))
 }
 
-// Multi-valued keys union and dedup by Value's string representation,
-// mirroring the prior unionScalarSlice behavior, now applied per-Predicate.
-func TestMergeAttrsMultiValuedKeyUnionDedup(t *testing.T) {
-	existing := core.Node{ID: "TLS", Type: "entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "a"}, {Value: "b"}}}}
-	incoming := core.Node{ID: "TLS", Type: "entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "b"}, {Value: "c"}}}}
+// --- immutable (freeze class) ---
 
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeUnion, "incoming-doc")
+func TestMergeImmutableRejectsLaterDivergingValueNoConflict(t *testing.T) {
+	index := indexWith("ref", core.MergeImmutable)
+	existing := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"ref": {{Value: "book"}}}}
+	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"ref": {{Value: "article"}}}}
+
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(0, len(conflicts))).
+		Should(it.Equiv(merged.Attrs["ref"], []core.Predicate{{Value: "book"}}))
+}
+
+func TestMergeImmutableAcceptsFirstValueWhenExistingEmpty(t *testing.T) {
+	index := indexWith("ref", core.MergeImmutable)
+	existing := core.Node{ID: "x", Type: "resource"}
+	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"ref": {{Value: "book"}}}}
+
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(0, len(conflicts))).
+		Should(it.Equiv(merged.Attrs["ref"], []core.Predicate{{Value: "book"}}))
+}
+
+func TestMergeImmutableTextsBehavesSameAsAttrs(t *testing.T) {
+	index := indexWith("definition", core.MergeImmutable)
+	existing := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"definition": "original"}}
+	incoming := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"definition": "different"}}
+
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(0, len(conflicts))).
+		Should(it.Equal("original", merged.Texts["definition"]))
+}
+
+// --- union (list class) ---
+
+// spec.md US1 Acceptance Scenario 3 / US2 Acceptance Scenario 3.
+func TestMergeUnionAccumulatesDistinctValuesNoConflict(t *testing.T) {
+	index := indexWith("tags", core.MergeUnion)
+	existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "a"}, {Value: "b"}}}}
+	incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "b"}, {Value: "c"}}}}
+
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -98,46 +116,45 @@ func TestMergeAttrsMultiValuedKeyUnionDedup(t *testing.T) {
 		Should(it.Equiv(merged.Attrs["tags"], []core.Predicate{{Value: "a"}, {Value: "b"}, {Value: "c"}}))
 }
 
-// A key present on only one side of the merge is taken unchanged.
-func TestMergeAttrsKeyPresentOnOnlyOneSideTakenUnchanged(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"only-existing": {{Value: "a"}}}}
-	incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"only-incoming": {{Value: "b"}}}}
+// research.md D5c: a union-declared key list-unions even when both sides
+// currently carry exactly one value — a documented, intentional behavior
+// change from the old arity-based dispatch.
+func TestMergeUnionSingleValuedBothSidesStillListUnions(t *testing.T) {
+	index := indexWith("authors", core.MergeUnion)
+	existing := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"authors": {{Value: "Alice"}}}}
+	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"authors": {{Value: "Bob"}}}}
 
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeUnion, "incoming-doc")
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
 		Should(it.Equal(0, len(conflicts))).
-		Should(it.Equiv(merged.Attrs["only-existing"], []core.Predicate{{Value: "a"}})).
-		Should(it.Equiv(merged.Attrs["only-incoming"], []core.Predicate{{Value: "b"}}))
+		Should(it.Equiv(merged.Attrs["authors"], []core.Predicate{{Value: "Alice"}, {Value: "Bob"}}))
 }
 
-// BUG-004: MergeUnion's Texts key other than "notes" is reconciled
-// paragraph-by-paragraph, not compared as one scalar (spec.md FR-024) — a
-// genuinely new incoming paragraph (no existing paragraph scores above the
-// similarity threshold) is appended after the existing ones, never flagged.
+// research.md D5b: union on a Texts key falls back to append's paragraph
+// merge (no scalar comparison, so no false-positive conflict on a
+// regenerated paragraph).
 func TestMergeUnionTextAppendsGenuinelyNewParagraph(t *testing.T) {
+	index := indexWith("abstract", core.MergeUnion)
 	existing := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge management"}}
 	incoming := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"abstract": "Andrej Karpathy has publicly argued that agentic coding workflows will reshape how software is written and reviewed"}}
 
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeUnion, "incoming-doc")
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
 		Should(it.Equal(0, len(conflicts))).
 		Should(it.True(strings.Contains(merged.Texts["abstract"], "Large Language Models"))).
-		Should(it.True(strings.Contains(merged.Texts["abstract"], "Andrej Karpathy"))).
-		Should(it.True(strings.Index(merged.Texts["abstract"], "Large Language Models") < strings.Index(merged.Texts["abstract"], "Andrej Karpathy")))
+		Should(it.True(strings.Contains(merged.Texts["abstract"], "Andrej Karpathy")))
 }
 
-// BUG-004: an incoming paragraph that is a near-duplicate paraphrase of an
-// existing one (Jaccard similarity over 3-word shingles > 0.8) is treated
-// as already-present and dropped, not duplicated or flagged.
 func TestMergeUnionTextDropsNearDuplicateParagraph(t *testing.T) {
+	index := indexWith("abstract", core.MergeUnion)
 	existing := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge management"}}
 	incoming := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge organization"}}
 
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeUnion, "incoming-doc")
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -145,77 +162,115 @@ func TestMergeUnionTextDropsNearDuplicateParagraph(t *testing.T) {
 		Should(it.Equal(existing.Texts["abstract"], merged.Texts["abstract"]))
 }
 
-// BUG-004: multiple incoming paragraphs are each evaluated independently
-// against every existing paragraph — a near-duplicate of one is dropped
-// while a genuinely new one is still appended in the same merge.
-func TestMergeUnionTextEvaluatesEachIncomingParagraphIndependently(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge management"}}
-	incoming := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge organization\n\nAndrej Karpathy has publicly argued that agentic coding workflows will reshape how software is written and reviewed"}}
+// --- firstWriteWin (flagOnDiverge class) ---
 
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeUnion, "incoming-doc")
+// spec.md US2 Acceptance Scenario 1.
+func TestMergeFirstWriteWinFlagsGenuineDivergence(t *testing.T) {
+	index := indexWith("abstract", core.MergeFirstWriteWin)
+	existing := core.Node{ID: "x", Type: "resource", Texts: map[string]string{"abstract": "First summary."}}
+	incoming := core.Node{ID: "x", Type: "resource", Texts: map[string]string{"abstract": "A different summary."}}
 
-	it.Then(t).Should(it.Nil(err))
-	it.Then(t).
-		Should(it.Equal(0, len(conflicts))).
-		Should(it.Equal(2, len(strings.Split(merged.Texts["abstract"], "\n\n")))).
-		Should(it.True(strings.Contains(merged.Texts["abstract"], "knowledge management"))).
-		Should(it.True(strings.Contains(merged.Texts["abstract"], "Andrej Karpathy")))
-}
-
-// BUG-004 regression guard: a Texts key literally named "notes" is still
-// flagged exactly as before this fix — only other Texts keys/Attrs are
-// narrowed to never-flagged/paragraph-merged.
-func TestMergeUnionNotesStillFlagsConflicts(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"notes": "existing notes"}}
-	incoming := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"notes": "incoming notes"}}
-
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeUnion, "incoming-doc")
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "doc-42")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
 		Should(it.Equal(1, len(conflicts))).
-		Should(it.Equal("notes", conflicts[0])).
-		Should(it.True(strings.Contains(merged.Texts["notes"], "<<<<<<< existing")))
+		Should(it.Equal("abstract", conflicts[0])).
+		Should(it.True(strings.Contains(merged.Texts["abstract"], "<<<<<<< existing"))).
+		Should(it.True(strings.Contains(merged.Texts["abstract"], "First summary."))).
+		Should(it.True(strings.Contains(merged.Texts["abstract"], "A different summary."))).
+		Should(it.True(strings.Contains(merged.Texts["abstract"], "doc-42")))
 }
 
-// Under MergeUnion, "notes" goes through the scalar path with fillEmpty
-// false: an empty existing "notes" is left unfilled, unlike a non-"notes"
-// Texts key (which mergeText fills unconditionally, see below).
-func TestMergeUnionNotesLeavesEmptyUnfilled(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"notes": ""}}
-	incoming := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"notes": "incoming notes"}}
+func TestMergeFirstWriteWinAttrsFlagsGenuineDivergence(t *testing.T) {
+	index := indexWith("category", core.MergeFirstWriteWin)
+	existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"category": {{Value: "physical"}}}}
+	incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"category": {{Value: "abstract"}}}}
 
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeUnion, "incoming-doc")
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(1, len(conflicts))).
+		Should(it.Equal("category", conflicts[0])).
+		Should(it.True(strings.Contains(fmt.Sprint(merged.Attrs["category"][0].Value), "<<<<<<< existing")))
+}
+
+func TestMergeFirstWriteWinFillsEmptyWithoutFlag(t *testing.T) {
+	index := indexWith("category", core.MergeFirstWriteWin)
+	existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"category": {{Value: ""}}}}
+	incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"category": {{Value: "abstract"}}}}
+
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
 		Should(it.Equal(0, len(conflicts))).
-		Should(it.Equal("", merged.Texts["notes"]))
+		Should(it.Equiv(merged.Attrs["category"], []core.Predicate{{Value: "abstract"}}))
 }
 
-// mergeText fills an empty side unconditionally, regardless of fillEmpty:
-// a non-"notes" Texts key under MergeUnion with an empty existing value is
-// filled from incoming.
-func TestMergeUnionNonNotesTextKeyFillsEmptyViaMergeText(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"claim": ""}}
-	incoming := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"claim": "the claim"}}
+func TestMergeFirstWriteWinIdenticalValueNeverFlags(t *testing.T) {
+	index := indexWith("category", core.MergeFirstWriteWin)
+	existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"category": {{Value: "abstract"}}}}
+	incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"category": {{Value: "abstract"}}}}
 
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeUnion, "incoming-doc")
+	_, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(0, len(conflicts)))
+}
+
+// --- fillIfEmpty (flagOnDiverge class, spec FR-006: identical to firstWriteWin once set) ---
+
+// spec.md US2 Acceptance Scenario 4 / Edge Case: fillIfEmpty never flags
+// the first contribution, but a later genuine divergence is flagged
+// exactly like firstWriteWin.
+func TestMergeFillIfEmptyAcceptsFirstValueNoFlag(t *testing.T) {
+	index := indexWith("url", core.MergeFillIfEmpty)
+	existing := core.Node{ID: "x", Type: "resource"}
+	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"url": {{Value: "https://example.org/a"}}}}
+
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
 		Should(it.Equal(0, len(conflicts))).
-		Should(it.Equal("the claim", merged.Texts["claim"]))
+		Should(it.Equiv(merged.Attrs["url"], []core.Predicate{{Value: "https://example.org/a"}}))
 }
 
-// A single-valued Attrs key (exactly one Predicate per side) behaves like a
-// bare scalar attribute did before this feature: MergeUnionFirstWriter
-// fills an empty existing value from incoming, with no conflict flagged.
-func TestMergeUnionFirstWriterFillsEmptySingleValuedAttr(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: ""}}}}
+func TestMergeFillIfEmptyFlagsDivergenceAfterFirstWrite(t *testing.T) {
+	index := indexWith("url", core.MergeFillIfEmpty)
+	existing := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"url": {{Value: "https://example.org/a"}}}}
+	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"url": {{Value: "https://example.org/b"}}}}
+
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(1, len(conflicts))).
+		Should(it.True(strings.Contains(fmt.Sprint(merged.Attrs["url"][0].Value), "<<<<<<< existing")))
+}
+
+func TestMergeFillIfEmptyIdenticalRepeatedValueNeverFlags(t *testing.T) {
+	index := indexWith("url", core.MergeFillIfEmpty)
+	existing := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"url": {{Value: "https://example.org/a"}}}}
+	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"url": {{Value: "https://example.org/a"}}}}
+
+	_, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(0, len(conflicts)))
+}
+
+// --- lastWriteWin (alwaysOverwrite class) ---
+
+// spec.md US1 Acceptance Scenario 2 / US2 Acceptance Scenario 2.
+func TestMergeLastWriteWinAlwaysTakesIncomingNoFlag(t *testing.T) {
+	index := indexWith("status", core.MergeLastWriteWin)
+	existing := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: "backlog"}}}}
 	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: "read"}}}}
 
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeUnionFirstWriter, "incoming-doc")
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -223,58 +278,35 @@ func TestMergeUnionFirstWriterFillsEmptySingleValuedAttr(t *testing.T) {
 		Should(it.Equiv(merged.Attrs["status"], []core.Predicate{{Value: "read"}}))
 }
 
-// A single-valued Attrs key that is already set on both sides and
-// genuinely diverges IS flagged as a conflict under MergeUnionFirstWriter
-// (unlike a multi-valued key, which is always list-unioned) — this is the
-// pre-feature scalar-Attrs conflict behavior, carried over unchanged, only
-// the shape ([]Predicate of length 1) is new.
-func TestMergeUnionFirstWriterFlagsDivergingSingleValuedAttr(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: "read"}}}}
-	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: "backlog"}}}}
+// research.md D5a: lastWriteWin never leaves a conflict marker even when
+// the reverse order is applied — it is order-sensitive, not conflict-prone.
+func TestMergeLastWriteWinReverseOrderTakesWhicheverAppliedLast(t *testing.T) {
+	index := indexWith("status", core.MergeLastWriteWin)
+	n := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: "backlog"}}}}
+	a := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: "read"}}}}
+	b := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: "archived"}}}}
 
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeUnionFirstWriter, "incoming-doc")
-
+	abFirst, _, _, err := core.Merge(n, a, index, "doc-a")
 	it.Then(t).Should(it.Nil(err))
+	abFirst, _, _, err = core.Merge(abFirst, b, index, "doc-b")
+	it.Then(t).Should(it.Nil(err))
+
+	baFirst, _, _, err := core.Merge(n, b, index, "doc-b")
+	it.Then(t).Should(it.Nil(err))
+	baFirst, _, _, err = core.Merge(baFirst, a, index, "doc-a")
+	it.Then(t).Should(it.Nil(err))
+
 	it.Then(t).
-		Should(it.Equal(1, len(conflicts))).
-		Should(it.Equal("status", conflicts[0])).
-		Should(it.Equal(1, len(merged.Attrs["status"]))).
-		Should(it.True(strings.Contains(fmt.Sprint(merged.Attrs["status"][0].Value), "<<<<<<< existing")))
+		Should(it.Equiv(abFirst.Attrs["status"], []core.Predicate{{Value: "archived"}})).
+		Should(it.Equiv(baFirst.Attrs["status"], []core.Predicate{{Value: "read"}}))
 }
 
-// MergeValidatedOverwrite never flags a single-valued Attrs conflict:
-// existing wins silently, exactly as a bare scalar attribute did pre-feature.
-func TestMergeValidatedOverwriteNeverFlagsSingleValuedAttrConflict(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "hypothesis", Attrs: map[string][]core.Predicate{"rank": {{Value: "8.5"}}}}
-	incoming := core.Node{ID: "x", Type: "hypothesis", Attrs: map[string][]core.Predicate{"rank": {{Value: "9.0"}}}}
-
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeValidatedOverwrite, "incoming-doc")
-
-	it.Then(t).Should(it.Nil(err))
-	it.Then(t).
-		Should(it.Equal(0, len(conflicts))).
-		Should(it.Equiv(merged.Attrs["rank"], []core.Predicate{{Value: "8.5"}}))
-}
-
-// MergeAppend never flags a single-valued Attrs conflict either — existing
-// wins silently, mirroring MergeAppend's never-flag Text behavior.
-func TestMergeAppendNeverFlagsSingleValuedAttrConflict(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "logEntry", Attrs: map[string][]core.Predicate{"status": {{Value: "existing"}}}}
-	incoming := core.Node{ID: "x", Type: "logEntry", Attrs: map[string][]core.Predicate{"status": {{Value: "incoming"}}}}
-
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeAppend, "incoming-doc")
-
-	it.Then(t).Should(it.Nil(err))
-	it.Then(t).
-		Should(it.Equal(0, len(conflicts))).
-		Should(it.Equiv(merged.Attrs["status"], []core.Predicate{{Value: "existing"}}))
-}
-
-func TestMergeUnionFirstWriterFillsEmptyTextKey(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "resource", Texts: map[string]string{"status": ""}}
+func TestMergeLastWriteWinTextsBehavesSameAsAttrs(t *testing.T) {
+	index := indexWith("status", core.MergeLastWriteWin)
+	existing := core.Node{ID: "x", Type: "resource", Texts: map[string]string{"status": "backlog"}}
 	incoming := core.Node{ID: "x", Type: "resource", Texts: map[string]string{"status": "read"}}
 
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeUnionFirstWriter, "incoming-doc")
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -282,147 +314,422 @@ func TestMergeUnionFirstWriterFillsEmptyTextKey(t *testing.T) {
 		Should(it.Equal("read", merged.Texts["status"]))
 }
 
-// Also verifies the conflict marker embeds the caller-supplied sourceID
-// (research.md D7) and both diverging values.
-func TestMergeUnionFirstWriterPreservesAlreadySetTextKey(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "resource", Texts: map[string]string{"claim": "existing claim"}}
-	incoming := core.Node{ID: "x", Type: "resource", Texts: map[string]string{"claim": "incoming claim"}}
+// --- append (list class) ---
 
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeUnionFirstWriter, "doc-42")
+func TestMergeAppendAttrsUnionsLikeUnion(t *testing.T) {
+	index := indexWith("entries", core.MergeAppend)
+	existing := core.Node{ID: "x", Type: "timeline", Attrs: map[string][]core.Predicate{"entries": {{Value: "a"}}}}
+	incoming := core.Node{ID: "x", Type: "timeline", Attrs: map[string][]core.Predicate{"entries": {{Value: "b"}}}}
+
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
+		Should(it.Equal(0, len(conflicts))).
+		Should(it.Equiv(merged.Attrs["entries"], []core.Predicate{{Value: "a"}, {Value: "b"}}))
+}
+
+func TestMergeAppendTextAppendsParagraphsNeverFlags(t *testing.T) {
+	index := indexWith("text", core.MergeAppend)
+	existing := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"text": "Existing paragraph about a topic worth remembering."}}
+	incoming := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"text": "A genuinely new paragraph introducing another topic entirely."}}
+
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(0, len(conflicts))).
+		Should(it.True(strings.Contains(merged.Texts["text"], "Existing paragraph"))).
+		Should(it.True(strings.Contains(merged.Texts["text"], "genuinely new paragraph")))
+}
+
+// --- validatedOverwrite (freeze class, identical to immutable for now) ---
+
+// Edge Case: an ordinary patch contribution never overwrites nor flags a
+// validatedOverwrite predicate's already-set value.
+func TestMergeValidatedOverwriteNeverOverwritesOrFlags(t *testing.T) {
+	index := indexWith("rank", core.MergeValidatedOverwrite)
+	existing := core.Node{ID: "x", Type: "hypothesis", Attrs: map[string][]core.Predicate{"rank": {{Value: "8.5"}}}}
+	incoming := core.Node{ID: "x", Type: "hypothesis", Attrs: map[string][]core.Predicate{"rank": {{Value: "9.0"}}}}
+
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(0, len(conflicts))).
+		Should(it.Equiv(merged.Attrs["rank"], []core.Predicate{{Value: "8.5"}}))
+}
+
+// spec.md US3 Acceptance Scenario 4: replaying the exact same conflicting
+// contribution does not duplicate or re-wrap the marker.
+func TestMergeFirstWriteWinReplayDoesNotRewrapMarker(t *testing.T) {
+	index := indexWith("abstract", core.MergeFirstWriteWin)
+	existing := core.Node{ID: "x", Type: "resource", Texts: map[string]string{"abstract": "First summary."}}
+	incoming := core.Node{ID: "x", Type: "resource", Texts: map[string]string{"abstract": "A different summary."}}
+
+	once, _, _, err := core.Merge(existing, incoming, index, "doc-42")
+	it.Then(t).Should(it.Nil(err))
+
+	twice, conflicts, _, err := core.Merge(once, incoming, index, "doc-42")
+	it.Then(t).Should(it.Nil(err))
+
+	it.Then(t).
+		Should(it.Equal(once.Texts["abstract"], twice.Texts["abstract"])).
 		Should(it.Equal(1, len(conflicts))).
-		Should(it.Equal("claim", conflicts[0])).
-		Should(it.True(strings.Contains(merged.Texts["claim"], "<<<<<<< existing"))).
-		Should(it.True(strings.Contains(merged.Texts["claim"], "existing claim"))).
-		Should(it.True(strings.Contains(merged.Texts["claim"], "incoming claim"))).
-		Should(it.True(strings.Contains(merged.Texts["claim"], "doc-42")))
+		Should(it.Equal(1, strings.Count(twice.Texts["abstract"], "<<<<<<<")))
 }
 
-func TestMergeValidatedOverwriteNeverFlagsConflicts(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "hypothesis", Texts: map[string]string{"claim": "8.5"}}
-	incoming := core.Node{ID: "x", Type: "hypothesis", Texts: map[string]string{"claim": "9.0"}}
+// --- FR-012: never-flag negative assertions across every non-flagging op ---
 
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeValidatedOverwrite, "incoming-doc")
-
-	it.Then(t).Should(it.Nil(err))
-	it.Then(t).
-		Should(it.Equal(0, len(conflicts))).
-		Should(it.Equal("8.5", merged.Texts["claim"]))
-}
-
-func TestMergeUnknownOpReturnsError(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "entity"}
-	incoming := core.Node{ID: "x", Type: "entity"}
-
-	_, _, err := core.Merge(existing, incoming, core.MergeOp("bogus"), "incoming-doc")
-
-	it.Then(t).ShouldNot(it.Nil(err))
-}
-
-// BUG-002: a domain/extension kind registered with append (spec.md FR-022)
-// must merge like union, never crash with ErrUnknownMergeOp.
-func TestMergeAppendUnionsEdgesAndAttrs(t *testing.T) {
-	existing := core.Node{
-		ID: "Widget", Type: "logEntry",
-		Attrs: map[string][]core.Predicate{"tags": {{Value: "a"}, {Value: "b"}}},
-		Edges: []core.Link{{Predicate: "replaces", Target: "SSL"}},
-	}
-	incoming := core.Node{
-		ID: "Widget", Type: "logEntry",
-		Attrs: map[string][]core.Predicate{"tags": {{Value: "b"}, {Value: "c"}}},
-		Edges: []core.Link{{Predicate: "replaces", Target: "SSL"}, {Predicate: "conformsTo", Target: "RFC 8446"}},
+// spec.md US2 Independent Test: a conflict marker appears only for
+// firstWriteWin/fillIfEmpty; every other declared op never flags, even on
+// a genuine divergence.
+func TestMergeNeverFlagsExceptFirstWriteWinAndFillIfEmpty(t *testing.T) {
+	neverFlag := []core.MergeOp{
+		core.MergeUnion, core.MergeAppend, core.MergeLastWriteWin,
+		core.MergeImmutable, core.MergeValidatedOverwrite,
 	}
 
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeAppend, "incoming-doc")
+	for _, op := range neverFlag {
+		t.Run(string(op), func(t *testing.T) {
+			index := indexWith("field", op)
+			existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"field": {{Value: "existing-value"}}}}
+			incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"field": {{Value: "incoming-value"}}}}
 
-	it.Then(t).Should(it.Nil(err))
-	it.Then(t).Should(it.Equal(0, len(conflicts)))
-	it.Then(t).Should(it.Equal(2, len(merged.Edges)))
-	it.Then(t).Should(it.Equiv(merged.Attrs["tags"], []core.Predicate{{Value: "a"}, {Value: "b"}, {Value: "c"}}))
+			_, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+			it.Then(t).Should(it.Nil(err))
+			it.Then(t).Should(it.Equal(0, len(conflicts)))
+		})
+	}
 }
 
-func TestMergeAppendNeverFlagsTextConflicts(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "logEntry", Texts: map[string]string{"claim": "existing text"}}
-	incoming := core.Node{ID: "x", Type: "logEntry", Texts: map[string]string{"claim": "incoming text"}}
+// --- FR-010: idempotency for every MergeOp ---
 
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeAppend, "incoming-doc")
+func TestMergeIsIdempotentForEveryOp(t *testing.T) {
+	allOps := []core.MergeOp{
+		core.MergeImmutable, core.MergeUnion, core.MergeFirstWriteWin,
+		core.MergeFillIfEmpty, core.MergeLastWriteWin, core.MergeAppend,
+		core.MergeValidatedOverwrite,
+	}
 
-	it.Then(t).Should(it.Nil(err))
-	it.Then(t).
-		Should(it.Equal(0, len(conflicts))).
-		Should(it.Equal("existing text", merged.Texts["claim"]))
+	for _, op := range allOps {
+		t.Run(string(op), func(t *testing.T) {
+			index := indexWith("field", op)
+			existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"field": {{Value: "existing-value"}}}}
+			incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"field": {{Value: "incoming-value"}}}}
+
+			once, _, _, err := core.Merge(existing, incoming, index, "incoming-doc")
+			it.Then(t).Should(it.Nil(err))
+			twice, _, _, err := core.Merge(once, incoming, index, "incoming-doc")
+			it.Then(t).Should(it.Nil(err))
+
+			it.Then(t).Should(it.Equiv(once.Attrs["field"], twice.Attrs["field"]))
+		})
+	}
 }
 
-// BUG-002: confirm ErrUnknownMergeOp still fires only for a genuinely
-// unrecognized MergeOp, not for any of the five documented values.
-func TestMergeAllDocumentedOpsNeverReturnErrUnknownMergeOp(t *testing.T) {
-	existing := core.Node{ID: "x", Type: "entity"}
-	incoming := core.Node{ID: "x", Type: "entity"}
+// --- FR-010: commutativity on independent predicates, except lastWriteWin ---
+
+func TestMergeIsCommutativeOnIndependentPredicatesForEveryOpExceptLastWriteWin(t *testing.T) {
+	commutativeOps := []core.MergeOp{
+		core.MergeImmutable, core.MergeUnion, core.MergeFirstWriteWin,
+		core.MergeFillIfEmpty, core.MergeAppend, core.MergeValidatedOverwrite,
+	}
+
+	for _, op := range commutativeOps {
+		t.Run(string(op), func(t *testing.T) {
+			index := core.Index{Predicates: map[string]core.PredicateDef{
+				"fieldA": {Merge: op},
+				"fieldB": {Merge: op},
+			}}
+			n := core.Node{ID: "x", Type: "entity"}
+			a := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"fieldA": {{Value: "a-value"}}}}
+			b := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"fieldB": {{Value: "b-value"}}}}
+
+			abOrder, _, _, err := core.Merge(n, a, index, "doc-a")
+			it.Then(t).Should(it.Nil(err))
+			abOrder, _, _, err = core.Merge(abOrder, b, index, "doc-b")
+			it.Then(t).Should(it.Nil(err))
+
+			baOrder, _, _, err := core.Merge(n, b, index, "doc-b")
+			it.Then(t).Should(it.Nil(err))
+			baOrder, _, _, err = core.Merge(baOrder, a, index, "doc-a")
+			it.Then(t).Should(it.Nil(err))
+
+			it.Then(t).
+				Should(it.Equiv(abOrder.Attrs["fieldA"], baOrder.Attrs["fieldA"])).
+				Should(it.Equiv(abOrder.Attrs["fieldB"], baOrder.Attrs["fieldB"]))
+		})
+	}
+}
+
+// research.md D5a: lastWriteWin is the sole documented exception —
+// reordering which of two contributions is applied last changes the result.
+func TestMergeLastWriteWinIsNotCommutative(t *testing.T) {
+	index := indexWith("status", core.MergeLastWriteWin)
+	n := core.Node{ID: "x", Type: "resource"}
+	a := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: "read"}}}}
+	b := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: "archived"}}}}
+
+	abOrder, _, _, err := core.Merge(n, a, index, "doc-a")
+	it.Then(t).Should(it.Nil(err))
+	abOrder, _, _, err = core.Merge(abOrder, b, index, "doc-b")
+	it.Then(t).Should(it.Nil(err))
+
+	baOrder, _, _, err := core.Merge(n, b, index, "doc-b")
+	it.Then(t).Should(it.Nil(err))
+	baOrder, _, _, err = core.Merge(baOrder, a, index, "doc-a")
+	it.Then(t).Should(it.Nil(err))
+
+	it.Then(t).ShouldNot(it.Equiv(abOrder.Attrs["status"], baOrder.Attrs["status"]))
+}
+
+// --- Edge Cases: list dedup / paragraph dedup no-op on replay ---
+
+func TestMergeUnionReapplyingSameEntryDoesNotDuplicate(t *testing.T) {
+	index := indexWith("tags", core.MergeUnion)
+	existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "ai"}}}}
+	incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "ai"}}}}
+
+	merged, _, _, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equiv(merged.Attrs["tags"], []core.Predicate{{Value: "ai"}}))
+}
+
+// --- Edges/HRefs: unconditional union regardless of declared op (research.md D5d) ---
+
+func TestMergeEdgesUnionAcrossEveryOp(t *testing.T) {
+	existingEdges := []core.Link{{Predicate: "replaces", Target: "SSL"}}
+	incomingEdges := []core.Link{{Predicate: "replaces", Target: "SSL"}, {Predicate: "conformsTo", Target: "RFC 8446"}}
 
 	for _, op := range []core.MergeOp{
-		core.MergeNone, core.MergeUnion, core.MergeUnionFirstWriter,
-		core.MergeAppend, core.MergeValidatedOverwrite,
+		core.MergeImmutable, core.MergeUnion, core.MergeFirstWriteWin,
+		core.MergeFillIfEmpty, core.MergeLastWriteWin, core.MergeAppend,
+		core.MergeValidatedOverwrite,
 	} {
-		_, _, err := core.Merge(existing, incoming, op, "incoming-doc")
-		it.Then(t).Should(it.Nil(err))
+		t.Run(string(op), func(t *testing.T) {
+			index := indexWith("replaces", op)
+			existing := core.Node{ID: "TLS", Type: "entity", Edges: existingEdges}
+			incoming := core.Node{ID: "TLS", Type: "entity", Edges: incomingEdges}
+
+			merged, _, _, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+			it.Then(t).Should(it.Nil(err))
+			it.Then(t).Should(it.Equal(2, len(merged.Edges)))
+		})
 	}
 }
 
-// research.md D3: Published fills once from incoming when existing.Published
-// is zero, for every non-"none" op, never flagged as a conflict.
+// --- research.md D6: a predicate absent from the schema index falls back to union ---
+
+func TestMergeUnregisteredPredicateFallsBackToUnion(t *testing.T) {
+	index := core.Index{Predicates: map[string]core.PredicateDef{}}
+	existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"novel": {{Value: "a"}}}}
+	incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"novel": {{Value: "b"}}}}
+
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(0, len(conflicts))).
+		Should(it.Equiv(merged.Attrs["novel"], []core.Predicate{{Value: "a"}, {Value: "b"}}))
+}
+
+// --- Published (research.md D3): folded into the generic scalar dispatch ---
+
 func TestMergePublishedFillsFromIncomingWhenExistingZero(t *testing.T) {
 	incomingPublished := time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)
+	index := indexWith("published", core.MergeImmutable)
+	existing := core.Node{ID: "x", Type: "entity"}
+	incoming := core.Node{ID: "x", Type: "entity", Published: incomingPublished}
 
-	for _, op := range []core.MergeOp{
-		core.MergeUnion, core.MergeUnionFirstWriter, core.MergeAppend, core.MergeValidatedOverwrite,
-	} {
-		existing := core.Node{ID: "x", Type: "entity"}
-		incoming := core.Node{ID: "x", Type: "entity", Published: incomingPublished}
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
-		merged, conflicts, err := core.Merge(existing, incoming, op, "incoming-doc")
-
-		it.Then(t).Should(it.Nil(err))
-		it.Then(t).
-			Should(it.Equal(incomingPublished, merged.Published)).
-			Should(it.Equal(0, len(conflicts)))
-	}
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(incomingPublished, merged.Published)).
+		Should(it.Equal(0, len(conflicts)))
 }
 
-// research.md D3: Published, once non-zero on existing, is preserved
-// unchanged by a later merge even when incoming declares a different
-// value — first-writer-wins, never flagged.
-func TestMergePublishedPreservedWhenExistingAlreadySet(t *testing.T) {
+func TestMergePublishedImmutableOnceSet(t *testing.T) {
 	existingPublished := time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)
 	incomingPublished := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	index := indexWith("published", core.MergeImmutable)
+	existing := core.Node{ID: "x", Type: "entity", Published: existingPublished}
+	incoming := core.Node{ID: "x", Type: "entity", Published: incomingPublished}
 
-	for _, op := range []core.MergeOp{
-		core.MergeUnion, core.MergeUnionFirstWriter, core.MergeAppend, core.MergeValidatedOverwrite,
-	} {
-		existing := core.Node{ID: "x", Type: "entity", Published: existingPublished}
-		incoming := core.Node{ID: "x", Type: "entity", Published: incomingPublished}
-
-		merged, conflicts, err := core.Merge(existing, incoming, op, "incoming-doc")
-
-		it.Then(t).Should(it.Nil(err))
-		it.Then(t).
-			Should(it.Equal(existingPublished, merged.Published)).
-			Should(it.Equal(0, len(conflicts)))
-	}
-}
-
-// research.md D3: MergeNone's existing whole-node no-op leaves Published
-// untouched, matching every other field.
-func TestMergeNoneLeavesPublishedUntouched(t *testing.T) {
-	existingPublished := time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)
-	existing := core.Node{ID: "x", Type: "source", Published: existingPublished}
-	incoming := core.Node{ID: "x", Type: "source", Published: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)}
-
-	merged, conflicts, err := core.Merge(existing, incoming, core.MergeNone, "incoming-doc")
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
 		Should(it.Equal(existingPublished, merged.Published)).
 		Should(it.Equal(0, len(conflicts)))
+}
+
+func TestMergePublishedLastWriteWinOverwrites(t *testing.T) {
+	existingPublished := time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)
+	incomingPublished := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	index := indexWith("published", core.MergeLastWriteWin)
+	existing := core.Node{ID: "x", Type: "entity", Published: existingPublished}
+	incoming := core.Node{ID: "x", Type: "entity", Published: incomingPublished}
+
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(incomingPublished, merged.Published)).
+		Should(it.Equal(0, len(conflicts)))
+}
+
+// --- BUG-001 / spec.md FR-017: per-predicate outcome trail ---
+
+// outcomeFor returns the PredicateOutcome named name from outcomes, or
+// fails the test if absent.
+func outcomeFor(t *testing.T, outcomes []core.PredicateOutcome, name string) core.PredicateOutcome {
+	t.Helper()
+	for _, o := range outcomes {
+		if o.Name == name {
+			return o
+		}
+	}
+	t.Fatalf("no PredicateOutcome named %q in %v", name, outcomes)
+	return core.PredicateOutcome{}
+}
+
+// spec.md FR-017: one representative case per MergeOp, confirming the
+// outcome trail names the touched predicate, its resolved MergeOp, and
+// the outcome label matching data-model.md's per-op reconciliation table.
+func TestMergeOutcomeTrailPerOp(t *testing.T) {
+	tests := []struct {
+		name        string
+		op          core.MergeOp
+		existing    core.Node
+		incoming    core.Node
+		wantOutcome string
+	}{
+		{
+			name:        "immutable diverge kept unchanged",
+			op:          core.MergeImmutable,
+			existing:    core.Node{ID: "x", Attrs: map[string][]core.Predicate{"ref": {{Value: "book"}}}},
+			incoming:    core.Node{ID: "x", Attrs: map[string][]core.Predicate{"ref": {{Value: "article"}}}},
+			wantOutcome: core.OutcomeUnchanged,
+		},
+		{
+			name:        "union accumulates",
+			op:          core.MergeUnion,
+			existing:    core.Node{ID: "x", Attrs: map[string][]core.Predicate{"tags": {{Value: "a"}}}},
+			incoming:    core.Node{ID: "x", Attrs: map[string][]core.Predicate{"tags": {{Value: "b"}}}},
+			wantOutcome: core.OutcomeAppended,
+		},
+		{
+			name:        "firstWriteWin flags divergence",
+			op:          core.MergeFirstWriteWin,
+			existing:    core.Node{ID: "x", Attrs: map[string][]core.Predicate{"category": {{Value: "physical"}}}},
+			incoming:    core.Node{ID: "x", Attrs: map[string][]core.Predicate{"category": {{Value: "abstract"}}}},
+			wantOutcome: core.OutcomeFlagged,
+		},
+		{
+			name:        "fillIfEmpty fills first value",
+			op:          core.MergeFillIfEmpty,
+			existing:    core.Node{ID: "x", Attrs: map[string][]core.Predicate{"url": {{Value: ""}}}},
+			incoming:    core.Node{ID: "x", Attrs: map[string][]core.Predicate{"url": {{Value: "https://example.org/a"}}}},
+			wantOutcome: core.OutcomeFilled,
+		},
+		{
+			name:        "lastWriteWin overwrites",
+			op:          core.MergeLastWriteWin,
+			existing:    core.Node{ID: "x", Attrs: map[string][]core.Predicate{"status": {{Value: "backlog"}}}},
+			incoming:    core.Node{ID: "x", Attrs: map[string][]core.Predicate{"status": {{Value: "read"}}}},
+			wantOutcome: core.OutcomeOverwritten,
+		},
+		{
+			name:        "append appends",
+			op:          core.MergeAppend,
+			existing:    core.Node{ID: "x", Attrs: map[string][]core.Predicate{"entries": {{Value: "a"}}}},
+			incoming:    core.Node{ID: "x", Attrs: map[string][]core.Predicate{"entries": {{Value: "b"}}}},
+			wantOutcome: core.OutcomeAppended,
+		},
+		{
+			name:        "validatedOverwrite diverge kept unchanged",
+			op:          core.MergeValidatedOverwrite,
+			existing:    core.Node{ID: "x", Attrs: map[string][]core.Predicate{"rank": {{Value: "8.5"}}}},
+			incoming:    core.Node{ID: "x", Attrs: map[string][]core.Predicate{"rank": {{Value: "9.0"}}}},
+			wantOutcome: core.OutcomeUnchanged,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var field string
+			for k := range tt.incoming.Attrs {
+				field = k
+			}
+			index := indexWith(field, tt.op)
+
+			_, _, outcomes, err := core.Merge(tt.existing, tt.incoming, index, "incoming-doc")
+
+			it.Then(t).Should(it.Nil(err))
+			got := outcomeFor(t, outcomes, field)
+			it.Then(t).
+				Should(it.Equal(field, got.Name)).
+				Should(it.Equal(tt.op, got.Op)).
+				Should(it.Equal(tt.wantOutcome, got.Outcome))
+		})
+	}
+}
+
+// A predicate present only in incoming (didn't exist on the node before)
+// is reported "created", regardless of dispatch class.
+func TestMergeOutcomeTrailCreatedForNewPredicate(t *testing.T) {
+	index := indexWith("tags", core.MergeUnion)
+	existing := core.Node{ID: "x"}
+	incoming := core.Node{ID: "x", Attrs: map[string][]core.Predicate{"tags": {{Value: "ai"}}}}
+
+	_, _, outcomes, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	got := outcomeFor(t, outcomes, "tags")
+	it.Then(t).Should(it.Equal(core.OutcomeCreated, got.Outcome))
+}
+
+// A predicate present only in existing (incoming didn't touch it) is
+// still reported, "unchanged" — FR-017 covers every predicate present on
+// either side, not only the ones the incoming contribution mentions.
+func TestMergeOutcomeTrailUnchangedForExistingOnlyPredicate(t *testing.T) {
+	index := indexWith("aliases", core.MergeUnion)
+	existing := core.Node{ID: "x", Attrs: map[string][]core.Predicate{"aliases": {{Value: "AKA"}}}}
+	incoming := core.Node{ID: "x"}
+
+	_, _, outcomes, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	got := outcomeFor(t, outcomes, "aliases")
+	it.Then(t).
+		Should(it.Equal(core.MergeUnion, got.Op)).
+		Should(it.Equal(core.OutcomeUnchanged, got.Outcome))
+}
+
+// The outcome trail is sorted by predicate name for deterministic
+// --verbose output.
+func TestMergeOutcomeTrailSortedByName(t *testing.T) {
+	index := core.Index{Predicates: map[string]core.PredicateDef{
+		"zeta":  {Merge: core.MergeUnion},
+		"alpha": {Merge: core.MergeUnion},
+	}}
+	existing := core.Node{ID: "x"}
+	incoming := core.Node{ID: "x", Attrs: map[string][]core.Predicate{
+		"zeta":  {{Value: "z"}},
+		"alpha": {{Value: "a"}},
+	}}
+
+	_, _, outcomes, err := core.Merge(existing, incoming, index, "incoming-doc")
+	it.Then(t).Should(it.Nil(err))
+
+	var names []string
+	for _, o := range outcomes {
+		names = append(names, o.Name)
+	}
+	it.Then(t).Should(it.Seq(names).Equal("alpha", "published", "zeta"))
 }

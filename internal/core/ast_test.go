@@ -124,9 +124,11 @@ func TestPatchZeroValue(t *testing.T) {
 
 func TestMergeOpConstants(t *testing.T) {
 	it.Then(t).
-		Should(it.Equal(core.MergeOp("none"), core.MergeNone)).
+		Should(it.Equal(core.MergeOp("immutable"), core.MergeImmutable)).
 		Should(it.Equal(core.MergeOp("union"), core.MergeUnion)).
-		Should(it.Equal(core.MergeOp("union-first-writer"), core.MergeUnionFirstWriter)).
+		Should(it.Equal(core.MergeOp("firstWriteWin"), core.MergeFirstWriteWin)).
+		Should(it.Equal(core.MergeOp("fillIfEmpty"), core.MergeFillIfEmpty)).
+		Should(it.Equal(core.MergeOp("lastWriteWin"), core.MergeLastWriteWin)).
 		Should(it.Equal(core.MergeOp("append"), core.MergeAppend)).
-		Should(it.Equal(core.MergeOp("validated-overwrite"), core.MergeValidatedOverwrite))
+		Should(it.Equal(core.MergeOp("validatedOverwrite"), core.MergeValidatedOverwrite))
 }
