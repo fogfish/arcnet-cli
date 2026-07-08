@@ -118,7 +118,7 @@ See more info https://github.com/fogfish/arcnet-cli`,
 				return err
 			}
 
-			rules, predicates, err := appschema.Resolve(store)
+			index, err := appschema.Resolve(store)
 			if err != nil {
 				return err
 			}
@@ -144,7 +144,7 @@ See more info https://github.com/fogfish/arcnet-cli`,
 				return err
 			}
 
-			result, err = appgraph.Apply(ctx, fsys.Local{}, vcs, reporter, rules, predicates, appschema.Component{}, dir, patchPath)
+			result, err = appgraph.Apply(ctx, fsys.Local{}, vcs, reporter, index, appschema.Component{}, dir, patchPath)
 			if err != nil {
 				return err
 			}

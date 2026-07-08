@@ -132,7 +132,7 @@ See more info https://github.com/fogfish/arcnet-cli`,
 				return err
 			}
 
-			rules, predicates, err := appschema.Resolve(store)
+			index, err := appschema.Resolve(store)
 			if err != nil {
 				return err
 			}
@@ -152,7 +152,7 @@ See more info https://github.com/fogfish/arcnet-cli`,
 				ctx = context.Background()
 			}
 
-			result, err = applint.Lint(ctx, fsys.Local{}, vcs, reporter, rules, predicates, dir)
+			result, err = applint.Lint(ctx, fsys.Local{}, vcs, reporter, index, dir)
 			if err != nil {
 				return err
 			}

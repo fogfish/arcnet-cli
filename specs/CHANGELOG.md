@@ -3,6 +3,40 @@
 
 ## 2026-07-07
 
+/speckit-specify Turn arc's graph schema mechanism from a name-existence registry into a fully machine-readable schema, matching ARCNET-CORE v0.7 §9.
+
+Today, arc init seeds "_schema/nodes/<kind>.md" (kind name + merge behavior only) and "_schema/predicates/<name>.md" (existence only — the file's body is never read back). Both are populated from hardcoded values built into arc itself.
+
+The new spec requires every predicate in use across the graph to be registered as a real node at "_schema/predicates/<name>.md" declaring, in machine-readable form: its serialization role (one of meta/text/href/edge/link), its merge behavior, an optional display label, and an optional standard-vocabulary alignment — plus a human-readable description in the body. Every "@type" in use must be registered as a real node at "_schema/types/<name>.md" (renamed from today's "_schema/nodes/") declaring, via a "## Requires" and a "## Optional" section, which predicates a conforming instance of that type must or may carry. See https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-CORE.md
+
+arc must be able to load every predicate/type node in a graph once and build an in-memory index other commands consult — this replaces today's hardcoded Go constants (the fixed four kinds, the fixed thirteen predicates) as the source of truth, while still seeding a graph with CORE's own baseline vocabulary on `arc init` so a freshly initialized graph is self-describing from the start. 
+
+This schema index must be usable by: arc apply (to recognize known vs. unknown predicates/types and auto-register new ones, as it already does today in a simpler form), arc lint (to validate real conformance, covered by a separate feature), and any future consumer that needs to know a predicate's role/merge without guessing from Markdown shape.
+
+Backward compatibility: existing graphs whose "_schema/nodes/" folder is not required. The absence of valid scheme causes failing. `arc init` supports only new schema.
+
+Out of scope: per-predicate merge algebra changes to arc apply's actual merge logic (separate feature); lint rule changes (separate feature).
+
+/speckit-plan Technical approach: new/rewritten logic lives in internal/app/schema (kernel + service), following this codebase's existing use-case package layout (no cmd/ package, no port/adapter — same as today, per specs/005's precedent, since the only external dependency is the already-shared fsys.Store).
+
+Depends on spec 010 landing first (or in the same branch): this spec parses/renders _schema/predicates and _schema/types documents as ordinary core.Node values using the new Attrs/Texts/Edges shapes from 010 — Property nodes carry role/merge/aligned/label as attrs, description as texts["description"], and Class nodes carry required/optional as edges with predicate "required"/"optional".
+
+kernel/schema.go changes:
+- Rename NodesDir "_schema/nodes" -> TypesDir "_schema/types".
+- Replace `CoreMergeRules map[Kind]MergeOp` (4 entries) with a richer built-in table covering CORE's actual predicate set (§10.1-§10.8: @id, @type, tags, text, published, created, updated, mentions, mentionedIn, broader, narrower, isPartOf, hasPart, requires, replaces, isReplacedBy, conformsTo, related, cites, citesAsEvidence, citesAsAuthority, supports, confirms, extends, critiques, disputes, refutes, isCitedBy, title, abstract, authors, url, doi, category, aliases, definition, notes, ref, year, status, relevance, granularity, entries, heading, role, merge, label, aligned, description, required, optional) plus the four CORE types (source, entity, resource, timeline) each with their real Requires/Optional predicate lists per CORE §11.
+- New `Resolve(store fsys.Store) (Index, error)` (or extend the existing Resolve) that walks _schema/predicates/ and _schema/types/, parses each file via core.ParseNode, and decodes role/merge/label/aligned from Attrs and required/optional from Edges into a queryable Index type — mirroring AST §8's "Schema Index" shape (`predicates map[string]PredicateDef`, `types map[string]TypeDef`).
+- Skip (never error on) a malformed individual schema document — same tolerance policy spec 005 already established for Resolve.
+
+service/schema.go changes: Seed() renders real Property/Class nodes (not just kind+merge stub docs) using the new schema — i.e. `arc init` writes full-fidelity, spec-conformant _schema/predicates/*.md and _schema/types/*.md files, not the current minimal stubs. RegisterKind/RegisterPredicate (called from graph.Apply's discovery hook) need equivalent updates to write a conformant Property/Class node for an unrecognized predicate/type, defaulting role to "edge"/merge to "union" (documented, sane default) when arc apply has no better signal, matching today's "always merge: union" precedent for auto-registered kinds.
+
+Migration from old schema to the new one is not required at this phase.
+
+Testing: unit tests in internal/app/schema/service against a fake fsys.Store (existing pattern from specs/005) covering Seed/Resolve/RegisterKind/RegisterPredicate with the new richer shapes, plus the malformed-doc-skip path and the required/optional decoding path specifically. E2E coverage in cmd/arc/ctrl/init_test.go (seeded files are spec-conformant) and cmd/arc/graph/apply_test.go (auto-registration of a novel predicate/type writes a conformant node).
+
+Constraints: no network I/O (unchanged from spec 005's D5); RegisterKind/RegisterPredicate must not overwrite an existing document; schema-document writes triggered by apply's discovery land in the same commit as the triggering patch (unchanged FR-012 precedent from spec 005).
+
+---
+
 /speckit-specify Rewrite arc's internal graph node representation to match ARCNET-CORE v0.7 / ARCNET-AST v0.6's predicate-first data model, replacing the current pre-0.5 shape. Study the specifications:
 * https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-CORE.md
 * https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-AST.md

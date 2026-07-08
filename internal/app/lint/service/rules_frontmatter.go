@@ -46,10 +46,10 @@ func checkUniqueBasenames(index map[string][]string) []kernel.Violation {
 }
 
 // checkUnrecognizedKind reports a RuleUnrecognizedKind violation when
-// node's Type is absent from the resolved rules (research.md D11, spec
+// node's Type is absent from the resolved index (research.md D11, spec
 // FR-011/FR-018).
-func checkUnrecognizedKind(node core.Node, path string, rules core.MergeRuleSet) []kernel.Violation {
-	if _, ok := rules.Lookup(node.Type); ok {
+func checkUnrecognizedKind(node core.Node, path string, index core.Index) []kernel.Violation {
+	if _, ok := index.Types[node.Type]; ok {
 		return nil
 	}
 	return []kernel.Violation{{

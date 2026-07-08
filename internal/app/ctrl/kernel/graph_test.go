@@ -22,7 +22,7 @@ func TestDefaultLayoutFolders(t *testing.T) {
 		Should(it.Seq(kernel.DefaultLayout.Folders).Contain(
 			"sources", "entities", "resources",
 			"timeline/yearly", "timeline/monthly",
-			"_schema/nodes", "_schema/predicates",
+			"_schema/types", "_schema/predicates",
 		)).
 		Should(it.Equal(7, len(kernel.DefaultLayout.Folders)))
 }

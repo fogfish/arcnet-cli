@@ -16,29 +16,66 @@ import (
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
-func TestMergeRuleSetLookup(t *testing.T) {
-	rules := core.MergeRuleSet{"source": core.MergeNone, "entity": core.MergeUnion}
+func TestPredicateDefFieldConstruction(t *testing.T) {
+	def := core.PredicateDef{
+		Role:        "edge",
+		Merge:       core.MergeUnion,
+		Label:       "Is Part Of",
+		Aligned:     "dcterms:isPartOf",
+		Description: "Asserts a whole-part relationship.",
+	}
 
-	op, ok := rules.Lookup("source")
+	it.Then(t).
+		Should(it.Equal("edge", def.Role)).
+		Should(it.Equal(core.MergeUnion, def.Merge)).
+		Should(it.Equal("Is Part Of", def.Label)).
+		Should(it.Equal("dcterms:isPartOf", def.Aligned)).
+		Should(it.Equal("Asserts a whole-part relationship.", def.Description))
+}
+
+func TestTypeDefFieldConstruction(t *testing.T) {
+	def := core.TypeDef{
+		Merge:       core.MergeUnion,
+		Required:    []string{"category", "definition"},
+		Optional:    []string{"aliases"},
+		Description: "A subject occurring in sources.",
+	}
+
+	it.Then(t).
+		Should(it.Equal(core.MergeUnion, def.Merge)).
+		Should(it.Seq(def.Required).Equal("category", "definition")).
+		Should(it.Seq(def.Optional).Equal("aliases")).
+		Should(it.Equal("A subject occurring in sources.", def.Description))
+}
+
+func TestIndexPredicatesLookup(t *testing.T) {
+	index := core.Index{
+		Predicates: map[string]core.PredicateDef{
+			"isPartOf": {Role: "edge", Merge: core.MergeUnion, Description: "..."},
+		},
+	}
+
+	def, ok := index.Predicates["isPartOf"]
 	it.Then(t).
 		Should(it.True(ok)).
-		Should(it.Equal(core.MergeNone, op))
+		Should(it.Equal("edge", def.Role))
 
-	_, ok = rules.Lookup("hypothesis")
+	_, ok = index.Predicates["hasPart"]
 	it.Then(t).Should(it.True(!ok))
 }
 
-func TestMergeRuleSetUnionSelfAuthoritative(t *testing.T) {
-	base := core.MergeRuleSet{"source": core.MergeNone}
-	other := core.MergeRuleSet{"source": core.MergeUnion, "hypothesis": core.MergeValidatedOverwrite}
+func TestIndexTypesLookup(t *testing.T) {
+	index := core.Index{
+		Types: map[string]core.TypeDef{
+			"entity": {Merge: core.MergeUnion, Description: "..."},
+		},
+	}
 
-	union := base.Union(other)
-
-	sourceOp, _ := union.Lookup("source")
-	hypothesisOp, ok := union.Lookup("hypothesis")
-
+	def, ok := index.Types["entity"]
 	it.Then(t).
-		Should(it.Equal(core.MergeNone, sourceOp)).
 		Should(it.True(ok)).
-		Should(it.Equal(core.MergeValidatedOverwrite, hypothesisOp))
+		Should(it.Equal(core.MergeUnion, def.Merge))
+
+	_, ok = index.Types["hypothesis"]
+	it.Then(t).Should(it.True(!ok))
 }

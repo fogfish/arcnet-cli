@@ -40,8 +40,9 @@ internal/
 │                             #   evolution phase): the graph AST (ARCNET-AST §4-6) as plain Go
 │                             #   types, a goldmark-backed Markdown↔AST codec, the CORE §10 merge
 │                             #   algebra, CORE §9.4 timeline-period derivation, and the
-│                             #   MergeRuleSet value type (Union/Lookup). No dependency on any
-│                             #   internal/app/<use-case> — ARCNET-CORE's actual declared kind/merge/
+│                             #   PredicateDef/TypeDef/Index value types (specs/011-machine-readable-
+│                             #   schema, replacing the earlier MergeRuleSet). No dependency on any
+│                             #   internal/app/<use-case> — ARCNET-CORE's actual declared type/merge/
 │                             #   predicate defaults live in internal/app/schema instead. Also holds
 │                             #   Filter{Kinds,Tags,Attrs,AttrPatterns}/Filter.Match(Node) — the
 │                             #   shared node-selection type every VISION.md Filtering-section
@@ -90,31 +91,37 @@ internal/
     │   └── component.go         # primary port: Load(store), Save(store, cfg)
     │
     ├── schema/                # fifth domain use-case, no cmd/ package or port/adapter subdirectory:
-    │   │                       #   isolates ARCNET-CORE's declared vocabulary of node kinds, merge
-    │   │                       #   behaviors, and predicates as versioned _schema/nodes/*.md and
-    │   │                       #   _schema/predicates/*.md documents. Its only I/O is the
+    │   │                       #   isolates ARCNET-CORE's declared vocabulary of predicates and
+    │   │                       #   types as machine-readable _schema/predicates/*.md (Property
+    │   │                       #   nodes) and _schema/types/*.md (Class nodes) documents, each
+    │   │                       #   declaring its own role/merge/label/aligned (predicates) or
+    │   │                       #   merge/required/optional (types), per CORE §9.1/§9.2
+    │   │                       #   (specs/011-machine-readable-schema). Its only I/O is the
     │   │                       #   already-shared internal/adapter/fsys, consumed directly (no
     │   │                       #   use-case-private external dependency to abstract). Consumed only
     │   │                       #   by arc init/arc apply (and read-only by arc lint), never invoked
     │   │                       #   directly of its own.
-    │   ├── kernel/             # CoreMergeRules, CorePredicates (ARCNET-CORE §9/§7.4 built-ins),
-    │   │                        #   SchemaKind, NodesDir/PredicatesDir path constants
-    │   ├── service/             # use-case logic (Seed, Resolve, RegisterKind, RegisterPredicate)
-    │   └── component.go         # primary port: Seed(), Resolve(store), RegisterKind(store, kind),
-    │                             #   RegisterPredicate(store, predicate); Component{} additionally
-    │                             #   satisfies graph.port.SchemaRegistry structurally
+    │   ├── kernel/             # CorePredicateDefs, CoreTypeDefs (ARCNET-CORE §10/§11's full
+    │   │                        #   built-in vocabulary), TypesDir/PredicatesDir path constants
+    │   ├── service/             # use-case logic (Seed, Resolve, RegisterType, RegisterPredicate) —
+    │   │                        #   Resolve fails fast (core.Index, error) on a missing schema
+    │   │                        #   folder or any malformed document, never skips one
+    │   └── component.go         # primary port: Seed(), Resolve(store) (core.Index, error),
+    │                             #   RegisterType(store, typ), RegisterPredicate(store, predicate);
+    │                             #   Component{} additionally satisfies graph.port.SchemaRegistry
+    │                             #   structurally
     │
     ├── graph/                 # third domain use-case: graph mutation / graph I/O
     │   ├── kernel/              # domain value types (ApplyResult, Match, GrepResult,
     │   │                          #   SubgraphResult — specs/007-arc-subgraph)
     │   ├── port/                 # graph-private secondary ports: VCS, and SchemaRegistry
-    │   │                          #   (RegisterKind/RegisterPredicate — satisfied structurally by
+    │   │                          #   (RegisterType/RegisterPredicate — satisfied structurally by
     │   │                          #   internal/app/schema's Component, ADR 001 port isolation rule 1)
     │   ├── adapter/
     │   │   └── mock/             # in-memory fake VCS for service unit tests
     │   ├── service/              # use-case logic (Apply, Grep, Subgraph) — Apply's per-node
     │   │                          #   loop's auto-discovery hook registers a previously-unseen
-    │   │                          #   kind/predicate into _schema/ in the same commit as the
+    │   │                          #   type/predicate into _schema/ in the same commit as the
     │   │                          #   triggering patch (spec.md FR-012); Grep enumerates+parses
     │   │                          #   every node file (excluding .arc/ and _schema/), builds a
     │   │                          #   Filter-membership set, and delegates the actual line scan to
@@ -124,8 +131,11 @@ internal/
     │   │                          #   seed node and serializes the result via core.RenderPatch
     │   │                          #   (specs/007-arc-subgraph, research.md D3/D4/D5) — no port of
     │   │                          #   its own, strictly read-only like Grep
-    │   └── component.go          # primary port: Apply(ctx, mounter, vcs, reporter, rules,
-    │                              #   predicates, schema, dir, patchPath) (kernel.ApplyResult, error);
+    │   └── component.go          # primary port: Apply(ctx, mounter, vcs, reporter, index,
+    │                              #   schema, dir, patchPath) (kernel.ApplyResult, error) — index is
+    │                              #   the core.Index internal/app/schema.Resolve returns
+    │                              #   (specs/011-machine-readable-schema, replacing the earlier
+    │                              #   (core.MergeRuleSet, map[string]bool) pair);
     │                              #   Grep(ctx, mounter, filter, pattern, cfg, dir) (kernel.GrepResult, error);
     │                              #   Subgraph(ctx, mounter, filter, basename, depth, cfg, dir)
     │                              #   (kernel.SubgraphResult, error); NodeGet(ctx, mounter, dir, id)
@@ -143,8 +153,9 @@ internal/
         │                          #   entirely), raw-text line locator, one checker per CORE §14
         │                          #   rule — strictly read-only, never writes to fsys.Store and
         │                          #   never commits
-        └── component.go          # primary port: Lint(ctx, mounter, vcs, reporter, rules,
-                                    #   predicates, dir) (kernel.LintResult, error)
+        └── component.go          # primary port: Lint(ctx, mounter, vcs, reporter, index,
+                                    #   dir) (kernel.LintResult, error) — index is the same
+                                    #   core.Index arc apply consumes (specs/011-machine-readable-schema)
 ```
 
 `internal/app/ctrl` is the first `internal/` package in this codebase, so ADR 001's `componentX` layout (`kernel/`, `port/`, `adapter/`, `service/`, `component.go`) now takes full effect. `internal/bios` and `internal/adapter/fsys` are deliberately shared, not use-case-private, since every future command needs an output/color/reporter kernel and every future graph-root-mounting command needs the same filesystem mount contract (research.md D3/D5 in `specs/002-arc-init/`). `internal/core` is the project's first core-domain package (ADR 001's own evolution model): the graph AST and its canonical Markdown serialization are a model invariant shared by every future graph-reading command, not an `apply`-specific concern, so they live below the use-case layer. `internal/adapter/git` is the first adapter promoted to the shared tier once a second use-case (`graph`) needed the same capability `ctrl` already had (research.md D4 in `specs/003-apply-patch/`), mirroring `internal/adapter/fsys`'s precedent. `internal/app/schema` (`specs/005-graph-schema-first-class/`) is the fifth `internal/app/<domain>` use-case and the first to have neither a `cmd/` package of its own nor a `port`/`adapter` subdirectory: it isolates ARCNET-CORE's declared vocabulary of node kinds, merge behaviors, and predicates, replacing the retired `_meta/` registry stubs and `.arc/config.yml`'s merge-rule content with versioned, human-readable `_schema/` documents (research.md D1/D2/D5 in `specs/005-graph-schema-first-class/`).
@@ -158,10 +169,10 @@ This project uses **bare top-level verbs** (`arc init`, `arc apply`, `arc list`,
 | Term | Definition |
 |---|---|
 | **Graph Root** | The directory tree representing one knowledge graph instance; identified by the presence of a `.arc/` directory at its top level. Resolved and mounted via `internal/adapter/fsys` (`ResolveLocalRoot` then `Mounter.Mount`). |
-| **Canonical Folder** | One of the fixed top-level directories every graph must contain: `sources/`, `entities/`, `resources/`, `timeline/yearly/`, `timeline/monthly/`, `_schema/nodes/`, `_schema/predicates/`. Defined statically by `internal/app/ctrl/kernel.ArcNetCoreLayout`. |
-| **Schema Document** | A versioned, human-readable Markdown document under `_schema/` describing one recognized node kind or predicate — `kind: schema` front-matter, parsed/rendered by the same, unmodified `internal/core.ParseNode`/`RenderNode` every ordinary content node uses. Replaces the retired Metadata Stub/Kind Registration concepts. See Node-Kind Schema Document/Predicate Schema Document below. `internal/app/schema`. |
-| **Node-Kind Schema Document** | A Schema Document at `_schema/nodes/<kind>.md`: its `id` is the node kind's name, its `merge` attribute is the `Merge Behavior` `arc apply` uses for that kind. Seeded for ARCNET-CORE's four fixed kinds by `arc init`; auto-registered (always with `merge: union`) the first time `arc apply` encounters an unrecognized kind (spec FR-010); never overwritten automatically once present (spec FR-011) — a human hand-editing its `merge` value is what a later `arc apply` invocation actually uses. |
-| **Predicate Schema Document** | A Schema Document at `_schema/predicates/<name>.md`, carrying no `merge` attribute — its mere presence is what registers a predicate name. Seeded for ARCNET-CORE's thirteen fixed predicates (CORE §7.4) by `arc init`; auto-registered the first time `arc apply` encounters an unrecognized predicate. |
+| **Canonical Folder** | One of the fixed top-level directories every graph must contain: `sources/`, `entities/`, `resources/`, `timeline/yearly/`, `timeline/monthly/`, `_schema/types/`, `_schema/predicates/`. Defined statically by `internal/app/ctrl/kernel.ArcNetCoreLayout`. |
+| **Schema Index** | The in-memory `internal/core.Index{Predicates map[string]PredicateDef, Types map[string]TypeDef}` `internal/app/schema/service.Resolve` builds once per command invocation from a graph's own `_schema/` documents — the single runtime source of truth `arc apply`/`arc lint` both consume, replacing the earlier `(core.MergeRuleSet, map[string]bool)` pair (specs/011-machine-readable-schema). |
+| **Predicate Schema Node** | A `Property`-typed node at `_schema/predicates/<name>.md` (CORE §9.1): mandatory `role` (one of `meta`/`text`/`href`/`edge`/`link`) and `merge` attributes, optional `label`/`aligned`, mandatory descriptive body — decoded into `core.PredicateDef`. Seeded for ARCNET-CORE's full §10 vocabulary by `arc init`; auto-registered (`role: edge`, `merge: union`, a placeholder description) the first time `arc apply` encounters an unrecognized predicate (spec FR-010); never overwritten automatically once present (spec FR-011). Replaces the existence-only Predicate Schema Document spec 005 introduced. |
+| **Type Schema Node** | A `Class`-typed node at `_schema/types/<name>.md` (CORE §9.2, renamed from `_schema/nodes/<kind>.md`): mandatory `merge` attribute (the arc apply-specific bridge field beyond CORE's own documented shape, spec FR-015), mandatory descriptive body, and zero or more `required`/`optional` predicate-name bullets a conforming instance must/may carry — decoded into `core.TypeDef`. Seeded for ARCNET-CORE's four fixed types plus `Property`/`Class` themselves by `arc init`; auto-registered (`merge: union`, empty `required`/`optional`, a placeholder description) the first time `arc apply` encounters an unrecognized type; never overwritten automatically once present. Replaces the existence-only Node-Kind Schema Document spec 005 introduced. |
 | **Arc State Directory** | The `.arc/` directory holding tool-managed local state, never versioned alongside graph content (excluded via `.gitignore`). Its presence is what distinguishes an initialized Graph Root from an empty directory. |
 | **Initial Commit** | The single git commit produced by `arc init` that records a graph's creation, with the mandatory subject line `graph(init): empty knowledge graph` (CORE §11.3). |
 | **Node** | The graph's addressable unit (ARCNET-AST §4): one Markdown file on disk, or one `## <ID>` section inside a patch. Identity (`ID`, from front-matter `"@id"`) and category (`Type`, from `"@type"`) are both mandatory, open-vocabulary, and never derived by fallback — `"@id"` must equal the file's basename. Everything else is one of `Attrs` (a `map[string][]Predicate`, every front-matter key besides `"@id"`/`"@type"`/`"published"`), `Texts` (a `map[string]string` of named prose fields), `HRefs` (inline mentions extracted from `Texts`), or `Edges` (every outgoing structural link, in document order, regardless of how the source document grouped it). `internal/core.Node` (`specs/010-predicate-node-model`, supersedes specs/003-apply-patch's `Kind`/`Text`/`Notes`/`Links` shape). |
@@ -172,12 +183,12 @@ This project uses **bare top-level verbs** (`arc init`, `arc apply`, `arc list`,
 | **Source Node** | A node of kind `source` (CORE's fixed, always-recognized `MergeNone` kind) — the citable document a patch itself represents. |
 | **Entity/Resource Node** | A node of kind `entity` (`MergeUnion`) or `resource` (`MergeUnionFirstWriter`) — CORE's fixed kinds for concepts and referenced material, mergeable across multiple contributing patches. |
 | **Timeline Entry** | One chronologically-ordered bullet appended to a `timeline/yearly/<YYYY>.md` or `timeline/monthly/<YYYY-MM>.md` period file, derived from a patch's `published` manifest field (CORE §9.4, `internal/core.TimelinePeriods`/`.TimelineEntry`). |
-| **Merge Behavior** | The `internal/core.MergeOp` (`none`, `union`, `union-first-writer`, `append`, `validated-overwrite`) a node's kind is registered against, determining how `internal/core.Merge` reconciles an incoming contribution with an existing node. Now sourced from a Node-Kind Schema Document's `merge` attribute, resolved via `internal/app/schema.Resolve`. |
+| **Merge Behavior** | The `internal/core.MergeOp` (`none`, `union`, `union-first-writer`, `append`, `validated-overwrite`) a node's type is registered against, determining how `internal/core.Merge` reconciles an incoming contribution with an existing node. Sourced from a Type Schema Node's `merge` attribute (the FR-015 bridge field), resolved into `core.Index.Types[name].Merge` via `internal/app/schema.Resolve`. |
 | **Ingest Commit** | The single git commit `arc apply` produces per invocation, subject naming the applied document, with per-kind created/merged stats and a `Source-Id:` trailer (CORE §11.3). A newly auto-registered Schema Document lands in this same commit (spec FR-012). |
 | **Violation** | One failed CORE §14 checklist rule, produced by `arc lint`: the rule that fired, the file and line (or "not applicable"), a human-readable message, and — for violations spanning more than one file (e.g. a basename collision) — every related path. `internal/app/lint/kernel.Violation`. |
 | **Lint Run** | One `arc lint` invocation: walks every node file in the graph, runs every applicable CORE §14 rule against it, and aggregates every violation found without stopping at the first one (spec FR-013). Strictly read-only — the first graph-inspecting command in this codebase that never writes to `fsys.Store` or git history. Schema Documents under `_schema/` are excluded from this walk entirely (spec FR-015). `internal/app/lint/kernel.LintResult`. |
 | **Checklist Rule** | One named CORE §14 conformance check (`internal/app/lint/kernel.Rule`), e.g. unique basenames, resolvable links, source citekey identity, entity Sowa category, registered predicates, one ingest commit per document, absence of merge-conflict markers. |
-| **Extension Profile Checklist** | `arc lint`'s CORE §10/§14 check for a non-built-in node kind: recognized (present in the resolved `core.MergeRuleSet`) vs. unrecognized, deliberately scoped to kind-recognition only — no per-kind field-schema declaration mechanism exists yet in this codebase (plan.md Complexity Tracking, `specs/004-arc-lint/research.md` D11; unaffected by `specs/005-graph-schema-first-class`, which adds kind/merge/predicate *recognition* storage, not field-level schema declaration). |
+| **Extension Profile Checklist** | `arc lint`'s CORE §10/§14 check for a non-built-in node type: recognized (present in the resolved `core.Index.Types`) vs. unrecognized, deliberately scoped to type-recognition only — no per-type field-schema *conformance* check (validating an instance's actual Attrs/Edges against its type's declared `required`/`optional` list) exists yet in this codebase (plan.md Complexity Tracking, `specs/004-arc-lint/research.md` D11; `specs/011-machine-readable-schema` makes a type's `required`/`optional` predicates machine-readable data, but does not add this conformance check itself). |
 | **Filter** | The optional, composable node-selection criteria (`Kinds` OR'd, `Tags`/`Attrs`/`AttrPatterns` AND'd) shared by every VISION.md Filtering-section command; a zero-value `Filter{}` matches every node. `internal/core.Filter`, `Filter.Match(Node) bool` (`specs/006-arc-grep-content-search`, research.md D8) — `arc grep` is the first command to consume it. |
 | **Match** | One reported occurrence of `arc grep`'s `<pattern>` on a single line within a single node's file: the node's `kind`/`id`, the 1-based line number, and the full matched line text. `internal/pkg/grep.Match` (path/line/text/byte-offsets, domain-agnostic) is mapped into `internal/app/graph/kernel.Match` (kind/id-labeled) for rendering. |
 | **Grep Run** | One `arc grep` invocation: enumerates and parses every node file (excluding `.arc/` and `_schema/`), narrows the scan to nodes passing a `Filter`, and reports every matching line across every scanned node in a single pass, never stopping at the first match. Strictly read-only, like `arc lint`. `internal/app/graph/kernel.GrepResult`, `internal/app/graph/service.Grep` (`specs/006-arc-grep-content-search`). |

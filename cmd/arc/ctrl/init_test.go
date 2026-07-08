@@ -21,6 +21,7 @@ import (
 	"github.com/fogfish/it/v2"
 	"github.com/spf13/cobra"
 
+	"github.com/fogfish/arcnet-cli/internal/app/schema/kernel"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
 
@@ -127,10 +128,10 @@ func TestInitCurrentDirectoryCreatesLayout(t *testing.T) {
 		ShouldNot(it.Error(out, err)).
 		Should(it.String(out).Contain(dir))
 
-	for _, folder := range []string{"sources", "entities", "resources", filepath.Join("timeline", "yearly"), filepath.Join("timeline", "monthly"), filepath.Join("_schema", "nodes"), filepath.Join("_schema", "predicates")} {
+	for _, folder := range []string{"sources", "entities", "resources", filepath.Join("timeline", "yearly"), filepath.Join("timeline", "monthly"), filepath.Join("_schema", "types"), filepath.Join("_schema", "predicates")} {
 		assertIsDir(t, filepath.Join(dir, folder))
 	}
-	assertIsFile(t, filepath.Join(dir, "_schema", "nodes", "entity.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "types", "entity.md"))
 	assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "related.md"))
 	_, metaErr := os.Stat(filepath.Join(dir, "_meta"))
 	it.Then(t).Should(it.True(os.IsNotExist(metaErr)))
@@ -191,13 +192,16 @@ func TestInitCurrentDirectoryFoldersInHistory(t *testing.T) {
 		Should(it.String(tracked).Contain("resources/.gitkeep")).
 		Should(it.String(tracked).Contain("timeline/yearly/.gitkeep")).
 		Should(it.String(tracked).Contain("timeline/monthly/.gitkeep")).
-		Should(it.String(tracked).Contain("_schema/nodes/entity.md")).
+		Should(it.String(tracked).Contain("_schema/types/entity.md")).
 		Should(it.String(tracked).Contain("_schema/predicates/related.md"))
 }
 
 // arc init
-// Scenario 1 from spec.md US1: every core kind/predicate is seeded as its
-// own readable document, with the expected id/kind/merge shape
+// spec.md US1 Acceptance Scenarios 1-2: every core predicate/type is
+// seeded as a real, machine-readable document — role/merge (plus
+// label/aligned where declared) and a description for every predicate;
+// required/optional and a description for every type — not an
+// existence-only stub.
 func TestInitSeedsAllCoreKindsAndPredicates(t *testing.T) {
 	dir := t.TempDir()
 	chdir(t, dir)
@@ -205,26 +209,44 @@ func TestInitSeedsAllCoreKindsAndPredicates(t *testing.T) {
 	_, err := sut(NewInitCmd(), []string{})
 	it.Then(t).Should(it.Nil(err))
 
-	for _, name := range []string{"source", "entity", "resource", "timeline"} {
-		assertIsFile(t, filepath.Join(dir, "_schema", "nodes", name+".md"))
-	}
-	for _, name := range []string{
-		"mentions", "mentionedIn", "cites", "isCitedBy", "broader", "narrower",
-		"isPartOf", "hasPart", "requires", "replaces", "isReplacedBy", "conformsTo", "related",
-	} {
-		assertIsFile(t, filepath.Join(dir, "_schema", "predicates", name+".md"))
+	for name, def := range kernel.CoreTypeDefs {
+		path := filepath.Join(dir, "_schema", "types", name+".md")
+		assertIsFile(t, path)
+
+		content, rerr := os.ReadFile(path)
+		it.Then(t).Should(it.Nil(rerr))
+		it.Then(t).
+			Should(it.String(string(content)).Contain(`"@type": Class`)).
+			Should(it.String(string(content)).Contain("merge: " + string(def.Merge)))
+		for _, required := range def.Required {
+			it.Then(t).Should(it.String(string(content)).Contain("required:: [[" + required + "]]"))
+		}
 	}
 
-	entity, rerr := os.ReadFile(filepath.Join(dir, "_schema", "nodes", "entity.md"))
-	it.Then(t).
-		Should(it.Nil(rerr)).
-		Should(it.String(string(entity)).Contain(`"@type": schema`)).
-		Should(it.String(string(entity)).Contain("merge: union"))
+	for name, def := range kernel.CorePredicateDefs {
+		path := filepath.Join(dir, "_schema", "predicates", name+".md")
+		assertIsFile(t, path)
 
-	related, rerr := os.ReadFile(filepath.Join(dir, "_schema", "predicates", "related.md"))
-	it.Then(t).
-		Should(it.Nil(rerr)).
-		Should(it.String(string(related)).Contain(`"@type": schema`))
+		content, rerr := os.ReadFile(path)
+		it.Then(t).Should(it.Nil(rerr))
+		it.Then(t).
+			Should(it.String(string(content)).Contain(`"@type": Property`)).
+			Should(it.String(string(content)).Contain("role: " + def.Role)).
+			Should(it.String(string(content)).Contain("merge: " + string(def.Merge)))
+	}
+}
+
+// arc init
+// spec.md US1 Acceptance Scenario 3: no _schema/nodes/ folder exists.
+func TestInitNoSchemaNodesFolderExists(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	_, statErr := os.Stat(filepath.Join(dir, "_schema", "nodes"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }
 
 // arc init
@@ -238,7 +260,7 @@ func TestInitSucceedsWithNoNetworkAccess(t *testing.T) {
 
 	out, err := sut(NewInitCmd(), []string{dir})
 	it.Then(t).ShouldNot(it.Error(out, err))
-	assertIsFile(t, filepath.Join(dir, "_schema", "nodes", "entity.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "types", "entity.md"))
 }
 
 // arc init <target-file>
@@ -312,7 +334,7 @@ func TestInitJSONOutput(t *testing.T) {
 		Should(it.Equal(dir, payload.Path)).
 		ShouldNot(it.Equal("", payload.Commit)).
 		Should(it.LessOrEqual(len(payload.Commit), 12)).
-		Should(it.Seq(payload.FoldersCreated).Contain("sources", "entities", "resources", "_schema/nodes", "_schema/predicates"))
+		Should(it.Seq(payload.FoldersCreated).Contain("sources", "entities", "resources", "_schema/types", "_schema/predicates"))
 }
 
 // arc init <dir>

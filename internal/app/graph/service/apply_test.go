@@ -36,24 +36,48 @@ func (r *fakeReporter) Step(label string)          { r.steps = append(r.steps, l
 func (r *fakeReporter) Done(string, time.Duration) {}
 func (r *fakeReporter) Error(string, error)        {}
 
-var coreMergeRulesFixture = core.MergeRuleSet{
-	"source":   core.MergeNone,
-	"entity":   core.MergeUnion,
-	"resource": core.MergeUnionFirstWriter,
-	"timeline": core.MergeAppend,
+var coreIndexFixture = core.Index{
+	Types: map[string]core.TypeDef{
+		"source":   {Merge: core.MergeNone},
+		"entity":   {Merge: core.MergeUnion},
+		"resource": {Merge: core.MergeUnionFirstWriter},
+		"timeline": {Merge: core.MergeAppend},
+	},
+	Predicates: map[string]core.PredicateDef{},
 }
 
-var emptyPredicates = map[string]bool{}
+// indexWithType returns coreIndexFixture plus one additional registered
+// type, for tests exercising a domain type's own registered merge
+// behavior.
+func indexWithType(name string, op core.MergeOp) core.Index {
+	types := make(map[string]core.TypeDef, len(coreIndexFixture.Types)+1)
+	for k, v := range coreIndexFixture.Types {
+		types[k] = v
+	}
+	types[name] = core.TypeDef{Merge: op}
+	return core.Index{Types: types, Predicates: coreIndexFixture.Predicates}
+}
 
-// fakeSchema records every RegisterKind/RegisterPredicate call, for
+// indexWithPredicate returns coreIndexFixture plus one additional
+// registered predicate, for tests exercising the already-registered path.
+func indexWithPredicate(name string) core.Index {
+	predicates := make(map[string]core.PredicateDef, len(coreIndexFixture.Predicates)+1)
+	for k, v := range coreIndexFixture.Predicates {
+		predicates[k] = v
+	}
+	predicates[name] = core.PredicateDef{}
+	return core.Index{Types: coreIndexFixture.Types, Predicates: predicates}
+}
+
+// fakeSchema records every RegisterType/RegisterPredicate call, for
 // asserting graph.Apply's auto-discovery hook (spec.md US2).
 type fakeSchema struct {
-	registeredKinds      []string
+	registeredTypes      []string
 	registeredPredicates []string
 }
 
-func (f *fakeSchema) RegisterKind(store fsys.Store, kind string) (bool, error) {
-	f.registeredKinds = append(f.registeredKinds, kind)
+func (f *fakeSchema) RegisterType(store fsys.Store, typ string) (bool, error) {
+	f.registeredTypes = append(f.registeredTypes, typ)
 	return true, nil
 }
 
@@ -289,7 +313,7 @@ func TestApplyGuardNotAGraph(t *testing.T) {
 	store := newMemStore()
 	store.files["patch.md"] = []byte(minimalSourcePatch)
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, &graphmock.VCS{}, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, &graphmock.VCS{}, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.True(errors.Is(err, service.ErrNotAGraph)))
 }
@@ -297,7 +321,7 @@ func TestApplyGuardNotAGraph(t *testing.T) {
 func TestApplyGuardPatchReadFailure(t *testing.T) {
 	store := newGraphStore()
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, &graphmock.VCS{}, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/missing.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, &graphmock.VCS{}, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/missing.md")
 
 	it.Then(t).Should(it.True(errors.Is(err, service.ErrPatchRead)))
 }
@@ -307,7 +331,7 @@ func TestApplySkipsWhenAlreadyTracked(t *testing.T) {
 	store.files["patch.md"] = []byte(minimalSourcePatch)
 	vcs := &graphmock.VCS{Tracked: map[string]bool{"sources/foo-2026-x.md": true}}
 
-	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -322,7 +346,7 @@ func TestApplyCreatesNewNode(t *testing.T) {
 	store.files["patch.md"] = []byte(minimalSourcePatch)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -339,7 +363,7 @@ func TestApplyMergesExistingNode(t *testing.T) {
 	store.files["entities/Widget.md"] = []byte(existingWidgetEntity)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -360,7 +384,7 @@ func TestApplyFlagsConflict(t *testing.T) {
 	store.files["resources/Widget Spec.md"] = []byte(existingWidgetSpecResourceWithStatus)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, len(result.Conflicts)))
@@ -377,7 +401,7 @@ func TestApplyUnregisteredKindWarns(t *testing.T) {
 	store.files["patch.md"] = []byte(domainKindPatch)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -390,9 +414,9 @@ func TestApplyRegisteredKindNoWarning(t *testing.T) {
 	store := newGraphStore()
 	store.files["patch.md"] = []byte(domainKindPatch)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
-	rules := coreMergeRulesFixture.Union(core.MergeRuleSet{"hypothesis": core.MergeValidatedOverwrite})
+	index := indexWithType("hypothesis", core.MergeValidatedOverwrite)
 
-	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), rules, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), index, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(0, len(result.Warnings)))
@@ -407,10 +431,10 @@ func TestApplyUnregisteredKindRegistersSchemaKind(t *testing.T) {
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 	schema := &fakeSchema{}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, schema, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, schema, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
-	it.Then(t).Should(it.Seq(schema.registeredKinds).Contain("hypothesis"))
+	it.Then(t).Should(it.Seq(schema.registeredTypes).Contain("hypothesis"))
 }
 
 // arc apply — spec.md US2: a previously-unseen predicate declared in a
@@ -421,7 +445,7 @@ func TestApplyUnregisteredPredicateRegistersSchemaPredicate(t *testing.T) {
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 	schema := &fakeSchema{}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, schema, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, schema, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Seq(schema.registeredPredicates).Contain("replaces"))
@@ -434,9 +458,9 @@ func TestApplyRegisteredPredicateNotReRegistered(t *testing.T) {
 	store.files["patch.md"] = []byte(sourceEntityPatch)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 	schema := &fakeSchema{}
-	predicates := map[string]bool{"replaces": true}
+	index := indexWithPredicate("replaces")
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, predicates, schema, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), index, schema, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(0, len(schema.registeredPredicates)))
@@ -447,7 +471,7 @@ func TestApplyCommitErrorPropagates(t *testing.T) {
 	store.files["patch.md"] = []byte(minimalSourcePatch)
 	vcs := &graphmock.VCS{CommitErr: errors.New("commit failed")}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).ShouldNot(it.Nil(err))
 }
@@ -457,7 +481,7 @@ func TestApplyTimelineEntriesCreated(t *testing.T) {
 	store.files["patch.md"] = []byte(minimalSourcePatch)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Seq(result.Timeline).Equal("2026", "2026-04"))
@@ -479,7 +503,7 @@ func TestApplyYearlyTimelinePeriodFileParsesViaCoreParseNode(t *testing.T) {
 	store.files["patch.md"] = []byte(minimalSourcePatch)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 	it.Then(t).Should(it.Nil(err))
 
 	yearly := store.files["timeline/yearly/2026.md"]
@@ -501,7 +525,7 @@ func TestApplyReportsStepPerNode(t *testing.T) {
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 	reporter := &fakeReporter{}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, reporter, coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, reporter, coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -545,7 +569,7 @@ func TestApplyStubCreatesNodeWithNeitherPublishedNorIndexed(t *testing.T) {
 	store.files["patch.md"] = []byte(stubSectionPatch)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 	it.Then(t).Should(it.Nil(err))
 
 	content := string(store.files["entities/StubEntity.md"])
@@ -557,9 +581,9 @@ func TestApplyStubCreatesNodeWithNeitherPublishedNorIndexed(t *testing.T) {
 }
 
 // spec.md US1 Acceptance Scenario 4 / FR-003: an auto-registered
-// _schema/nodes/<kind>.md document carries neither published nor indexed,
+// _schema/types/<name>.md document carries neither published nor indexed,
 // even though service.Apply's own writeNode never actually writes this
-// path — schema.RegisterKind is a separate port call the loop never routes
+// path — schema.RegisterType is a separate port call the loop never routes
 // through create-path stamping (research.md D8); this asserts the
 // triggering node itself still stamped indexed, but the fake schema records
 // no Attrs of its own to accidentally carry the timestamp.
@@ -569,9 +593,9 @@ func TestApplySchemaRegistrationCarriesNoTimestampAttrs(t *testing.T) {
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 	schema := &fakeSchema{}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, schema, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, schema, "/graph", "/patch.md")
 	it.Then(t).Should(it.Nil(err))
-	it.Then(t).Should(it.Seq(schema.registeredKinds).Contain("hypothesis"))
+	it.Then(t).Should(it.Seq(schema.registeredTypes).Contain("hypothesis"))
 }
 
 // spec.md US1 Acceptance Scenario 1/2 / FR-001/FR-005: every node one
@@ -582,7 +606,7 @@ func TestApplyCreatedNodesCarryPublishedAndShareIndexed(t *testing.T) {
 	store.files["patch.md"] = []byte(sourceEntityPatch)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 	it.Then(t).Should(it.Nil(err))
 
 	source, err := core.ParseNode(bytes.NewReader(store.files["sources/foo-2026-x.md"]))
@@ -610,7 +634,7 @@ func TestApplyMergedNodeGetsUpdatedMatchingIndexed(t *testing.T) {
 	store.files["entities/Widget.md"] = []byte(existingWidgetEntity)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 	it.Then(t).Should(it.Nil(err))
 
 	source, err := core.ParseNode(bytes.NewReader(store.files["sources/foo-2026-x.md"]))
@@ -671,7 +695,7 @@ A test document.
 `)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 	it.Then(t).Should(it.Nil(err))
 
 	content := string(store.files["sources/foo-2026-x2.md"])
@@ -688,7 +712,7 @@ func TestApplyReportsStepConflictFlagged(t *testing.T) {
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 	reporter := &fakeReporter{}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, reporter, coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, reporter, coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal("Widget Spec: merged (conflict flagged)", reporter.steps[1]))
@@ -716,7 +740,7 @@ A test entity.
 	store.files["entities/Widget.md"] = []byte(mismatched)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreMergeRulesFixture, emptyPredicates, &fakeSchema{}, "/graph", "/patch.md")
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).ShouldNot(it.Nil(err))
 	it.Then(t).

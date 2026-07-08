@@ -24,8 +24,8 @@ import (
 
 // Apply ingests the patch at patchPath into the graph rooted at dir. It is
 // a thin delegator into service.Apply.
-func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, rules core.MergeRuleSet, predicates map[string]bool, schema port.SchemaRegistry, dir, patchPath string) (kernel.ApplyResult, error) {
-	return service.Apply(ctx, mounter, vcs, reporter, rules, predicates, schema, dir, patchPath)
+func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, index core.Index, schema port.SchemaRegistry, dir, patchPath string) (kernel.ApplyResult, error) {
+	return service.Apply(ctx, mounter, vcs, reporter, index, schema, dir, patchPath)
 }
 
 // Grep searches node file content across the graph rooted at dir for lines

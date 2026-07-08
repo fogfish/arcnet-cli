@@ -41,14 +41,14 @@ func TestCheckPredicateCaseDedupSamePredicateTwice(t *testing.T) {
 
 func TestCheckPredicateRegisteredPresent(t *testing.T) {
 	node := core.Node{Edges: []core.Link{{Predicate: "mentions", Target: "X"}}}
-	registry := map[string]bool{"mentions": true}
+	registry := map[string]core.PredicateDef{"mentions": {}}
 	out := checkPredicateRegistered(node, "x.md", []byte("- mentions:: [[X]]\n"), registry)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
 func TestCheckPredicateRegisteredAbsent(t *testing.T) {
 	node := core.Node{Edges: []core.Link{{Predicate: "unregisteredPred", Target: "X"}}}
-	out := checkPredicateRegistered(node, "x.md", []byte("- unregisteredPred:: [[X]]\n"), map[string]bool{})
+	out := checkPredicateRegistered(node, "x.md", []byte("- unregisteredPred:: [[X]]\n"), map[string]core.PredicateDef{})
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).Should(it.Equal(kernel.RulePredicateRegistered, out[0].Rule))
 }
@@ -63,7 +63,7 @@ func TestCheckPredicateRegisteredFromFormerlyDistinctGroups(t *testing.T) {
 		{Predicate: "citesAsEvidence", Target: "Y"},
 	}}
 	raw := []byte("- mentions:: [[X]]\n- citesAsEvidence:: [[Y]]\n")
-	out := checkPredicateRegistered(node, "x.md", raw, map[string]bool{"mentions": true})
+	out := checkPredicateRegistered(node, "x.md", raw, map[string]core.PredicateDef{"mentions": {}})
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).
 		Should(it.Equal(kernel.RulePredicateRegistered, out[0].Rule)).

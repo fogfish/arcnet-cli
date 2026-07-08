@@ -149,7 +149,7 @@ const (
 // Start/Done pair per phase, plus one Reporter.Step per node processed
 // inside "Applying node contributions", naming the node's ID and outcome
 // (spec.md FR-021).
-func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, rules core.MergeRuleSet, predicates map[string]bool, schema port.SchemaRegistry, dir, patchPath string) (kernel.ApplyResult, error) {
+func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, index core.Index, schema port.SchemaRegistry, dir, patchPath string) (kernel.ApplyResult, error) {
 	store, err := mounter.Mount(dir)
 	if err != nil {
 		return kernel.ApplyResult{}, err
@@ -217,12 +217,13 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 			continue
 		}
 
-		op, ok := rules.Lookup(node.Type)
+		typeDef, ok := index.Types[node.Type]
+		op := typeDef.Merge
 		if !ok {
 			op = core.MergeUnion
 			result.Warnings = append(result.Warnings, fmt.Sprintf(
 				"%s is not a recognized node kind for this graph — applied using the default \"union\" merge behavior", node.Type))
-			if _, err := schema.RegisterKind(store, node.Type); err != nil {
+			if _, err := schema.RegisterType(store, node.Type); err != nil {
 				reporter.Error(labelApplyingNodes, err)
 				rollback(store, createdPaths)
 				return kernel.ApplyResult{}, err
@@ -275,7 +276,7 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 		}
 
 		for _, name := range distinctPredicates(merged) {
-			if predicates[name] {
+			if _, ok := index.Predicates[name]; ok {
 				continue
 			}
 			if _, err := schema.RegisterPredicate(store, name); err != nil {

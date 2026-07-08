@@ -22,6 +22,7 @@ import (
 	"github.com/fogfish/it/v2"
 	"github.com/spf13/cobra"
 
+	appschema "github.com/fogfish/arcnet-cli/internal/app/schema"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
 
@@ -99,19 +100,22 @@ func runGit(t *testing.T, dir string, args ...string) string {
 // initGraph builds a minimal, real, git-committed graph root — equivalent
 // to arc init's own layout — without depending on cmd/arc/ctrl (which
 // would otherwise perform a real network config-seed fetch cmd/arc/graph's
-// tests must not depend on). _schema/nodes/ is pre-seeded with the four
-// core kinds, matching arc init's own real output.
+// tests must not depend on). _schema/ is seeded with appschema.Seed()'s own
+// real output — the full CORE vocabulary, matching arc init's actual
+// behavior — so Resolve's fail-fast validation never rejects this fixture.
 func initGraph(t *testing.T, dir string) {
 	t.Helper()
-	for _, folder := range []string{"sources", "entities", "resources", "timeline/yearly", "timeline/monthly", "_schema/nodes", "_schema/predicates"} {
+	for _, folder := range []string{"sources", "entities", "resources", "timeline/yearly", "timeline/monthly", "_schema/types", "_schema/predicates"} {
 		it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, folder), 0o755)))
 	}
 	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, ".arc"), 0o755)))
 	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(dir, ".arc", ".gitkeep"), nil, 0o644)))
 	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(".arc/\n"), 0o644)))
 
-	for name, op := range map[string]string{"source": "none", "entity": "union", "resource": "union-first-writer", "timeline": "append"} {
-		seedSchemaNode(t, dir, name, op)
+	for path, raw := range appschema.Seed() {
+		full := filepath.Join(dir, filepath.FromSlash(path))
+		it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Dir(full), 0o755)))
+		it.Then(t).Should(it.Nil(os.WriteFile(full, raw, 0o644)))
 	}
 
 	runGit(t, dir, "init")
@@ -131,14 +135,14 @@ func seedNode(t *testing.T, dir, relPath, content string) {
 	runGit(t, dir, "commit", "-m", "seed: "+relPath)
 }
 
-// seedSchemaNode writes _schema/nodes/<kind>.md directly, registering kind
+// seedSchemaNode writes _schema/types/<kind>.md directly, registering kind
 // with merge behavior op — equivalent to a prior arc apply's auto-discovery
 // or a hand-edit (spec.md US2/US3), without writing a git commit of its own.
 func seedSchemaNode(t *testing.T, dir, kind, op string) {
 	t.Helper()
-	full := filepath.Join(dir, "_schema", "nodes", kind+".md")
+	full := filepath.Join(dir, "_schema", "types", kind+".md")
 	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Dir(full), 0o755)))
-	content := "---\n\"@id\": " + kind + "\n\"@type\": schema\nmerge: " + op + "\n---\n# " + kind + "\n"
+	content := "---\n\"@id\": " + kind + "\n\"@type\": Class\nmerge: " + op + "\n---\n# " + kind + "\n\nA domain type registered by this test fixture.\n"
 	it.Then(t).Should(it.Nil(os.WriteFile(full, []byte(content), 0o644)))
 }
 
@@ -661,33 +665,37 @@ func TestApplyUnregisteredKindCreatesSchemaDocumentInSameCommit(t *testing.T) {
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	assertIsFile(t, filepath.Join(dir, "_schema", "nodes", "hypothesis.md"))
-	content := readFile(t, filepath.Join(dir, "_schema", "nodes", "hypothesis.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "types", "hypothesis.md"))
+	content := readFile(t, filepath.Join(dir, "_schema", "types", "hypothesis.md"))
 	it.Then(t).Should(it.String(content).Contain("merge: union"))
 
 	stat := runGit(t, dir, "show", "--stat", "HEAD")
 	it.Then(t).
-		Should(it.String(stat).Contain("_schema/nodes/hypothesis.md")).
+		Should(it.String(stat).Contain("_schema/types/hypothesis.md")).
 		Should(it.String(stat).Contain("Forward Secrecy Requires Ephemeral Keys.md"))
 }
 
 // arc apply tls13.patch.md
 // Scenario 2 from spec.md US2: a patch introducing an unregistered
-// predicate creates its schema document, in the same commit.
+// predicate creates its schema document, in the same commit. "supersedes"
+// (quickstart.md Scenario 2) is used rather than a CORE §10 predicate like
+// "mentions", since every one of those is already registered by
+// initGraph's full appschema.Seed() output, matching a real arc init.
 func TestApplyUnregisteredPredicateCreatesSchemaDocumentInSameCommit(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	chdir(t, dir)
-	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
+	patchWithNovelPredicate := strings.ReplaceAll(tls13Patch, "mentions:: [[Transport Layer Security]]", "supersedes:: [[Legacy Protocol]]")
+	patch := writePatchFile(t, dir, "tls13.patch.md", patchWithNovelPredicate)
 
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "mentions.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "supersedes.md"))
 
 	stat := runGit(t, dir, "show", "--stat", "HEAD")
 	it.Then(t).
-		Should(it.String(stat).Contain("_schema/predicates/mentions.md")).
+		Should(it.String(stat).Contain("_schema/predicates/supersedes.md")).
 		Should(it.String(stat).Contain("sources/rescorla-2026-tls13.md"))
 }
 
@@ -702,7 +710,7 @@ func TestApplyRegisteredKindContentNotDuplicated(t *testing.T) {
 	_, err := sut(NewApplyCmd(), []string{patch1})
 	it.Then(t).Should(it.Nil(err))
 
-	before := readFile(t, filepath.Join(dir, "_schema", "nodes", "hypothesis.md"))
+	before := readFile(t, filepath.Join(dir, "_schema", "types", "hypothesis.md"))
 
 	secondPatch := strings.ReplaceAll(strings.ReplaceAll(notePatchWithHypothesis,
 		"kolesnikov-2026-note", "kolesnikov-2026-note2"),
@@ -711,7 +719,7 @@ func TestApplyRegisteredKindContentNotDuplicated(t *testing.T) {
 	_, err = sut(NewApplyCmd(), []string{patch2})
 	it.Then(t).Should(it.Nil(err))
 
-	after := readFile(t, filepath.Join(dir, "_schema", "nodes", "hypothesis.md"))
+	after := readFile(t, filepath.Join(dir, "_schema", "types", "hypothesis.md"))
 	it.Then(t).Should(it.Equal(before, after))
 }
 
@@ -779,7 +787,7 @@ A conclusion distilled from sources.
 
 // arc apply
 // Scenario 3 from spec.md US3: hand-editing a registered kind's
-// _schema/nodes/<kind>.md merge value changes the behavior a later arc
+// _schema/types/<kind>.md merge value changes the behavior a later arc
 // apply invocation actually uses — union silently keeps the existing
 // scalar field (no conflict), but after a hand-edit to
 // union-first-writer the identical divergence is flagged.
@@ -1048,6 +1056,48 @@ func TestApplyTargetNotAGraphRefuses(t *testing.T) {
 	out, err := sut(NewApplyCmd(), []string{patch})
 
 	it.Then(t).Should(it.Error(out, err).Contain("initialized graph"))
+}
+
+// arc apply tls13.patch.md
+// spec.md US2 Acceptance Scenario 5 / FR-014, quickstart.md Scenario 2: a
+// malformed _schema/ document aborts arc apply before any other write.
+func TestApplyMalformedSchemaDocumentAbortsWithZeroWrites(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	entityDoc := readFile(t, filepath.Join(dir, "_schema", "types", "entity.md"))
+	it.Then(t).Should(it.Nil(os.WriteFile(
+		filepath.Join(dir, "_schema", "types", "entity.md"),
+		[]byte(strings.ReplaceAll(entityDoc, "merge: union", "merge: bogus")), 0o644)))
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
+
+	before := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Error(out, err).Contain("_schema/types/entity.md"))
+
+	after := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
+	it.Then(t).Should(it.Equal(before, after))
+
+	_, statErr := os.Stat(filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+}
+
+// arc apply tls13.patch.md
+// spec.md US2 Acceptance Scenario 5 / FR-014: a missing _schema/ subfolder
+// aborts arc apply before any other write.
+func TestApplyMissingSchemaFolderAbortsWithZeroWrites(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	it.Then(t).Should(it.Nil(os.RemoveAll(filepath.Join(dir, "_schema", "types"))))
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Error(out, err).Contain("_schema/types"))
+
+	_, statErr := os.Stat(filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }
 
 // arc apply pqkex.patch.md
@@ -1366,7 +1416,7 @@ func TestApplyAutoRegisteredSchemaDocumentCarriesNoTimestamps(t *testing.T) {
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	schemaDoc := readFile(t, filepath.Join(dir, "_schema", "nodes", "hypothesis.md"))
+	schemaDoc := readFile(t, filepath.Join(dir, "_schema", "types", "hypothesis.md"))
 	it.Then(t).
 		ShouldNot(it.String(schemaDoc).Contain("published:")).
 		ShouldNot(it.String(schemaDoc).Contain("indexed:"))

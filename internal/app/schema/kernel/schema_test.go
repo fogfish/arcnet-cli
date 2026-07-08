@@ -15,39 +15,61 @@ import (
 	"github.com/fogfish/it/v2"
 
 	"github.com/fogfish/arcnet-cli/internal/app/schema/kernel"
-	"github.com/fogfish/arcnet-cli/internal/core"
 )
-
-func TestCoreMergeRulesFixedKinds(t *testing.T) {
-	it.Then(t).Should(it.Equal(4, len(kernel.CoreMergeRules)))
-
-	op, ok := kernel.CoreMergeRules.Lookup("source")
-	it.Then(t).
-		Should(it.True(ok)).
-		Should(it.Equal(core.MergeNone, op))
-
-	op, ok = kernel.CoreMergeRules.Lookup("entity")
-	it.Then(t).
-		Should(it.True(ok)).
-		Should(it.Equal(core.MergeUnion, op))
-
-	op, ok = kernel.CoreMergeRules.Lookup("resource")
-	it.Then(t).
-		Should(it.True(ok)).
-		Should(it.Equal(core.MergeUnionFirstWriter, op))
-
-	op, ok = kernel.CoreMergeRules.Lookup("timeline")
-	it.Then(t).
-		Should(it.True(ok)).
-		Should(it.Equal(core.MergeAppend, op))
-}
 
 var camelCasePattern = regexp.MustCompile(`^[a-z][a-zA-Z0-9]*$`)
 
-func TestCorePredicatesThirteenDistinctCamelCaseNames(t *testing.T) {
-	it.Then(t).Should(it.Equal(13, len(kernel.CorePredicates)))
+var validRoles = map[string]bool{"meta": true, "text": true, "href": true, "edge": true, "link": true}
 
-	for name := range kernel.CorePredicates {
+func TestCorePredicateDefsContainsFullCoreVocabulary(t *testing.T) {
+	names := []string{
+		"tags", "text",
+		"published", "created", "updated",
+		"mentions", "mentionedIn",
+		"broader", "narrower", "isPartOf", "hasPart", "requires", "replaces", "isReplacedBy", "conformsTo", "related",
+		"cites", "citesAsEvidence", "citesAsAuthority", "supports", "confirms", "extends", "critiques", "disputes", "refutes", "isCitedBy",
+		"title", "abstract", "authors", "url", "doi", "category", "aliases", "definition", "notes", "ref", "year", "status", "relevance", "granularity", "entries", "heading",
+		"role", "merge", "label", "aligned", "description", "required", "optional",
+	}
+
+	it.Then(t).Should(it.Equal(len(names), len(kernel.CorePredicateDefs)))
+
+	for _, name := range names {
+		def, ok := kernel.CorePredicateDefs[name]
+		it.Then(t).Should(it.True(ok))
+		it.Then(t).
+			Should(it.True(validRoles[def.Role])).
+			ShouldNot(it.Equal("", string(def.Merge))).
+			ShouldNot(it.Equal("", def.Description))
+	}
+}
+
+func TestCorePredicateDefNamesAreCamelCase(t *testing.T) {
+	for name := range kernel.CorePredicateDefs {
 		it.Then(t).Should(it.True(camelCasePattern.MatchString(name)))
 	}
+}
+
+func TestCoreTypeDefsContainsCoreTypesAndSchemaTypesThemselves(t *testing.T) {
+	it.Then(t).Should(it.Equal(6, len(kernel.CoreTypeDefs)))
+
+	for _, name := range []string{"source", "entity", "resource", "timeline", "Property", "Class"} {
+		def, ok := kernel.CoreTypeDefs[name]
+		it.Then(t).Should(it.True(ok))
+		it.Then(t).ShouldNot(it.Equal("", def.Description))
+	}
+}
+
+func TestCoreTypeDefsRequiredListsMatchCoreSection11(t *testing.T) {
+	source := kernel.CoreTypeDefs["source"]
+	it.Then(t).Should(it.Seq(source.Required).Equal("title", "published", "abstract", "mentions"))
+
+	entity := kernel.CoreTypeDefs["entity"]
+	it.Then(t).Should(it.Seq(entity.Required).Equal("category", "definition", "mentionedIn"))
+
+	resource := kernel.CoreTypeDefs["resource"]
+	it.Then(t).Should(it.Seq(resource.Required).Equal("ref", "relevance"))
+
+	timeline := kernel.CoreTypeDefs["timeline"]
+	it.Then(t).Should(it.Seq(timeline.Required).Equal("granularity", "entries"))
 }

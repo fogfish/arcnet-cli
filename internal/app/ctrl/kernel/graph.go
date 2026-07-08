@@ -35,7 +35,7 @@ var DefaultLayout = ArcNetCoreLayout{
 		"resources",
 		"timeline/yearly",
 		"timeline/monthly",
-		"_schema/nodes",
+		"_schema/types",
 		"_schema/predicates",
 	},
 	SeedFiles: map[string]string{},

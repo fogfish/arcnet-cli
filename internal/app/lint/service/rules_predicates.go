@@ -75,7 +75,7 @@ func checkPredicateCase(node core.Node, path string, raw []byte) []kernel.Violat
 // checkPredicateRegistered reports one RulePredicateRegistered violation
 // per distinct predicate a node declares that is absent from registry
 // (research.md D9/spec FR-008).
-func checkPredicateRegistered(node core.Node, path string, raw []byte, registry map[string]bool) []kernel.Violation {
+func checkPredicateRegistered(node core.Node, path string, raw []byte, registry map[string]core.PredicateDef) []kernel.Violation {
 	var out []kernel.Violation
 	seen := map[string]bool{}
 	for _, occ := range predicateOccurrences(node, raw) {
@@ -83,7 +83,7 @@ func checkPredicateRegistered(node core.Node, path string, raw []byte, registry 
 			continue
 		}
 		seen[occ.predicate] = true
-		if !registry[occ.predicate] {
+		if _, ok := registry[occ.predicate]; !ok {
 			out = append(out, kernel.Violation{
 				Rule:    kernel.RulePredicateRegistered,
 				Path:    path,
