@@ -15,6 +15,7 @@ import (
 	"github.com/fogfish/it/v2"
 
 	"github.com/fogfish/arcnet-cli/internal/app/schema/kernel"
+	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
 var camelCasePattern = regexp.MustCompile(`^[a-z][a-zA-Z0-9]*$`)
@@ -72,4 +73,16 @@ func TestCoreTypeDefsRequiredListsMatchCoreSection11(t *testing.T) {
 
 	timeline := kernel.CoreTypeDefs["timeline"]
 	it.Then(t).Should(it.Seq(timeline.Required).Equal("granularity", "entries"))
+}
+
+// BUG-001 / spec.md FR-018: every role:"text" predicate in the built-in
+// vocabulary seeds MergeAppend — role alone must be enough to predict
+// dispatch, without reading each predicate's individual assignment.
+func TestCorePredicateDefsTextRoleSeedsAppend(t *testing.T) {
+	for _, def := range kernel.CorePredicateDefs {
+		if def.Role != "text" {
+			continue
+		}
+		it.Then(t).Should(it.Equal(core.MergeAppend, def.Merge))
+	}
 }

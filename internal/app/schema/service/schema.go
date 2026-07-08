@@ -39,9 +39,11 @@ const (
 var validRoles = map[string]bool{"meta": true, "text": true, "href": true, "edge": true, "link": true}
 
 var validMergeOps = map[core.MergeOp]bool{
-	core.MergeNone:               true,
+	core.MergeImmutable:          true,
 	core.MergeUnion:              true,
-	core.MergeUnionFirstWriter:   true,
+	core.MergeFirstWriteWin:      true,
+	core.MergeFillIfEmpty:        true,
+	core.MergeLastWriteWin:       true,
 	core.MergeAppend:             true,
 	core.MergeValidatedOverwrite: true,
 }

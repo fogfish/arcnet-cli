@@ -19,9 +19,9 @@ import (
 
 var coreIndexFixture = core.Index{
 	Types: map[string]core.TypeDef{
-		"source":   {Merge: core.MergeNone},
+		"source":   {Merge: core.MergeImmutable},
 		"entity":   {Merge: core.MergeUnion},
-		"resource": {Merge: core.MergeUnionFirstWriter},
+		"resource": {Merge: core.MergeFirstWriteWin},
 		"timeline": {Merge: core.MergeAppend},
 	},
 }
@@ -75,9 +75,9 @@ func TestCheckUnrecognizedKindUnrecognized(t *testing.T) {
 
 func TestCheckUnrecognizedKindConfigRegistered(t *testing.T) {
 	index := core.Index{Types: map[string]core.TypeDef{
-		"source":     {Merge: core.MergeNone},
+		"source":     {Merge: core.MergeImmutable},
 		"entity":     {Merge: core.MergeUnion},
-		"resource":   {Merge: core.MergeUnionFirstWriter},
+		"resource":   {Merge: core.MergeFirstWriteWin},
 		"timeline":   {Merge: core.MergeAppend},
 		"hypothesis": {Merge: core.MergeValidatedOverwrite},
 	}}

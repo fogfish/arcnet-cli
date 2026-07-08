@@ -19,5 +19,4 @@ const (
 	// names the specific file and the specific problem.
 	ErrManifestInvalid = faults.Type("manifest is missing a mandatory field or uses the pre-0.5 node format")
 	ErrPatchStructure  = faults.Type("patch body does not follow the H1-kind/H2-node section structure")
-	ErrUnknownMergeOp  = faults.Safe1[string]("%s is not a recognized merge operation")
 )

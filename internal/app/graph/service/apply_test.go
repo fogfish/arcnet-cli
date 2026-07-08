@@ -36,14 +36,22 @@ func (r *fakeReporter) Step(label string)          { r.steps = append(r.steps, l
 func (r *fakeReporter) Done(string, time.Duration) {}
 func (r *fakeReporter) Error(string, error)        {}
 
+// coreIndexFixture declares Predicates for spec.md 012's per-predicate
+// dispatch (Types entries are kept for continuity/documentation only —
+// TypeDef.Merge is no longer consulted by core.Merge). Every predicate not
+// listed here falls back to MergeUnion (research.md D6).
 var coreIndexFixture = core.Index{
 	Types: map[string]core.TypeDef{
-		"source":   {Merge: core.MergeNone},
+		"source":   {Merge: core.MergeImmutable},
 		"entity":   {Merge: core.MergeUnion},
-		"resource": {Merge: core.MergeUnionFirstWriter},
+		"resource": {Merge: core.MergeFirstWriteWin},
 		"timeline": {Merge: core.MergeAppend},
 	},
-	Predicates: map[string]core.PredicateDef{},
+	Predicates: map[string]core.PredicateDef{
+		"ref":       {Merge: core.MergeImmutable},
+		"status":    {Merge: core.MergeLastWriteWin},
+		"relevance": {Merge: core.MergeFirstWriteWin},
+	},
 }
 
 // indexWithType returns coreIndexFixture plus one additional registered
@@ -230,11 +238,12 @@ category: [independent, abstract, occurrent, script]
 A test entity.
 `
 
-// sourceResourcePatch/existingWidgetSpecResourceWithStatus (BUG-004): a
-// "resource" node uses MergeUnionFirstWriter, untouched by BUG-004's
-// MergeUnion-only fix, so an already-populated scalar field it diverges on
-// is still flagged — unlike an "entity" (MergeUnion) node's Texts/Attrs,
-// which no longer conflict at all (see internal/core/merge_test.go).
+// sourceResourcePatch/existingWidgetSpecResourceWithStatus: a "resource"
+// node's leading prose (Texts["relevance"], firstWriteWin per
+// coreIndexFixture) genuinely diverges from what's already on disk, so it
+// is flagged — its "status" (lastWriteWin) diverges too but is never
+// flagged (spec.md FR-012), and "ref" (immutable) is unchanged on both
+// sides so it doesn't interact with this scenario.
 const sourceResourcePatch = `---
 kind: patch
 document: foo-2026-x
@@ -264,7 +273,7 @@ ref: standard
 status: backlog
 ` + "```" + `
 
-The normative specification of Widget.
+An updated specification of Widget alignment.
 `
 
 const existingWidgetSpecResourceWithStatus = `---
@@ -392,8 +401,9 @@ func TestApplyFlagsConflict(t *testing.T) {
 	content := string(store.files["resources/Widget Spec.md"])
 	it.Then(t).
 		Should(it.String(content).Contain("<<<<<<< existing")).
-		Should(it.String(content).Contain("read")).
-		Should(it.String(content).Contain("backlog"))
+		Should(it.String(content).Contain("The normative specification of Widget.")).
+		Should(it.String(content).Contain("An updated specification of Widget alignment.")).
+		Should(it.String(content).Contain("status: backlog"))
 }
 
 func TestApplyUnregisteredKindWarns(t *testing.T) {
@@ -517,7 +527,10 @@ func TestApplyYearlyTimelinePeriodFileParsesViaCoreParseNode(t *testing.T) {
 }
 
 // BUG-001 / spec.md FR-021: one Reporter.Step line per processed node,
-// naming its ID and outcome.
+// naming its ID and outcome — a created node (no prior merge) gets no
+// further predicate lines; a merged node gets one further indented
+// Reporter.Step per predicate core.Merge touched, naming its resolved
+// MergeOp and outcome (spec 012 FR-017/BUG-001).
 func TestApplyReportsStepPerNode(t *testing.T) {
 	store := newGraphStore()
 	store.files["patch.md"] = []byte(sourceEntityPatch)
@@ -529,9 +542,13 @@ func TestApplyReportsStepPerNode(t *testing.T) {
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
-		Should(it.Equal(2, len(reporter.steps))).
+		Should(it.Equal(6, len(reporter.steps))).
 		Should(it.Equal("foo-2026-x: created", reporter.steps[0])).
-		Should(it.Equal("Widget: merged", reporter.steps[1]))
+		Should(it.Equal("Widget: merged", reporter.steps[1])).
+		Should(it.Equal("  category: union -> appended", reporter.steps[2])).
+		Should(it.Equal("  definition: union -> appended", reporter.steps[3])).
+		Should(it.Equal("  published: union -> unchanged", reporter.steps[4])).
+		Should(it.Equal("  title: union -> unchanged", reporter.steps[5]))
 }
 
 const stubSectionPatch = `---

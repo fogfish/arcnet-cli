@@ -163,9 +163,9 @@ A test entity.
 
 var coreIndexFixtureLint = core.Index{
 	Types: map[string]core.TypeDef{
-		"source":   {Merge: core.MergeNone},
+		"source":   {Merge: core.MergeImmutable},
 		"entity":   {Merge: core.MergeUnion},
-		"resource": {Merge: core.MergeUnionFirstWriter},
+		"resource": {Merge: core.MergeFirstWriteWin},
 		"timeline": {Merge: core.MergeAppend},
 	},
 	Predicates: map[string]core.PredicateDef{"mentions": {}},
@@ -218,9 +218,9 @@ func TestLintIncludesNodeInNonStandardFolder(t *testing.T) {
 	s.files["hypothesis/A Test Hypothesis.md"] = "---\n\"@id\": \"A Test Hypothesis\"\n\"@type\": hypothesis\ntitle: A Test Hypothesis\n---\n# A Test Hypothesis\n\nA conclusion.\n- mentions:: [[foo-2026-x]]\n"
 	index := core.Index{
 		Types: map[string]core.TypeDef{
-			"source":     {Merge: core.MergeNone},
+			"source":     {Merge: core.MergeImmutable},
 			"entity":     {Merge: core.MergeUnion},
-			"resource":   {Merge: core.MergeUnionFirstWriter},
+			"resource":   {Merge: core.MergeFirstWriteWin},
 			"timeline":   {Merge: core.MergeAppend},
 			"hypothesis": {Merge: core.MergeValidatedOverwrite},
 		},

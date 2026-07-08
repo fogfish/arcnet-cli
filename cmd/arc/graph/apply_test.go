@@ -427,6 +427,7 @@ const rfcResourceSeedSetStatus = `---
 title: RFC 8446
 ref: standard
 status: read
+category: normative
 ---
 # RFC 8446
 
@@ -460,9 +461,10 @@ Surveys post-quantum key exchange deployment.
 "@type": resource
 ref: standard
 status: backlog
+category: informative
 ` + "```" + `
 
-The normative specification of TLS 1.3.
+A survey of TLS 1.3 adoption patterns.
 `
 
 const llmEntitySeed = `---
@@ -519,11 +521,17 @@ Andrej Karpathy has publicly argued that agentic coding workflows will reshape h
 `
 
 // arc apply karpathy.patch.md
-// BUG-004 regression: re-applying a patch to a "union" kind (entity) whose
-// scalar Attrs are recomputed every run (score-c/score-z) and whose Text
-// supplies a near-duplicate paraphrase plus a genuinely new paragraph must
-// not produce a false-positive conflict (spec.md FR-023/FR-024/SC-009).
-func TestApplyMergeUnionNeverFlagsRegeneratedScalarsOrNearDuplicateText(t *testing.T) {
+// BUG-001 (FR-018): score-c/score-z are unregistered custom Attrs keys, so
+// they fall back to union and genuinely list-accumulate on every re-ingest
+// (research.md D5c/D6, a documented, intentional behavior change from the
+// old arity-based dispatch, which silently kept only the existing value).
+// "definition" (LLM's own leading prose, an "entity"'s own predicate,
+// role: text) is now seeded append (FR-018) rather than firstWriteWin, so
+// a near-duplicate paraphrase from a re-ingest pipeline is recognized and
+// dropped (never flagged), while a genuinely new paragraph is appended —
+// restoring the BUG-004 guarantee this feature's earlier per-name seed
+// choice had regressed for role:text predicates.
+func TestApplyEntityReContributionAppendsProseAndAccumulatesUnregisteredScalars(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	seedNode(t, dir, "entities/LLM.md", llmEntitySeed)
@@ -537,16 +545,23 @@ func TestApplyMergeUnionNeverFlagsRegeneratedScalarsOrNearDuplicateText(t *testi
 	content := readFile(t, filepath.Join(dir, "entities", "LLM.md"))
 	it.Then(t).
 		ShouldNot(it.String(content).Contain("<<<<<<<")).
-		Should(it.String(content).Contain("score-c: 0.13432835820895522")).
-		Should(it.String(content).Contain("score-z: 2.2522964920476682")).
 		Should(it.String(content).Contain("knowledge management")).
+		ShouldNot(it.String(content).Contain("knowledge organization")).
 		Should(it.String(content).Contain("Andrej Karpathy")).
-		ShouldNot(it.String(content).Contain("knowledge organization"))
+		Should(it.String(content).Contain("0.13432835820895522")).
+		Should(it.String(content).Contain("0.28125")).
+		Should(it.String(content).Contain("2.2522964920476682")).
+		Should(it.String(content).Contain("2.8783652519773235"))
 }
 
 // arc apply pqkex.patch.md
-// Scenario 3 from spec.md US2: an already-set resource field is preserved
-// on divergence (FR-013 conflict marker); commit still completes
+// Scenario 3 from spec.md US2 / spec.md US2 Acceptance Scenario 1: a
+// resource's firstWriteWin-declared "category" is preserved and flagged
+// on genuine divergence (FR-013 conflict marker); its lastWriteWin-
+// declared "status" diverges too but is never flagged (FR-012) — takes
+// the newest applied value instead; its append-declared leading prose
+// ("relevance", FR-018/BUG-001) diverges too but is appended, never
+// flagged; commit still completes.
 func TestApplyMergePreservesSetFieldOnDivergence(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
@@ -566,9 +581,12 @@ func TestApplyMergePreservesSetFieldOnDivergence(t *testing.T) {
 
 	content := readFile(t, filepath.Join(dir, "resources", "RFC 8446.md"))
 	it.Then(t).
-		Should(it.String(content).Contain("read")).
 		Should(it.String(content).Contain("<<<<<<< existing")).
-		Should(it.String(content).Contain("backlog"))
+		Should(it.String(content).Contain("normative")).
+		Should(it.String(content).Contain("informative")).
+		Should(it.String(content).Contain("The normative specification of TLS 1.3.")).
+		Should(it.String(content).Contain("A survey of TLS 1.3 adoption patterns.")).
+		Should(it.String(content).Contain("status: backlog"))
 
 	it.Then(t).Should(it.String(stderr).Contain("RFC 8446"))
 }
@@ -624,7 +642,7 @@ A conclusion distilled from sources.
 func TestApplyRegisteredKindUsesRegisteredBehaviorNoWarning(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedSchemaNode(t, dir, "hypothesis", "validated-overwrite")
+	seedSchemaNode(t, dir, "hypothesis", "validatedOverwrite")
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "note.patch.md", notePatchWithHypothesis)
 
@@ -737,7 +755,7 @@ func TestApplyRegisteringKindRemovesWarningOnNextApply(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.String(stderr1).Contain("hypothesis"))
 
-	seedSchemaNode(t, dir, "hypothesis", "validated-overwrite")
+	seedSchemaNode(t, dir, "hypothesis", "validatedOverwrite")
 	secondPatch := strings.ReplaceAll(strings.ReplaceAll(notePatchWithHypothesis,
 		"kolesnikov-2026-note", "kolesnikov-2026-note2"),
 		"Forward Secrecy Requires Ephemeral Keys", "Handshake Latency Bound By RTT")
@@ -786,11 +804,14 @@ A conclusion distilled from sources.
 `
 
 // arc apply
-// Scenario 3 from spec.md US3: hand-editing a registered kind's
-// _schema/types/<kind>.md merge value changes the behavior a later arc
-// apply invocation actually uses — union silently keeps the existing
-// scalar field (no conflict), but after a hand-edit to
-// union-first-writer the identical divergence is flagged.
+// spec.md FR-013/FR-015/FR-016: hand-editing a registered kind's own
+// _schema/types/<kind>.md merge value has no effect on reconciliation
+// (D4 — it's vestigial); hand-editing the touched PREDICATE's own
+// _schema/predicates/<name>.md merge value is what changes the behavior a
+// later arc apply invocation actually uses. "status" starts out
+// arc-init-seeded lastWriteWin — a diverging contribution is silently
+// applied (no conflict) — but after a hand-edit to firstWriteWin the
+// identical shape of divergence is flagged.
 func TestApplyHandEditedMergeValueChangesLaterApplyBehavior(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
@@ -798,8 +819,8 @@ func TestApplyHandEditedMergeValueChangesLaterApplyBehavior(t *testing.T) {
 	seedNode(t, dir, "hypothesis/A Test Hypothesis.md", hypothesisSeedConfirmed)
 	chdir(t, dir)
 
-	unionPatch := fmt.Sprintf(patchDivergesHypothesisStatusTemplate, "kolesnikov-2026-first", "First Note", "kolesnikov-2026-first", "kolesnikov-2026-first", "First Note")
-	patch1 := writePatchFile(t, dir, "first.patch.md", unionPatch)
+	lastWriteWinPatch := fmt.Sprintf(patchDivergesHypothesisStatusTemplate, "kolesnikov-2026-first", "First Note", "kolesnikov-2026-first", "kolesnikov-2026-first", "First Note")
+	patch1 := writePatchFile(t, dir, "first.patch.md", lastWriteWinPatch)
 
 	out1, err := sut(NewApplyCmd(), []string{patch1})
 	it.Then(t).ShouldNot(it.Error(out1, err))
@@ -807,12 +828,16 @@ func TestApplyHandEditedMergeValueChangesLaterApplyBehavior(t *testing.T) {
 	content := readFile(t, filepath.Join(dir, "hypothesis", "A Test Hypothesis.md"))
 	it.Then(t).
 		ShouldNot(it.String(content).Contain("<<<<<<<")).
-		Should(it.String(content).Contain("confirmed"))
+		Should(it.String(content).Contain("status: draft"))
 
-	seedSchemaNode(t, dir, "hypothesis", "union-first-writer")
+	statusDoc := readFile(t, filepath.Join(dir, "_schema", "predicates", "status.md"))
+	it.Then(t).Should(it.Nil(os.WriteFile(
+		filepath.Join(dir, "_schema", "predicates", "status.md"),
+		[]byte(strings.ReplaceAll(statusDoc, "merge: lastWriteWin", "merge: firstWriteWin")), 0o644)))
 
-	unionFirstWriterPatch := fmt.Sprintf(patchDivergesHypothesisStatusTemplate, "kolesnikov-2026-second", "Second Note", "kolesnikov-2026-second", "kolesnikov-2026-second", "Second Note")
-	patch2 := writePatchFile(t, dir, "second.patch.md", unionFirstWriterPatch)
+	firstWriteWinPatch := fmt.Sprintf(patchDivergesHypothesisStatusTemplate, "kolesnikov-2026-second", "Second Note", "kolesnikov-2026-second", "kolesnikov-2026-second", "Second Note")
+	firstWriteWinPatch = strings.ReplaceAll(firstWriteWinPatch, "status: draft", "status: shelved")
+	patch2 := writePatchFile(t, dir, "second.patch.md", firstWriteWinPatch)
 
 	out2, err := sut(NewApplyCmd(), []string{patch2})
 	it.Then(t).ShouldNot(it.Error(out2, err))
@@ -820,8 +845,8 @@ func TestApplyHandEditedMergeValueChangesLaterApplyBehavior(t *testing.T) {
 	content = readFile(t, filepath.Join(dir, "hypothesis", "A Test Hypothesis.md"))
 	it.Then(t).
 		Should(it.String(content).Contain("<<<<<<< existing")).
-		Should(it.String(content).Contain("confirmed")).
-		Should(it.String(content).Contain("draft"))
+		Should(it.String(content).Contain("draft")).
+		Should(it.String(content).Contain("shelved"))
 }
 
 // arc apply tls13.patch.md (twice)
@@ -1482,25 +1507,29 @@ Changed text.
 `
 
 // arc apply memo.patch.md
-// Scenario 2 from spec.md US2: a "none"-behavior kind's existing no-op
-// guarantee holds — the file is byte-unchanged and no updated is added.
-func TestApplyNoneKindReContributionAddsNoUpdatedByteUnchanged(t *testing.T) {
+// spec.md FR-015: a custom type's own registered whole-node "merge" value
+// no longer determines how any of its predicates reconcile — "memo" is
+// hand-registered "immutable" here, but that's now inert data (D4); its
+// leading prose reconciles via the generic "text" predicate (seeded
+// append), so a second, genuinely new contribution still grows its
+// content and stamps updated, regardless of the type's own vestigial
+// merge value.
+func TestApplyTypeLevelMergeValueNoLongerGovernsReconciliation(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedSchemaNode(t, dir, "memo", "none")
+	seedSchemaNode(t, dir, "memo", "immutable")
 	seedNode(t, dir, "memos/Widget.md", memoNoneSeed)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "memo.patch.md", memoNonePatch)
 
-	before := readFile(t, filepath.Join(dir, "memos", "Widget.md"))
-
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	after := readFile(t, filepath.Join(dir, "memos", "Widget.md"))
+	content := readFile(t, filepath.Join(dir, "memos", "Widget.md"))
 	it.Then(t).
-		Should(it.Equal(before, after)).
-		ShouldNot(it.String(after).Contain("updated:"))
+		Should(it.String(content).Contain("Original text.")).
+		Should(it.String(content).Contain("Changed text.")).
+		Should(it.String(content).Contain("updated:"))
 }
 
 const stubbedThingSeed = `---
@@ -1703,4 +1732,529 @@ func TestApplyHeadingOnlyCanonicalPatchAcceptedEndToEnd(t *testing.T) {
 	it.Then(t).
 		Should(it.String(entity).Contain(`"@id": LLM`)).
 		Should(it.String(entity).Contain(`"@type": entity`))
+}
+
+// --- spec 012: Per-Predicate Merge Reconciliation for arc apply ---
+//
+// The fixtures below use arc init's own real seeded schema
+// (appschema.Seed(), via initGraph) so every predicate's declared merge
+// behavior is exactly what a real graph would use: ref/immutable,
+// status/lastWriteWin, tags/union, category/firstWriteWin, url/
+// fillIfEmpty (internal/app/schema/kernel/schema.go). "category" (role:
+// meta) stands in for a firstWriteWin exemplar here rather than
+// "abstract" (role: text), since BUG-001/FR-018 repoints every role:text
+// predicate — abstract included — to append.
+
+const resourcePatch012First = `---
+kind: patch
+document: doc-2026-a
+published: 2026-07-01
+title: "Doc A"
+---
+# Source
+
+## doc-2026-a
+` + "```yaml" + `
+"@id": "doc-2026-a"
+"@type": source
+title: "Doc A"
+published: "2026-07-01"
+` + "```" + `
+
+A source document.
+
+# Resource
+
+## example-book
+` + "```yaml" + `
+"@id": "example-book"
+"@type": resource
+ref: book
+status: backlog
+tags: [ai]
+category: "First summary."
+` + "```" + `
+
+A tracked reading item.
+`
+
+const resourcePatch012Second = `---
+kind: patch
+document: doc-2026-b
+published: 2026-07-02
+title: "Doc B"
+---
+# Source
+
+## doc-2026-b
+` + "```yaml" + `
+"@id": "doc-2026-b"
+"@type": source
+title: "Doc B"
+published: "2026-07-02"
+` + "```" + `
+
+Another source document.
+
+# Resource
+
+## example-book
+` + "```yaml" + `
+"@id": "example-book"
+"@type": resource
+ref: article
+status: read
+tags: [ml]
+category: "A different summary."
+` + "```" + `
+
+A tracked reading item.
+`
+
+// arc apply doc-a.patch.md, then doc-b.patch.md
+// spec 012 User Story 1, Acceptance Scenarios 1-4: a single second
+// contribution touching three predicates at once resolves each by its own
+// rule within that one application — ref (immutable) rejects the
+// divergence, status (lastWriteWin) takes the newest value, tags (union)
+// accumulates every distinct value, and none of the three affects any
+// other's outcome.
+func TestApply012US1PerPredicateReconciliation(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch1 := writePatchFile(t, dir, "doc-a.patch.md", resourcePatch012First)
+	patch2 := writePatchFile(t, dir, "doc-b.patch.md", resourcePatch012Second)
+
+	_, err := sut(NewApplyCmd(), []string{patch1})
+	it.Then(t).Should(it.Nil(err))
+	out, err := sut(NewApplyCmd(), []string{patch2})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	content := readFile(t, filepath.Join(dir, "resources", "example-book.md"))
+	it.Then(t).
+		Should(it.String(content).Contain("ref: book")).
+		Should(it.String(content).Contain("status: read")).
+		Should(it.String(content).Contain("- ai")).
+		Should(it.String(content).Contain("- ml"))
+}
+
+// BUG-001 / spec.md FR-017: --verbose reports one indented line per
+// predicate a merge actually touched, naming its resolved MergeOp and
+// outcome — not only the node-level summary line.
+func TestApply012BUG001VerboseReportsPerPredicateOutcomes(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch1 := writePatchFile(t, dir, "doc-a.patch.md", resourcePatch012First)
+	patch2 := writePatchFile(t, dir, "doc-b.patch.md", resourcePatch012Second)
+
+	_, err := sut(NewApplyCmd(), []string{patch1})
+	it.Then(t).Should(it.Nil(err))
+
+	bios.Verbose = true
+	t.Cleanup(func() { bios.Verbose = false })
+	stdout, stderr, err := sutCaptureStderr(t, NewApplyCmd(), []string{patch2})
+	it.Then(t).ShouldNot(it.Error(stdout, err))
+
+	it.Then(t).
+		Should(it.String(stderr).Contain("example-book: merged")).
+		Should(it.String(stderr).Contain("ref: immutable -> unchanged")).
+		Should(it.String(stderr).Contain("status: lastWriteWin -> overwritten")).
+		Should(it.String(stderr).Contain("tags: union -> appended"))
+}
+
+// spec 012 User Story 2, Acceptance Scenario 1/3: within the same
+// combined application, category (firstWriteWin) is flagged for human
+// review on genuine divergence, but tags (union) and status
+// (lastWriteWin) — which diverge too — are never flagged.
+func TestApply012US2ConflictFlaggingScopedToFirstWriteWin(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch1 := writePatchFile(t, dir, "doc-a.patch.md", resourcePatch012First)
+	patch2 := writePatchFile(t, dir, "doc-b.patch.md", resourcePatch012Second)
+
+	_, err := sut(NewApplyCmd(), []string{patch1})
+	it.Then(t).Should(it.Nil(err))
+	_, stderr, err := sutCaptureStderr(t, NewApplyCmd(), []string{patch2})
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.String(stderr).Contain("merge conflict"))
+
+	content := readFile(t, filepath.Join(dir, "resources", "example-book.md"))
+	it.Then(t).
+		Should(it.String(content).Contain("<<<<<<< existing")).
+		Should(it.String(content).Contain("First summary.")).
+		Should(it.String(content).Contain("A different summary."))
+
+	// tags/status diverge too but must never be wrapped in a marker
+	tagsAndStatusLines := []string{"status: read", "- ai", "- ml"}
+	for _, line := range tagsAndStatusLines {
+		it.Then(t).Should(it.String(content).Contain(line))
+	}
+}
+
+const resourceFillIfEmptySeed = `---
+"@id": "RFC 9999"
+"@type": resource
+title: RFC 9999
+ref: standard
+url: ""
+---
+# RFC 9999
+
+A draft specification.
+`
+
+const patchFillsUrlFirstTime = `---
+kind: patch
+document: doc-2026-c
+published: 2026-07-03
+title: "Doc C"
+---
+# Source
+
+## doc-2026-c
+` + "```yaml" + `
+"@id": "doc-2026-c"
+"@type": source
+title: "Doc C"
+published: "2026-07-03"
+` + "```" + `
+
+A source document.
+
+# Resource
+
+## RFC 9999
+` + "```yaml" + `
+"@id": "RFC 9999"
+"@type": resource
+ref: standard
+url: https://example.org/rfc9999-v1
+` + "```" + `
+
+A draft specification.
+`
+
+const patchDivergesUrlAfterFirstWrite = `---
+kind: patch
+document: doc-2026-d
+published: 2026-07-04
+title: "Doc D"
+---
+# Source
+
+## doc-2026-d
+` + "```yaml" + `
+"@id": "doc-2026-d"
+"@type": source
+title: "Doc D"
+published: "2026-07-04"
+` + "```" + `
+
+Another source document.
+
+# Resource
+
+## RFC 9999
+` + "```yaml" + `
+"@id": "RFC 9999"
+"@type": resource
+ref: standard
+url: https://example.org/rfc9999-v2
+` + "```" + `
+
+A draft specification.
+`
+
+// spec 012 User Story 2, Acceptance Scenario 4 / Edge Case: a
+// fillIfEmpty predicate's first contribution is never flagged, but a
+// later, genuinely diverging contribution is.
+func TestApply012US2FillIfEmptyFlagsOnlyAfterFirstWrite(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedNode(t, dir, "resources/RFC 9999.md", resourceFillIfEmptySeed)
+	chdir(t, dir)
+	patch1 := writePatchFile(t, dir, "doc-c.patch.md", patchFillsUrlFirstTime)
+
+	_, stderr1, err := sutCaptureStderr(t, NewApplyCmd(), []string{patch1})
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.String(stderr1).Contain("merge conflict"))
+
+	content := readFile(t, filepath.Join(dir, "resources", "RFC 9999.md"))
+	it.Then(t).Should(it.String(content).Contain("https://example.org/rfc9999-v1"))
+
+	patch2 := writePatchFile(t, dir, "doc-d.patch.md", patchDivergesUrlAfterFirstWrite)
+	_, stderr2, err := sutCaptureStderr(t, NewApplyCmd(), []string{patch2})
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.String(stderr2).Contain("merge conflict"))
+
+	content = readFile(t, filepath.Join(dir, "resources", "RFC 9999.md"))
+	it.Then(t).
+		Should(it.String(content).Contain("<<<<<<< existing")).
+		Should(it.String(content).Contain("rfc9999-v1")).
+		Should(it.String(content).Contain("rfc9999-v2"))
+}
+
+const resourceIndependentPredicatesSeed = `---
+"@id": "example-topic"
+"@type": resource
+title: example-topic
+ref: topic
+---
+# example-topic
+
+An ongoing research topic.
+`
+
+const patchContributesTags = `---
+kind: patch
+document: doc-2026-e
+published: 2026-07-05
+title: "Doc E"
+---
+# Source
+
+## doc-2026-e
+` + "```yaml" + `
+"@id": "doc-2026-e"
+"@type": source
+title: "Doc E"
+published: "2026-07-05"
+` + "```" + `
+
+A source document.
+
+# Resource
+
+## example-topic
+` + "```yaml" + `
+"@id": "example-topic"
+"@type": resource
+ref: topic
+tags: [ai]
+` + "```" + `
+
+An ongoing research topic.
+`
+
+const patchContributesStatus = `---
+kind: patch
+document: doc-2026-f
+published: 2026-07-06
+title: "Doc F"
+---
+# Source
+
+## doc-2026-f
+` + "```yaml" + `
+"@id": "doc-2026-f"
+"@type": source
+title: "Doc F"
+published: "2026-07-06"
+` + "```" + `
+
+Another source document.
+
+# Resource
+
+## example-topic
+` + "```yaml" + `
+"@id": "example-topic"
+"@type": resource
+ref: topic
+status: read
+` + "```" + `
+
+An ongoing research topic.
+`
+
+// spec 012 User Story 3, Acceptance Scenario 2: two patches contributing
+// to independent predicates (tags/status) converge on an identical result
+// regardless of which order they're applied in.
+func TestApply012US3IndependentPredicatesConvergeInEitherOrder(t *testing.T) {
+	forward := t.TempDir()
+	initGraph(t, forward)
+	seedNode(t, forward, "resources/example-topic.md", resourceIndependentPredicatesSeed)
+
+	reverse := t.TempDir()
+	initGraph(t, reverse)
+	seedNode(t, reverse, "resources/example-topic.md", resourceIndependentPredicatesSeed)
+
+	func() {
+		chdir(t, forward)
+		tagsPatch := writePatchFile(t, forward, "e.patch.md", patchContributesTags)
+		_, err := sut(NewApplyCmd(), []string{tagsPatch})
+		it.Then(t).Should(it.Nil(err))
+		statusPatch := writePatchFile(t, forward, "f.patch.md", patchContributesStatus)
+		_, err = sut(NewApplyCmd(), []string{statusPatch})
+		it.Then(t).Should(it.Nil(err))
+	}()
+
+	func() {
+		chdir(t, reverse)
+		statusPatch := writePatchFile(t, reverse, "f.patch.md", patchContributesStatus)
+		_, err := sut(NewApplyCmd(), []string{statusPatch})
+		it.Then(t).Should(it.Nil(err))
+		tagsPatch := writePatchFile(t, reverse, "e.patch.md", patchContributesTags)
+		_, err = sut(NewApplyCmd(), []string{tagsPatch})
+		it.Then(t).Should(it.Nil(err))
+	}()
+
+	forwardContent := readFile(t, filepath.Join(forward, "resources", "example-topic.md"))
+	reverseContent := readFile(t, filepath.Join(reverse, "resources", "example-topic.md"))
+
+	stripUpdated := func(s string) string {
+		return regexp.MustCompile(`updated: "[^"]+"\n`).ReplaceAllString(s, "")
+	}
+	it.Then(t).Should(it.Equal(stripUpdated(forwardContent), stripUpdated(reverseContent)))
+}
+
+// spec 012 User Story 3, Acceptance Scenario 3: lastWriteWin is the
+// documented, deliberate exception to order-independence — applying the
+// same two status-diverging contributions in reverse order changes which
+// value wins.
+func TestApply012US3LastWriteWinIsOrderSensitive(t *testing.T) {
+	forward := t.TempDir()
+	initGraph(t, forward)
+	seedNode(t, forward, "resources/example-book.md", `---
+"@id": "example-book"
+"@type": resource
+title: example-book
+ref: book
+---
+# example-book
+
+A tracked reading item.
+`)
+
+	reverse := t.TempDir()
+	initGraph(t, reverse)
+	seedNode(t, reverse, "resources/example-book.md", `---
+"@id": "example-book"
+"@type": resource
+title: example-book
+ref: book
+---
+# example-book
+
+A tracked reading item.
+`)
+
+	readPatch := `---
+kind: patch
+document: doc-2026-read
+published: 2026-07-07
+title: "Doc Read"
+---
+# Source
+
+## doc-2026-read
+` + "```yaml" + `
+"@id": "doc-2026-read"
+"@type": source
+title: "Doc Read"
+published: "2026-07-07"
+` + "```" + `
+
+A source document.
+
+# Resource
+
+## example-book
+` + "```yaml" + `
+"@id": "example-book"
+"@type": resource
+ref: book
+status: read
+` + "```" + `
+
+A tracked reading item.
+`
+	archivedPatch := `---
+kind: patch
+document: doc-2026-archived
+published: 2026-07-08
+title: "Doc Archived"
+---
+# Source
+
+## doc-2026-archived
+` + "```yaml" + `
+"@id": "doc-2026-archived"
+"@type": source
+title: "Doc Archived"
+published: "2026-07-08"
+` + "```" + `
+
+Another source document.
+
+# Resource
+
+## example-book
+` + "```yaml" + `
+"@id": "example-book"
+"@type": resource
+ref: book
+status: archived
+` + "```" + `
+
+A tracked reading item.
+`
+
+	func() {
+		chdir(t, forward)
+		p1 := writePatchFile(t, forward, "read.patch.md", readPatch)
+		_, err := sut(NewApplyCmd(), []string{p1})
+		it.Then(t).Should(it.Nil(err))
+		p2 := writePatchFile(t, forward, "archived.patch.md", archivedPatch)
+		_, err = sut(NewApplyCmd(), []string{p2})
+		it.Then(t).Should(it.Nil(err))
+	}()
+
+	func() {
+		chdir(t, reverse)
+		p1 := writePatchFile(t, reverse, "archived.patch.md", archivedPatch)
+		_, err := sut(NewApplyCmd(), []string{p1})
+		it.Then(t).Should(it.Nil(err))
+		p2 := writePatchFile(t, reverse, "read.patch.md", readPatch)
+		_, err = sut(NewApplyCmd(), []string{p2})
+		it.Then(t).Should(it.Nil(err))
+	}()
+
+	forwardContent := readFile(t, filepath.Join(forward, "resources", "example-book.md"))
+	reverseContent := readFile(t, filepath.Join(reverse, "resources", "example-book.md"))
+
+	it.Then(t).
+		Should(it.String(forwardContent).Contain("status: archived")).
+		Should(it.String(reverseContent).Contain("status: read"))
+}
+
+// spec 012 User Story 3, Acceptance Scenario 4: a conflict already marked
+// for human review is not re-wrapped when an equivalent later
+// contribution repeats the same divergence.
+func TestApply012US3ReplayDoesNotRewrapConflictMarker(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch1 := writePatchFile(t, dir, "doc-a.patch.md", resourcePatch012First)
+	patch2 := writePatchFile(t, dir, "doc-b.patch.md", resourcePatch012Second)
+
+	_, err := sut(NewApplyCmd(), []string{patch1})
+	it.Then(t).Should(it.Nil(err))
+	_, err = sut(NewApplyCmd(), []string{patch2})
+	it.Then(t).Should(it.Nil(err))
+
+	firstConflict := readFile(t, filepath.Join(dir, "resources", "example-book.md"))
+	it.Then(t).Should(it.Equal(1, strings.Count(firstConflict, "<<<<<<<")))
+
+	replayPatch := strings.ReplaceAll(resourcePatch012Second, "doc-2026-b", "doc-2026-b-replay")
+	patch3 := writePatchFile(t, dir, "doc-b-replay.patch.md", replayPatch)
+	_, err = sut(NewApplyCmd(), []string{patch3})
+	it.Then(t).Should(it.Nil(err))
+
+	secondConflict := readFile(t, filepath.Join(dir, "resources", "example-book.md"))
+	it.Then(t).
+		Should(it.Equal(1, strings.Count(secondConflict, "<<<<<<<"))).
+		Should(it.Equal(firstConflict, secondConflict))
 }

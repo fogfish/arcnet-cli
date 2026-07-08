@@ -148,7 +148,9 @@ const (
 // (silent by default, --verbose-gated by the caller — BUG-001): one
 // Start/Done pair per phase, plus one Reporter.Step per node processed
 // inside "Applying node contributions", naming the node's ID and outcome
-// (spec.md FR-021).
+// (spec.md FR-021), followed for a merged node by one further indented
+// Reporter.Step per predicate core.Merge touched — its name, resolved
+// MergeOp, and outcome (spec 012 FR-017/BUG-001).
 func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, index core.Index, schema port.SchemaRegistry, dir, patchPath string) (kernel.ApplyResult, error) {
 	store, err := mounter.Mount(dir)
 	if err != nil {
@@ -217,12 +219,10 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 			continue
 		}
 
-		typeDef, ok := index.Types[node.Type]
-		op := typeDef.Merge
+		_, ok := index.Types[node.Type]
 		if !ok {
-			op = core.MergeUnion
 			result.Warnings = append(result.Warnings, fmt.Sprintf(
-				"%s is not a recognized node kind for this graph — applied using the default \"union\" merge behavior", node.Type))
+				"%s is not a recognized node kind for this graph — auto-registered with a default schema document", node.Type))
 			if _, err := schema.RegisterType(store, node.Type); err != nil {
 				reporter.Error(labelApplyingNodes, err)
 				rollback(store, createdPaths)
@@ -241,9 +241,10 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 
 		merged := node
 		outcome := "created"
+		var predicateOutcomes []core.PredicateOutcome
 		if existed {
 			var conflicts []string
-			merged, conflicts, err = core.Merge(existing, node, op, patch.Document)
+			merged, conflicts, predicateOutcomes, err = core.Merge(existing, node, index, patch.Document)
 			if err != nil {
 				reporter.Error(labelApplyingNodes, err)
 				rollback(store, createdPaths)
@@ -296,6 +297,9 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 		}
 
 		reporter.Step(fmt.Sprintf("%s: %s", node.ID, outcome))
+		for _, po := range predicateOutcomes {
+			reporter.Step(fmt.Sprintf("  %s: %s -> %s", po.Name, po.Op, po.Outcome))
+		}
 
 		if node.Type == "source" && node.ID == patch.Document {
 			sourceNode = node

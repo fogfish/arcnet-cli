@@ -14,15 +14,18 @@ package core
 
 import "time"
 
-// MergeOp is one of CORE §10's fixed menu of merge operations.
+// MergeOp is one of CORE §9.3's fixed, seven-value menu of merge
+// operations a predicate's own schema document declares itself against.
 type MergeOp string
 
 const (
-	MergeNone               MergeOp = "none"
+	MergeImmutable          MergeOp = "immutable"
 	MergeUnion              MergeOp = "union"
-	MergeUnionFirstWriter   MergeOp = "union-first-writer"
+	MergeFirstWriteWin      MergeOp = "firstWriteWin"
+	MergeFillIfEmpty        MergeOp = "fillIfEmpty"
+	MergeLastWriteWin       MergeOp = "lastWriteWin"
 	MergeAppend             MergeOp = "append"
-	MergeValidatedOverwrite MergeOp = "validated-overwrite"
+	MergeValidatedOverwrite MergeOp = "validatedOverwrite"
 )
 
 // Link is a single reference from one node to another (AST §6.3/§6.5), used

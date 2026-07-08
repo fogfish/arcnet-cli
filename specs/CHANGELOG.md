@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-07-08
+
+/speckit-specify Change how arc apply reconciles an incoming patch's contribution to a node that already exists in the graph, from arc's current "one merge behavior per node type" model to ARCNET-CORE v0.7's "each predicate declares its own merge behavior" model (§9.3). See https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-CORE.md
+
+Today, when arc apply merges a contribution into an existing entity/resource/source/timeline node, it applies one single merge rule to the entire node — every attribute and every prose field on a "resource" node, for example, is treated as first-writer-wins together, even though some of a resource's fields (its "status") legitimately change over time while others (its "ref" type) should never change once set.
+
+The new spec requires each individual predicate (title, published, tags, abstract, status, category, entries, and so on) to carry its own merge rule, chosen from a fixed menu: immutable (first write is permanent, never overwritten), union (values combine, deduplicated), firstWriteWin (first writer's value wins; a genuine later conflict is flagged for human review), fillIfEmpty (stays absent until first written, then behaves as firstWriteWin), lastWriteWin (the latest write always wins — for legitimately-changing bookkeeping fields), append (grows an ordered list or concatenates prose without discarding what's there), and validatedOverwrite (overwritten only by a designated validation pass).
+
+A conforming patch application must reconcile every predicate on a merged node according to that predicate's own declared rule (looked up via the schema index from spec 011), not by a single rule applied to the whole node. All merges must remain commutative and idempotent, so re-applying the same patch, or applying two patches in either order, produces the same result (CORE's own git-replay/rollback guarantee depends on this).
+
+arc apply's existing conflict-flagging behavior (marking a divergent value for human review, e.g. via a `<<<<<<< / ======= / >>>>>>>` style marker) must be preserved for predicates whose merge rule is firstWriteWin, and must not fire for predicates whose merge rule doesn't call for it (union, append, lastWriteWin, immutable, fillIfEmpty).
+
+Out of scope: changes to which predicates exist or their role/text-key assignment (spec 010); schema-node parsing itself (spec 011, this feature only consumes its output).
+
+/speckit-plan Technical approach: this is internal/core/merge.go and internal/core/rules.go (likely retiring rules.go's MergeRuleSet[Kind]MergeOp entirely, replaced by a per-predicate lookup sourced from spec 011's Schema Index), plus the call site in internal/app/graph/service/apply.go that currently calls core.Merge(existing, incoming, op, sourceID) with one op for the whole node.
+
+Signature change: `Merge` needs the caller to pass something that can answer "what's predicate X's merge behavior" — likely `Merge(existing, incoming Node, index schema.Index, sourceID string) (Node, []string, error)`, or thread a `func(predicate string) MergeOp` resolver through, to keep internal/core free of a direct dependency on internal/app/schema (respect ADR 001's layering — internal/core is the shared tier below internal/app/<use-case>; consider whether the resolver type itself should live in internal/core as an interface, satisfied by schema.Index, so the import direction stays correct).
+
+Merge algebra changes:
+- Replace mergeCore's single (fillEmpty, flagConflicts, unionText) flag triple, chosen once per whole node, with a per-key loop over Attrs (keyed by predicate name) and Texts (keyed by predicate name) and Edges (by predicate, using the existing (predicate,target)-pair union which is already correct for every edge/link-role predicate) — each key's own MergeOp decides fillEmpty/flagConflicts/append-vs-scalar behavior.
+- Rename/expand the MergeOp constants (internal/core/ast.go today: MergeNone/MergeUnion/MergeUnionFirstWriter/MergeAppend/MergeValidatedOverwrite) to CORE §9.3's seven: immutable/union/firstWriteWin/fillIfEmpty/lastWriteWin/append/validatedOverwrite — map old to new carefully (union-first-writer was actually closest to firstWriteWin with fillEmpty=true; today's "none" (source's whole-node immutability) becomes every one of source's own predicates independently being "immutable", per CORE §9.3's closing paragraph — do not keep a node-level "immutable-whole-node" shortcut, derive it from per-predicate immutable instead, matching CORE's stated invariant).
+- Published's special-cased mergePublished (from spec 009) should fold into the general per-predicate path once "published" is just another predicate declared merge: immutable in the schema — confirm in research.md whether the typed `Node.Published time.Time` field survives as a typed convenience accessor over attrs["published"] (likely yes, per AST §7's note that "a binding MAY still expose a single-valued convenience accessor") or gets flattened back into generic Attrs; recommend keeping the typed field for ergonomics but deriving its merge purely from the schema-declared rule so the logic isn't duplicated.
+- mergeText's paragraph-level Jaccard-similarity dedup logic (today hardcoded for the union case) becomes the implementation of the "append" rule for text-role predicates specifically (CORE §9.3: "a text-role predicate gets the new prose concatenated after the existing prose") — keep it, just re-attach it to the right MergeOp per predicate rather than a hardcoded unionText bool.
+
+Testing: internal/core/merge_test.go needs a substantial rewrite — table-driven cases per MergeOp value crossed with attrs/texts/edges, plus explicit regression cases for the old node-level behaviors this replaces (e.g. a source's title/published/abstract are each independently immutable and must show the same "never overwritten" result as today's whole-node MergeNone). Cover idempotency (apply the same contribution twice, assert no change) and commutativity (apply A then B vs. B then A on independent predicates, assert same result) explicitly, since CORE calls these out as MUST invariants.
+
+Constraints: keep Merge as a pure function (no I/O) per the existing contract; internal/app/graph/service/apply.go's conflict-count/created/merged stats reporting (kernel.ApplyResult) should stay behaviorally equivalent from the user's point of view except where the finer-grained merge genuinely changes an outcome (e.g. a resource's "status" now legitimately updates via lastWriteWin where before it was frozen by first-writer-wins) — call out any such behavior change explicitly as a documented, intentional difference, not a silent regression.
+
 
 ## 2026-07-07
 
