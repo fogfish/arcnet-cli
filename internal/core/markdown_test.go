@@ -20,6 +20,40 @@ import (
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
+// testIndex covers every predicate this file's fixtures reference by a
+// literal core.Link{Predicate: ...} or an inline "predicate::" markdown
+// occurrence, so every RenderNode/RenderPatch call site below resolves a
+// deterministic role rather than silently falling back to "edge" (research.md
+// D3/D6). mentions/mentionedIn are link-role (grouped-heading candidates,
+// Phase 3+); replaces is edge-role (stays a flat bullet); every other
+// predicate literal present in a fixture (conformsTo, isCitedBy, cites,
+// referencedBy, related, derivedFrom, assumes, addresses) is edge-role too,
+// matching this feature's conservative default for a predicate that has no
+// declared shape opinion of its own.
+var testIndex = core.Index{
+	Predicates: map[string]core.PredicateDef{
+		"mentions":     {Role: "link"},
+		"mentionedIn":  {Role: "link"},
+		"replaces":     {Role: "edge"},
+		"conformsTo":   {Role: "edge"},
+		"isCitedBy":    {Role: "edge"},
+		"cites":        {Role: "edge"},
+		"referencedBy": {Role: "edge"},
+		"related":      {Role: "edge"},
+		"derivedFrom":  {Role: "edge"},
+		"assumes":      {Role: "edge"},
+		"addresses":    {Role: "edge"},
+		// required mirrors CorePredicateDefs's own real entry exactly (an
+		// explicit Label, link-role) — used by
+		// TestRenderNodeLinkRolePredicateUsesCustomLabel.
+		"required": {Role: "link", Label: "Requires"},
+		// entries mirrors CorePredicateDefs's own real entry (link-role,
+		// no explicit Label) — timeline's only edge-bearing predicate,
+		// used by the single-link-role-predicate-body omission tests.
+		"entries": {Role: "link"},
+	},
+}
+
 const patchFixture = `---
 kind: patch
 document: rescorla-2026-tls13
@@ -424,7 +458,7 @@ func TestRenderNodeAttrsQuotedIDTypeFirstThenSorted(t *testing.T) {
 		Texts: map[string]string{"definition": "Some text."},
 	}
 
-	out, err := core.RenderNode(n)
+	out, err := core.RenderNode(n, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
 	rendered := string(out)
@@ -443,7 +477,14 @@ func TestRenderNodeAttrsQuotedIDTypeFirstThenSorted(t *testing.T) {
 		Should(it.True(tagsIdx < titleIdx))
 }
 
-func TestRenderNodeEdgesFlatBulletedListNoGroupedHeadings(t *testing.T) {
+// TestRenderNodeSchemaDrivenFlatAndGroupedMixOnOneNode (research.md D8):
+// replaces is edge-role in testIndex and renders as a flat bullet with no
+// heading; mentions/mentionedIn are link-role and each render grouped under
+// their own heading, default-capitalized since neither declares an explicit
+// Label in testIndex — the same fixture TestRenderNodeEdgesFlatBulletedList
+// NoGroupedHeadings used to assert always-flat, now asserting the
+// schema-driven mixed shape instead.
+func TestRenderNodeSchemaDrivenFlatAndGroupedMixOnOneNode(t *testing.T) {
 	n := core.Node{
 		ID:    "X",
 		Type:  "entity",
@@ -455,22 +496,134 @@ func TestRenderNodeEdgesFlatBulletedListNoGroupedHeadings(t *testing.T) {
 		},
 	}
 
-	out, err := core.RenderNode(n)
+	out, err := core.RenderNode(n, testIndex)
+	it.Then(t).Should(it.Nil(err))
+
+	rendered := string(out)
+	it.Then(t).
+		Should(it.String(rendered).Contain("replaces:: [[SSL Protocol]]")).
+		Should(it.String(rendered).Contain("## Mentions")).
+		Should(it.String(rendered).Contain("mentions:: [[A]]")).
+		Should(it.String(rendered).Contain("## MentionedIn")).
+		Should(it.String(rendered).Contain("mentionedIn:: [[B]]"))
+
+	replacesIdx := strings.Index(rendered, "replaces::")
+	replacesHeadingIdx := strings.Index(rendered, "## ")
+	it.Then(t).
+		ShouldNot(it.True(replacesHeadingIdx >= 0 && replacesHeadingIdx < replacesIdx))
+
+	mentionsHeadingIdx := strings.Index(rendered, "## Mentions")
+	mentionsBulletIdx := strings.Index(rendered, "mentions:: [[A]]")
+	mentionedInHeadingIdx := strings.Index(rendered, "## MentionedIn")
+	mentionedInBulletIdx := strings.Index(rendered, "mentionedIn:: [[B]]")
+	it.Then(t).
+		Should(it.True(replacesIdx < mentionedInHeadingIdx)).
+		Should(it.True(mentionedInHeadingIdx < mentionedInBulletIdx)).
+		Should(it.True(mentionedInBulletIdx < mentionsHeadingIdx)).
+		Should(it.True(mentionsHeadingIdx < mentionsBulletIdx))
+}
+
+// TestRenderNodeLinkRolePredicateUsesCustomLabel (research.md D4): a
+// link-role predicate whose PredicateDef.Label is non-empty (testIndex's
+// "required", mirroring CorePredicateDefs's own real entry) renders its
+// heading using that label, not the default-capitalized predicate name.
+func TestRenderNodeLinkRolePredicateUsesCustomLabel(t *testing.T) {
+	// A second, edge-role predicate is present alongside "required" so the
+	// single-link-role-predicate-body omission rule (spec FR-006/FR-007)
+	// does not itself suppress "required"'s heading — this test is about
+	// label resolution, not the omission rule (covered separately by
+	// TestRenderNodeSingleLinkRolePredicateBodyOmitsHeading).
+	n := core.Node{
+		ID:    "X",
+		Type:  "entity",
+		Texts: map[string]string{"definition": "Some text."},
+		Edges: []core.Link{
+			{Predicate: "required", Target: "title"},
+			{Predicate: "replaces", Target: "Y"},
+		},
+	}
+
+	out, err := core.RenderNode(n, testIndex)
+	it.Then(t).Should(it.Nil(err))
+
+	rendered := string(out)
+	it.Then(t).
+		Should(it.String(rendered).Contain("## Requires")).
+		ShouldNot(it.String(rendered).Contain("## Required"))
+}
+
+// TestRenderNodeUnregisteredPredicateDefaultsToFlatEdge (spec FR-013,
+// research.md D3): a predicate absent from the index entirely renders as a
+// flat bullet with no heading — the conservative default.
+func TestRenderNodeUnregisteredPredicateDefaultsToFlatEdge(t *testing.T) {
+	n := core.Node{
+		ID:    "X",
+		Type:  "entity",
+		Texts: map[string]string{"definition": "Some text."},
+		Edges: []core.Link{
+			{Predicate: "unregisteredPredicate", Target: "Y"},
+		},
+	}
+
+	out, err := core.RenderNode(n, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
 	rendered := string(out)
 	it.Then(t).
 		ShouldNot(it.String(rendered).Contain("## ")).
-		Should(it.String(rendered).Contain("replaces:: [[SSL Protocol]]")).
-		Should(it.String(rendered).Contain("mentions:: [[A]]")).
-		Should(it.String(rendered).Contain("mentionedIn:: [[B]]"))
+		Should(it.String(rendered).Contain("unregisteredPredicate:: [[Y]]"))
+}
 
-	replacesIdx := strings.Index(rendered, "replaces::")
-	mentionsIdx := strings.Index(rendered, "mentions::")
-	mentionedInIdx := strings.Index(rendered, "mentionedIn::")
+// TestRenderNodeSingleLinkRolePredicateBodyOmitsHeading (spec Acceptance
+// Scenario 1, research.md D5): a timeline-typed node whose only Edges are
+// entries occurrences (link-role, testIndex's own single edge-bearing
+// predicate for this type) renders as a bare bulleted list with no
+// "## Entries" heading — the redundant-heading case this feature's own
+// single-group omission rule exists to eliminate.
+func TestRenderNodeSingleLinkRolePredicateBodyOmitsHeading(t *testing.T) {
+	n := core.Node{
+		ID:   "2026",
+		Type: "timeline",
+		Edges: []core.Link{
+			{Predicate: "entries", Target: "foo-2026-x"},
+			{Predicate: "entries", Target: "bar-2026-y"},
+		},
+	}
+
+	out, err := core.RenderNode(n, testIndex)
+	it.Then(t).Should(it.Nil(err))
+
+	rendered := string(out)
 	it.Then(t).
-		Should(it.True(replacesIdx < mentionsIdx)).
-		Should(it.True(mentionsIdx < mentionedInIdx))
+		ShouldNot(it.String(rendered).Contain("## ")).
+		Should(it.String(rendered).Contain("entries:: [[foo-2026-x]]")).
+		Should(it.String(rendered).Contain("entries:: [[bar-2026-y]]"))
+}
+
+// TestRenderNodeSingleLinkRolePredicateHeadingReappearsWithOtherContent
+// (spec Acceptance Scenario 2, Edge Case "two-or-more distinct link-role
+// predicates"): the same entries-only fixture plus one additional
+// predicate's occurrence present in Edges causes "## Entries" to reappear —
+// the omission is presence-based, not permission-based (research.md D5).
+func TestRenderNodeSingleLinkRolePredicateHeadingReappearsWithOtherContent(t *testing.T) {
+	n := core.Node{
+		ID:   "2026",
+		Type: "timeline",
+		Edges: []core.Link{
+			{Predicate: "entries", Target: "foo-2026-x"},
+			{Predicate: "mentions", Target: "Something Else"},
+		},
+	}
+
+	out, err := core.RenderNode(n, testIndex)
+	it.Then(t).Should(it.Nil(err))
+
+	rendered := string(out)
+	it.Then(t).
+		Should(it.String(rendered).Contain("## Entries")).
+		Should(it.String(rendered).Contain("entries:: [[foo-2026-x]]")).
+		Should(it.String(rendered).Contain("## Mentions")).
+		Should(it.String(rendered).Contain("mentions:: [[Something Else]]"))
 }
 
 func TestRenderNodeWikilinkRepeatedTargetOnlyOneLinked(t *testing.T) {
@@ -485,7 +638,7 @@ func TestRenderNodeWikilinkRepeatedTargetOnlyOneLinked(t *testing.T) {
 		},
 	}
 
-	out, err := core.RenderNode(n)
+	out, err := core.RenderNode(n, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
 	rendered := string(out)
@@ -504,7 +657,7 @@ func TestRenderNodeWikilinkMidWordNotLinked(t *testing.T) {
 		},
 	}
 
-	out, err := core.RenderNode(n)
+	out, err := core.RenderNode(n, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
 	rendered := string(out)
@@ -523,7 +676,7 @@ func TestRenderNodeWikilinkPrecededByWhitespaceLinked(t *testing.T) {
 		},
 	}
 
-	out, err := core.RenderNode(n)
+	out, err := core.RenderNode(n, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
 	rendered := string(out)
@@ -540,7 +693,7 @@ func TestRenderNodeWikilinkAlreadyBracketedNotDoubleWrapped(t *testing.T) {
 		},
 	}
 
-	out, err := core.RenderNode(n)
+	out, err := core.RenderNode(n, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
 	rendered := string(out)
@@ -616,7 +769,7 @@ TLS 1.3 handshakes provide forward secrecy by default.
 			it.Then(t).Should(it.Nil(err))
 			it.Then(t).Should(it.Equal(typ, first.Type))
 
-			rendered, err := core.RenderNode(first)
+			rendered, err := core.RenderNode(first, testIndex)
 			it.Then(t).Should(it.Nil(err))
 
 			second, err := core.ParseNode(strings.NewReader(string(rendered)))
@@ -743,7 +896,7 @@ func TestRenderPatchRoundTripsSingleNode(t *testing.T) {
 		},
 	}
 
-	raw, err := core.RenderPatch(p)
+	raw, err := core.RenderPatch(p, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
 	back, err := core.ParsePatch(strings.NewReader(string(raw)))
@@ -774,7 +927,7 @@ func TestRenderPatchFenceAlwaysHasQuotedIDAndType(t *testing.T) {
 		},
 	}
 
-	raw, err := core.RenderPatch(p)
+	raw, err := core.RenderPatch(p, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
 	rendered := string(raw)
@@ -796,7 +949,7 @@ func TestRenderPatchRoundTripsMultipleTypesSortedDeterministically(t *testing.T)
 	}
 	p := core.Patch{Document: "foo-2026-y", Published: time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC), Nodes: nodes}
 
-	raw, err := core.RenderPatch(p)
+	raw, err := core.RenderPatch(p, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
 	// Types sorted alphabetically ("entity" before "source"); within
@@ -841,7 +994,7 @@ func TestRenderPatchRoundTripsNodeWithEdgesTextsHRefs(t *testing.T) {
 	}
 	p := core.Patch{Document: "foo-2026-z", Published: time.Date(2026, 3, 3, 0, 0, 0, 0, time.UTC), Nodes: nodes}
 
-	raw, err := core.RenderPatch(p)
+	raw, err := core.RenderPatch(p, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
 	back, err := core.ParsePatch(strings.NewReader(string(raw)))
@@ -857,6 +1010,61 @@ func TestRenderPatchRoundTripsNodeWithEdgesTextsHRefs(t *testing.T) {
 		Should(it.Equal("rescorla-2026-tls13", got.Edges[0].Target)).
 		Should(it.Equal("mentions", got.Edges[1].Predicate)).
 		Should(it.Equal("SSL", got.Edges[1].Target))
+}
+
+// TestRenderPatchStableAcrossHeadingGroupReordering (spec FR-010,
+// contracts/render-shape-contract.md round-trip guarantees): re-rendering
+// never reorders anything beyond what the contract permits — the flat
+// edge-role list always precedes any link-role heading block, heading
+// blocks are ordered by resolved label ascending (mentionedIn before
+// mentions), and no Link's Predicate/Target/Alias is ever altered,
+// dropped, or duplicated across a parse/render/parse/render cycle.
+func TestRenderPatchStableAcrossHeadingGroupReordering(t *testing.T) {
+	nodes := []core.Node{
+		{
+			ID:   "Widget",
+			Type: "entity",
+			Edges: []core.Link{
+				{Predicate: "mentionedIn", Target: "B"},
+				{Predicate: "replaces", Target: "SSL Protocol"},
+				{Predicate: "mentions", Target: "A"},
+			},
+		},
+	}
+	p := core.Patch{Document: "foo-2026-x", Published: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), Nodes: nodes}
+
+	first, err := core.RenderPatch(p, testIndex)
+	it.Then(t).Should(it.Nil(err))
+
+	out := string(first)
+	replacesIdx := strings.Index(out, "replaces::")
+	mentionedInHeadingIdx := strings.Index(out, "## MentionedIn")
+	mentionsHeadingIdx := strings.Index(out, "## Mentions")
+	it.Then(t).
+		Should(it.True(replacesIdx >= 0 && mentionedInHeadingIdx >= 0 && mentionsHeadingIdx >= 0)).
+		Should(it.True(replacesIdx < mentionedInHeadingIdx)).
+		Should(it.True(mentionedInHeadingIdx < mentionsHeadingIdx))
+
+	back, err := core.ParsePatch(strings.NewReader(out))
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(1, len(back.Nodes)))
+
+	wantTargets := map[string]string{}
+	for _, e := range nodes[0].Edges {
+		wantTargets[e.Predicate] = e.Target
+	}
+	gotTargets := map[string]string{}
+	for _, e := range back.Nodes[0].Edges {
+		gotTargets[e.Predicate] = e.Target
+	}
+	it.Then(t).Should(it.Equal(len(wantTargets), len(gotTargets)))
+	for k, v := range wantTargets {
+		it.Then(t).Should(it.Equal(v, gotTargets[k]))
+	}
+
+	second, err := core.RenderPatch(core.Patch{Document: p.Document, Published: p.Published, Nodes: back.Nodes}, testIndex)
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(out, string(second)))
 }
 
 // research.md D2: a "published" front-matter key is decoded into
@@ -923,7 +1131,7 @@ func TestRenderNodeRendersNonZeroPublished(t *testing.T) {
 		Texts:     map[string]string{"definition": "Some text."},
 	}
 
-	out, err := core.RenderNode(n)
+	out, err := core.RenderNode(n, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
 	rendered := string(out)
@@ -939,7 +1147,7 @@ func TestRenderNodeRendersNonZeroPublished(t *testing.T) {
 func TestRenderNodeOmitsZeroPublished(t *testing.T) {
 	n := core.Node{ID: "X", Type: "entity", Attrs: map[string][]core.Predicate{"title": {{Value: "X"}}}}
 
-	out, err := core.RenderNode(n)
+	out, err := core.RenderNode(n, testIndex)
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).ShouldNot(it.String(string(out)).Contain("published:"))
 }
@@ -955,7 +1163,7 @@ func TestRenderPatchRendersNonZeroPublished(t *testing.T) {
 		},
 	}
 
-	raw, err := core.RenderPatch(p)
+	raw, err := core.RenderPatch(p, testIndex)
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.String(string(raw)).Contain(`published: "2026-04-12"`))
 }
@@ -971,7 +1179,7 @@ func TestRoundTripPublished(t *testing.T) {
 		Texts:     map[string]string{"definition": "Some text."},
 	}
 
-	raw, err := core.RenderNode(n)
+	raw, err := core.RenderNode(n, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
 	back, err := core.ParseNode(strings.NewReader(string(raw)))
@@ -986,7 +1194,7 @@ func TestRenderPatchNoLegacyKindFieldInsidePerNodeFence(t *testing.T) {
 		Nodes:     []core.Node{{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{}}},
 	}
 
-	raw, err := core.RenderPatch(p)
+	raw, err := core.RenderPatch(p, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
 	// The per-node fence must never declare a bare "kind:" field (research.md
@@ -997,9 +1205,13 @@ func TestRenderPatchNoLegacyKindFieldInsidePerNodeFence(t *testing.T) {
 	it.Then(t).Should(it.Equal(1, strings.Count(string(raw), `"@type": entity`)))
 }
 
-// FR-014/FR-015, ast-contract.md: RenderNode(ParseNode(RenderNode(n))) is
-// byte-equal to RenderNode(n) for any Node produced by this package's own
-// parser — a second round-trip of already-rendered output is stable.
+// FR-014/FR-015/spec FR-008, ast-contract.md/render-shape-contract.md:
+// RenderNode(ParseNode(RenderNode(n, testIndex)), testIndex) is byte-equal
+// to RenderNode(n, testIndex) for any Node produced by this package's own
+// parser — a second round-trip of already-rendered output is stable. This
+// fixture mixes an edge-role predicate (replaces, stays a flat bullet) and
+// a link-role predicate (mentionedIn, grouped under "## MentionedIn") on
+// one node — the mixed-shape case, not merely the previously-all-flat one.
 func TestIdempotentRoundTrip(t *testing.T) {
 	n := core.Node{
 		ID:    "Transport Layer Security",
@@ -1015,13 +1227,13 @@ func TestIdempotentRoundTrip(t *testing.T) {
 		},
 	}
 
-	first, err := core.RenderNode(n)
+	first, err := core.RenderNode(n, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
 	parsed, err := core.ParseNode(strings.NewReader(string(first)))
 	it.Then(t).Should(it.Nil(err))
 
-	second, err := core.RenderNode(parsed)
+	second, err := core.RenderNode(parsed, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
 	it.Then(t).Should(it.Equal(string(first), string(second)))
@@ -1031,16 +1243,33 @@ func TestIdempotentRoundTrip(t *testing.T) {
 // grouped link block round-trips to a flat bulleted list — content and
 // connectivity (the same set of Link values) survive identically, only the
 // on-disk grouping layout does not.
-func TestCosmeticExceptionGroupedHeadingFlattensOnRoundTrip(t *testing.T) {
+// TestNormalizationCorrectsShapeTowardPredicateRole (research.md D8, spec
+// FR-009): a node parsed from a document whose original shape — three
+// bold-label grouped blocks — disagrees with its predicates' declared
+// roles re-renders in the canonical schema-driven shape derived from
+// index, not the shape the original document happened to use.
+// mentionedIn (link-role in testIndex) stays grouped under its own
+// heading; referencedBy/related (edge-role) flatten to bare bullets. A
+// second sub-case covers the opposite direction: a link-role predicate
+// originally written as a flat bullet is corrected to grouped shape.
+// Content (Predicate/Target) survives identically either way (FR-010) —
+// only the on-disk grouping layout changes.
+func TestNormalizationCorrectsShapeTowardPredicateRole(t *testing.T) {
 	patch, err := core.ParsePatch(strings.NewReader(boldLabelThreeBlocksPatch))
 	it.Then(t).Should(it.Nil(err))
 
 	node := patch.Nodes[0]
-	rendered, err := core.RenderNode(node)
+	rendered, err := core.RenderNode(node, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
 	out := string(rendered)
-	it.Then(t).ShouldNot(it.String(out).Contain("## "))
+	it.Then(t).
+		Should(it.String(out).Contain("## MentionedIn")).
+		Should(it.String(out).Contain("mentionedIn:: [[dmitry-2026-graph]]")).
+		Should(it.String(out).Contain("referencedBy:: [[Core Thoughts Extension]]")).
+		Should(it.String(out).Contain("related:: [[Article Extension]]")).
+		ShouldNot(it.String(out).Contain("## ReferencedBy")).
+		ShouldNot(it.String(out).Contain("## Related"))
 
 	back, err := core.ParseNode(strings.NewReader(out))
 	it.Then(t).Should(it.Nil(err))
@@ -1057,4 +1286,31 @@ func TestCosmeticExceptionGroupedHeadingFlattensOnRoundTrip(t *testing.T) {
 	for k, v := range wantTargets {
 		it.Then(t).Should(it.Equal(v, gotTargets[k]))
 	}
+
+	// Opposite direction: a link-role predicate (mentions) originally
+	// written as a flat bullet, alongside an edge-role predicate
+	// (replaces, so the single-group omission does not itself suppress
+	// the heading), is corrected to grouped shape on re-render.
+	flatFixture := `---
+"@id": FlatMentionsEntity
+"@type": entity
+---
+# FlatMentionsEntity
+
+Some text.
+
+- replaces:: [[SSL Protocol]]
+- mentions:: [[A]]
+`
+	flatNode, err := core.ParseNode(strings.NewReader(flatFixture))
+	it.Then(t).Should(it.Nil(err))
+
+	flatRendered, err := core.RenderNode(flatNode, testIndex)
+	it.Then(t).Should(it.Nil(err))
+
+	flatOut := string(flatRendered)
+	it.Then(t).
+		Should(it.String(flatOut).Contain("replaces:: [[SSL Protocol]]")).
+		Should(it.String(flatOut).Contain("## Mentions")).
+		Should(it.String(flatOut).Contain("mentions:: [[A]]"))
 }

@@ -27,8 +27,12 @@ cat entities/TLS.md entities/X.md
 ```
 
 **Expected**: `TLS.md`'s `replaces` occurrence is a flat `- replaces:: [[SSL Protocol]]` bullet with no
-heading; both `TLS.md`'s and `X.md`'s `mentions` occurrence(s) render under a `## Mentions` heading — the
-same shape for `mentions` on both files, regardless of what else each node carries.
+heading; `TLS.md`'s `mentions` occurrence renders under a `## Mentions` heading, since `replaces` is also
+present on that node. `X.md`'s `mentions` occurrence is `X`'s *only* predicate occurrence, so User Story 2's
+single-link-role-predicate-body omission (spec Edge Cases) applies and its heading is omitted — the same
+predicate still renders identically wherever else it appears alongside other content (spec's own resolved
+Edge Case: a node whose only content happens to be one link-role predicate's occurrences is indistinguishable,
+at render time, from a type that only ever allows that one predicate).
 
 ## Scenario B — single link-role predicate body omits its heading (spec User Story 2)
 
@@ -36,39 +40,54 @@ same shape for `mentions` on both files, regardless of what else each node carri
 cat timeline/yearly/2026.md
 ```
 
-**Expected**: the year's `entries` list (role `link`, and the only edge-bearing predicate `timeline` ever
-carries) renders as a bare bulleted list directly under the node's leading prose — no `## Entries` heading.
-Then hand-edit that same file to add an unrelated `edge`-role bullet under the same body (e.g. a `related::`
-line to any existing node) and re-run:
-
-```sh
-arc apply patch-1.md   # any no-op-safe re-apply that triggers a re-render, or use arc subgraph to force a render
-```
-
-**Expected**: once a second predicate's occurrence is present in the body, `## Entries` reappears.
+**Expected**: the year's entries list renders as a bare bulleted list directly under the node's leading
+prose — no `## Entries` heading. In today's codebase this holds for two independent reasons, not just the
+omission rule: `arc apply`'s timeline writer (`applyTimeline`/`upsertTimelinePeriod`,
+`internal/app/graph/service/apply.go`) uses its own specialized bullet format (CORE §9.4, a bare
+`- [[id]] — *title* (authors) — date` line with no `entries::` predicate prefix), bypassing
+`core.RenderNode`/`renderNodeBody` entirely — so this file is never schema-rendered in the first place. The
+general single-link-role-predicate-body omission rule this feature implements is instead verified directly
+against `core.RenderNode` in `internal/core/markdown_test.go`
+(`TestRenderNodeSingleLinkRolePredicateBodyOmitsHeading`/
+`TestRenderNodeSingleLinkRolePredicateHeadingReappearsWithOtherContent`) and end-to-end for `arc apply`'s own
+timeline output in `cmd/arc/graph/apply_test.go`
+(`TestApplyCreatesTimelineEntriesChronologically`'s no-`"## "`-anywhere assertion) — there is no live
+hand-edit-and-re-render CLI demo for this scenario, since `arc subgraph`'s own traversal does not include a
+timeline node's body regardless of predicate shape (a separate, pre-existing behavior this feature does not
+change).
 
 ## Scenario C — normalization overrides a hand-written, non-canonical shape (spec User Story 3)
 
-Hand-edit `entities/X.md` to write its `mentions` occurrence as a flat bullet (against its `link`-declared
-role) instead of grouped, then force a re-render:
+`X.md`'s own `mentions` occurrence is already flat, but only because it is `X`'s *sole* predicate occurrence
+(Scenario A's omission rule) — re-rendering it unchanged would stay flat either way, so it cannot demonstrate
+correction on its own. Hand-edit `entities/X.md` to add a second, unrelated bullet (any `edge`-role predicate,
+e.g. `- replaces:: [[Old X]]`) alongside the existing flat `mentions` bullet — this takes `mentions` out of
+the single-predicate-body omission case, so its `link`-declared role is what now decides its shape — then
+force a re-render:
 
 ```sh
 arc subgraph X --depth 0 > /tmp/x-subgraph.md
 cat /tmp/x-subgraph.md
 ```
 
-**Expected**: the re-rendered `mentions` occurrence is grouped under `## Mentions` — the hand-written flat
-shape is corrected, not preserved.
+**Expected**: the re-rendered `mentions` occurrence is grouped under `## Mentions`, while `replaces` stays a
+flat bullet — the hand-written flat shape for `mentions` is corrected, not preserved.
 
 ## Scenario D — byte-stable round-trip on already-canonical content
 
 ```sh
 cp entities/TLS.md /tmp/TLS.before.md
 arc subgraph TLS --depth 0 > /tmp/TLS.subgraph.md
-diff <(tail -n +2 /tmp/TLS.before.md) <(sed -n '/^## TLS$/,$p' /tmp/TLS.subgraph.md | tail -n +3)
+diff <(sed -n '/^# TLS$/,$p' /tmp/TLS.before.md | tail -n +2) \
+     <(awk 'found && /^```$/{start=1; next} start{print} /^## TLS$/{found=1}' /tmp/TLS.subgraph.md)
 ```
 
-**Expected**: no diff — a node already in canonical schema-driven shape re-renders identically.
+**Expected**: no diff — a node already in canonical schema-driven shape (its `mentions` occurrence already
+grouped under `## Mentions`, its `replaces` occurrence already a flat bullet) re-renders body content
+byte-identically; the two files' surrounding front matter/heading shape necessarily differs (a standalone
+node file's own `---`-delimited front matter plus `# TLS` H1 vs. a patch section's `## TLS` H2 plus fenced
+yaml block), which is why the comparison extracts each file's body content first, rather than diffing whole
+files.
 
 ## Scenario E — full command-level regression
 

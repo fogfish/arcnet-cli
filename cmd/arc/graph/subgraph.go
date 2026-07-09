@@ -24,9 +24,25 @@ import (
 	appgraph "github.com/fogfish/arcnet-cli/internal/app/graph"
 	"github.com/fogfish/arcnet-cli/internal/app/graph/kernel"
 	"github.com/fogfish/arcnet-cli/internal/app/graph/service"
+	appschema "github.com/fogfish/arcnet-cli/internal/app/schema"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
+
+// resolveIndexOrDefault resolves store's schema index for rendering
+// purposes only, falling back to the zero Index (every predicate renders
+// edge-role/flat) when the directory isn't a fully schema-populated graph —
+// arc subgraph/arc serve have never required .arc/_schema to exist, and
+// this feature must not make choosing a bullet-vs-heading shape a new
+// reason those commands stop working against a bare directory (research.md
+// D7).
+func resolveIndexOrDefault(store fsys.Store) core.Index {
+	index, err := appschema.Resolve(store)
+	if err != nil {
+		return core.Index{}
+	}
+	return index
+}
 
 const (
 	defaultSubgraphDirectCap   = 4096
@@ -39,18 +55,16 @@ const (
 // own precedent).
 var errNoCause = errors.New("")
 
-type humanSubgraphPrinter struct{}
+type humanSubgraphPrinter struct {
+	index core.Index
+}
 
 // Show writes core.RenderPatch's bytes verbatim to stdout — no
 // bios.SCHEMA styling of any kind (research.md D10): this command's
 // entire stdout contract is a structured, machine/LLM-consumable document
 // (round-trip target: arc apply), not a colorized human table.
-func (humanSubgraphPrinter) Show(r kernel.SubgraphResult) ([]byte, error) {
-	return core.RenderPatch(r.Patch)
-}
-
-var subgraphRenderers = bios.Registry[kernel.SubgraphResult]{
-	Human: humanSubgraphPrinter{},
+func (p humanSubgraphPrinter) Show(r kernel.SubgraphResult) ([]byte, error) {
+	return core.RenderPatch(r.Patch, p.index)
 }
 
 // truncationNotice renders the plain, unstyled stderr diagnostic line for
@@ -112,6 +126,7 @@ See more info https://github.com/fogfish/arcnet-cli`,
 			if err != nil {
 				return err
 			}
+			index := resolveIndexOrDefault(store)
 
 			cfgFile, err := appconfig.Load(store)
 			if err != nil {
@@ -141,6 +156,7 @@ See more info https://github.com/fogfish/arcnet-cli`,
 				return err
 			}
 
+			subgraphRenderers := bios.Registry[kernel.SubgraphResult]{Human: humanSubgraphPrinter{index: index}}
 			printer := subgraphRenderers.Resolve(bios.ResolveMode())
 			out, err := printer.Show(result)
 			if err != nil {

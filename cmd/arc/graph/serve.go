@@ -129,7 +129,7 @@ type nodeGetArgs struct {
 
 // nodeGetHandler fetches one node by id and renders it exactly as
 // core.RenderNode already serializes it on disk (research.md D2).
-func nodeGetHandler(dir string) func(context.Context, *mcp.CallToolRequest, nodeGetArgs) (*mcp.CallToolResult, any, error) {
+func nodeGetHandler(dir string, index core.Index) func(context.Context, *mcp.CallToolRequest, nodeGetArgs) (*mcp.CallToolResult, any, error) {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, args nodeGetArgs) (*mcp.CallToolResult, any, error) {
 		node, err := appgraph.NodeGet(ctx, fsys.Local{}, dir, args.ID)
 		logCall("node_get", fmt.Sprintf("id=%q", args.ID), err)
@@ -137,7 +137,7 @@ func nodeGetHandler(dir string) func(context.Context, *mcp.CallToolRequest, node
 			return nil, nil, err
 		}
 
-		text, err := core.RenderNode(node)
+		text, err := core.RenderNode(node, index)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -179,7 +179,7 @@ type subgraphGetArgs struct {
 // subgraphGetHandler extracts the seed plus every node reachable within
 // depth hops and renders the result as one patch-exchange document, byte-
 // identical to arc subgraph's own stdout for the same seed/depth.
-func subgraphGetHandler(dir string, cfg configkernel.SubgraphConfig) func(context.Context, *mcp.CallToolRequest, subgraphGetArgs) (*mcp.CallToolResult, any, error) {
+func subgraphGetHandler(dir string, cfg configkernel.SubgraphConfig, index core.Index) func(context.Context, *mcp.CallToolRequest, subgraphGetArgs) (*mcp.CallToolResult, any, error) {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, args subgraphGetArgs) (*mcp.CallToolResult, any, error) {
 		depth := 1
 		if args.Depth != nil {
@@ -199,7 +199,7 @@ func subgraphGetHandler(dir string, cfg configkernel.SubgraphConfig) func(contex
 			return nil, nil, err
 		}
 
-		text, err := core.RenderPatch(result.Patch)
+		text, err := core.RenderPatch(result.Patch, index)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -221,6 +221,7 @@ func buildServer(ctx context.Context, dir string) (*mcp.Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	index := resolveIndexOrDefault(store)
 
 	cfgFile, err := appconfig.Load(store)
 	if err != nil {
@@ -241,7 +242,7 @@ func buildServer(ctx context.Context, dir string) (*mcp.Server, error) {
 		Name:        "node_get",
 		Description: "Fetch a node's full content by id.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
-	}, nodeGetHandler(dir))
+	}, nodeGetHandler(dir, index))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "node_grep",
@@ -253,7 +254,7 @@ func buildServer(ctx context.Context, dir string) (*mcp.Server, error) {
 		Name:        "subgraph_get",
 		Description: "Return the fully-resolved subgraph rooted at a node, to a given hop depth.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
-	}, subgraphGetHandler(dir, subgraphCfg))
+	}, subgraphGetHandler(dir, subgraphCfg, index))
 
 	return server, nil
 }

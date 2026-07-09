@@ -248,6 +248,14 @@ func TestApplyCreatesTimelineEntriesChronologically(t *testing.T) {
 
 	// chronological: rescorla (04-12) must appear before chen (04-28)
 	it.Then(t).Should(it.True(strings.Index(monthly, "rescorla-2026-tls13") < strings.Index(monthly, "chen-2026-pqkex")))
+
+	// spec.md User Story 2 (T022): timeline's entries list is the one
+	// production type this feature's single-link-role-predicate-body
+	// omission rule governs today — a period file's entries list must
+	// never carry a "## " heading anywhere.
+	it.Then(t).
+		ShouldNot(it.String(yearly).Contain("## ")).
+		ShouldNot(it.String(monthly).Contain("## "))
 }
 
 // arc apply tls13.patch.md
