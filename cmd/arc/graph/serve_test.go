@@ -23,6 +23,7 @@ import (
 
 	"github.com/fogfish/arcnet-cli/internal/app/graph/kernel"
 	"github.com/fogfish/arcnet-cli/internal/app/graph/service"
+	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
 // connectServeSession builds the real, registered mcp.Server for dir
@@ -509,7 +510,7 @@ func TestNodeGetHandlerErrorMapping(t *testing.T) {
 	initGraph(t, dir)
 	seedServeFixture(t, dir)
 
-	handler := nodeGetHandler(dir)
+	handler := nodeGetHandler(dir, core.Index{})
 
 	result, _, err := handler(context.Background(), nil, nodeGetArgs{ID: "No Such Node"})
 	it.Then(t).

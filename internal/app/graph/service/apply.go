@@ -92,12 +92,12 @@ func isStub(node core.Node) bool {
 // differs, byte-for-byte, from existing's (research.md D6) — the single
 // mechanism deciding whether a merge earns an "updated" stamp, correct for
 // every core.MergeOp uniformly including MergeNone's already-a-no-op case.
-func nodeContentChanged(existing, merged core.Node) (bool, error) {
-	existingRaw, err := core.RenderNode(existing)
+func nodeContentChanged(existing, merged core.Node, index core.Index) (bool, error) {
+	existingRaw, err := core.RenderNode(existing, index)
 	if err != nil {
 		return false, err
 	}
-	mergedRaw, err := core.RenderNode(merged)
+	mergedRaw, err := core.RenderNode(merged, index)
 	if err != nil {
 		return false, err
 	}
@@ -257,7 +257,7 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 				outcome = "merged (conflict flagged)"
 			}
 
-			changed, err := nodeContentChanged(existing, merged)
+			changed, err := nodeContentChanged(existing, merged, index)
 			if err != nil {
 				reporter.Error(labelApplyingNodes, err)
 				rollback(store, createdPaths)
@@ -287,7 +287,7 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 			}
 		}
 
-		if err := writeNode(store, path, merged); err != nil {
+		if err := writeNode(store, path, merged, index); err != nil {
 			reporter.Error(labelApplyingNodes, err)
 			rollback(store, createdPaths)
 			return kernel.ApplyResult{}, err
@@ -441,8 +441,8 @@ func readExistingNode(store fsys.Store, path string) (core.Node, bool, error) {
 	return node, true, nil
 }
 
-func writeNode(store fsys.Store, path string, node core.Node) error {
-	raw, err := core.RenderNode(node)
+func writeNode(store fsys.Store, path string, node core.Node, index core.Index) error {
+	raw, err := core.RenderNode(node, index)
 	if err != nil {
 		return ErrNodeWrite.With(err, path)
 	}

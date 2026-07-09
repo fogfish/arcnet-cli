@@ -642,3 +642,46 @@ func TestSubgraphStubsRegressionAppliedIntoEmptyGraphHasNoUnresolvedLinks(t *tes
 	lintOut, _ := sut(lint.NewLintCmd(), nil)
 	it.Then(t).ShouldNot(it.String(lintOut).Contain("does not exist"))
 }
+
+const subgraphEntityMixedShape = `---
+"@id": MixedShapeEntity
+"@type": entity
+---
+# MixedShapeEntity
+
+- replaces:: [[SSL Protocol]]
+- mentions:: [[Transport Layer Security]]
+`
+
+// arc subgraph "MixedShapeEntity" --depth 0
+// spec.md User Story 1 (T016) / Acceptance Scenario 4 (BUG-001, added by the
+// bugfix patch): the schema-driven shape survives the full
+// appgraph.Subgraph -> resolveIndexOrDefault -> core.RenderPatch path, not
+// just the unit-level renderNodeBody function. initGraph seeds the real
+// CorePredicateDefs vocabulary, where mentions is link-role and replaces is
+// edge-role. Because arc subgraph's output is a patch-exchange document
+// (ARCNET-CORE §14.2), mentions must render under a "**Mentions**"
+// bold-label paragraph — never a "## Mentions" heading, which would corrupt
+// the patch's own reserved @type/@id heading structure — while replaces
+// stays a flat bullet.
+func TestSubgraphSchemaDrivenShapeAppliesEndToEndViaResolvedIndex(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	writeGrepNode(t, dir, "entities/MixedShapeEntity.md", subgraphEntityMixedShape)
+	chdir(t, dir)
+
+	cmd := NewSubgraphCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("depth", "0")))
+	out, err := sut(cmd, []string{"MixedShapeEntity"})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).
+		ShouldNot(it.String(out).Contain("## Mentions")).
+		Should(it.String(out).Contain("**Mentions**")).
+		Should(it.String(out).Contain("mentions:: [[Transport Layer Security]]")).
+		Should(it.String(out).Contain("replaces:: [[SSL Protocol]]"))
+
+	replacesIdx := strings.Index(out, "replaces::")
+	mentionsLabelIdx := strings.Index(out, "**Mentions**")
+	it.Then(t).Should(it.True(replacesIdx >= 0 && replacesIdx < mentionsLabelIdx))
+}

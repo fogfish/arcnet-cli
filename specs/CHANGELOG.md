@@ -2,6 +2,30 @@
 
 ## 2026-07-08
 
+/speckit-specify Change how arc decides whether a node's outgoing links are written to Markdown as a flat bulleted list or grouped under a "## Heading" block, so that decision comes from each predicate's own declared schema (its role: edge = flat, link = grouped) rather than from whatever shape happened to be used in whichever file arc last read.
+
+Today, whether a link renders flat or grouped depends on how the document was originally structured — arc's parser detects the shape it finds and preserves it. The new spec requires the opposite direction: rendering must derive the flat-vs-grouped choice from the target predicate's own role, declared once on that predicate's schema node, consistently everywhere that predicate appears in the graph — so if a predicate's schema says its role is "link", every node's occurrences of that predicate render under a heading, and if "edge", every occurrence renders as a flat bullet, regardless of how any individual document happened to write it before.
+
+When a type's entire body consists of exactly one link-role predicate (for example, a timeline node's "entries"), the heading may be omitted since the block is the whole body — arc's renderer must support this exact-one-predicate omission case.
+
+A round-trip test (read a node, write it back unchanged) must still produce byte-stable output; cosmetic reordering of which heading-group appears before another, or normalization of an inconsistently-shaped input into the canonical schema-driven shape, is acceptable and expected, per ARCNET-AST's own conformance note that "relative order/grouping of edges MAY be normalized."
+
+Out of scope: changing parse-time behavior (already unified into one Edges list by spec 010); changing merge behavior (spec 012).
+
+
+/speckit-plan Technical approach: internal/core/markdown.go's RenderNode/RenderPatch (specifically renderNodeBody), now consuming spec 011's Schema Index to decide, per distinct predicate name present in Node.Edges, whether to render it as a flat bullet (role "edge") or grouped under "## <label>" (role "link", label from the predicate's own schema `label` field, default capitalized predicate name).
+
+Design: partition Edges by predicate using the Schema Index; for role="edge" predicates, render each Link in original relative order as flat "- predicate:: [[Target]]" bullets (matching current renderLinkBullet); for role="link" predicates, group by predicate into one "## Label" block each, blocks ordered by label (matching AST §6.4's stated rendering algorithm exactly); when a type's schema shows exactly one link-role predicate as its complete Edges content (e.g. timeline/entries), omit the heading per CORE §5's closing note — needs a lookup from Node.Type into its Class node's Requires/Optional list, again via the Schema Index, to know whether "one predicate present" also means "the type's only possible edge predicate."
+
+Unregistered predicate fallback: since not every graph will have full schema coverage at every moment (an unregistered predicate is still valid CORE content until lint flags it), decide and document a default rendering role for a predicate absent from the Schema Index — recommend defaulting to "edge" (flat), since that's the more conservative shape (never silently invents a heading the author didn't write) and matches today's implicit default.
+
+Testing: internal/core/markdown_test.go — round-trip tests where the same logical Edges content is fed through RenderNode and the output is asserted to match CORE §11's worked examples verbatim (mentionedIn grouped under a heading, replaces/conformsTo flat, exactly as CORE §11.3's entity example shows both shapes on one node); a normalization test proving an input file that groups a normally-flat predicate under a heading gets re-rendered flat on the next write (schema wins over the source document's own historical shape).
+
+Constraints: pure function, no I/O beyond what RenderNode already does; must not regress existing byte-stable round-trip guarantees for content that's already schema-conformant.
+
+
+---
+
 /speckit-specify Change how arc apply reconciles an incoming patch's contribution to a node that already exists in the graph, from arc's current "one merge behavior per node type" model to ARCNET-CORE v0.7's "each predicate declares its own merge behavior" model (§9.3). See https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-CORE.md
 
 Today, when arc apply merges a contribution into an existing entity/resource/source/timeline node, it applies one single merge rule to the entire node — every attribute and every prose field on a "resource" node, for example, is treated as first-writer-wins together, even though some of a resource's fields (its "status") legitimately change over time while others (its "ref" type) should never change once set.

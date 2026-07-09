@@ -55,9 +55,10 @@ var validMergeOps = map[core.MergeOp]bool{
 // programming error, not a runtime condition callers need to handle.
 func Seed() map[string][]byte {
 	out := make(map[string][]byte, len(kernel.CorePredicateDefs)+len(kernel.CoreTypeDefs))
+	index := core.Index{Predicates: kernel.CorePredicateDefs, Types: kernel.CoreTypeDefs}
 
 	for name, def := range kernel.CorePredicateDefs {
-		raw, err := core.RenderNode(predicateNode(name, def))
+		raw, err := core.RenderNode(predicateNode(name, def), index)
 		if err != nil {
 			panic(err)
 		}
@@ -65,7 +66,7 @@ func Seed() map[string][]byte {
 	}
 
 	for name, def := range kernel.CoreTypeDefs {
-		raw, err := core.RenderNode(typeNode(name, def))
+		raw, err := core.RenderNode(typeNode(name, def), index)
 		if err != nil {
 			panic(err)
 		}
@@ -282,7 +283,10 @@ func registerIfAbsent(store fsys.Store, path string, node core.Node) (bool, erro
 		return false, nil
 	}
 
-	raw, err := core.RenderNode(node)
+	// core.Index{} is safe here: node's Edges is always nil at both call
+	// sites (RegisterType/RegisterPredicate), so the role-partitioning path
+	// is never reached (research.md D6).
+	raw, err := core.RenderNode(node, core.Index{})
 	if err != nil {
 		return false, ErrSchemaWrite.With(err, path)
 	}
