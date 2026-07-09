@@ -1015,10 +1015,13 @@ func TestRenderPatchRoundTripsNodeWithEdgesTextsHRefs(t *testing.T) {
 // TestRenderPatchStableAcrossHeadingGroupReordering (spec FR-010,
 // contracts/render-shape-contract.md round-trip guarantees): re-rendering
 // never reorders anything beyond what the contract permits — the flat
-// edge-role list always precedes any link-role heading block, heading
-// blocks are ordered by resolved label ascending (mentionedIn before
-// mentions), and no Link's Predicate/Target/Alias is ever altered,
-// dropped, or duplicated across a parse/render/parse/render cycle.
+// edge-role list always precedes any link-role group, groups are ordered by
+// resolved label ascending (mentionedIn before mentions), and no Link's
+// Predicate/Target/Alias is ever altered, dropped, or duplicated across a
+// parse/render/parse/render cycle. Per BUG-001/research.md D10, a
+// RenderPatch link-role group renders as a "**Label**" bold-label
+// paragraph, never a "## Label" heading — ARCNET-CORE §14.2 reserves "##"
+// exclusively for a patch document's own @type/@id structure.
 func TestRenderPatchStableAcrossHeadingGroupReordering(t *testing.T) {
 	nodes := []core.Node{
 		{
@@ -1037,13 +1040,17 @@ func TestRenderPatchStableAcrossHeadingGroupReordering(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 
 	out := string(first)
-	replacesIdx := strings.Index(out, "replaces::")
-	mentionedInHeadingIdx := strings.Index(out, "## MentionedIn")
-	mentionsHeadingIdx := strings.Index(out, "## Mentions")
 	it.Then(t).
-		Should(it.True(replacesIdx >= 0 && mentionedInHeadingIdx >= 0 && mentionsHeadingIdx >= 0)).
-		Should(it.True(replacesIdx < mentionedInHeadingIdx)).
-		Should(it.True(mentionedInHeadingIdx < mentionsHeadingIdx))
+		ShouldNot(it.String(out).Contain("## MentionedIn")).
+		ShouldNot(it.String(out).Contain("## Mentions"))
+
+	replacesIdx := strings.Index(out, "replaces::")
+	mentionedInLabelIdx := strings.Index(out, "**MentionedIn**")
+	mentionsLabelIdx := strings.Index(out, "**Mentions**")
+	it.Then(t).
+		Should(it.True(replacesIdx >= 0 && mentionedInLabelIdx >= 0 && mentionsLabelIdx >= 0)).
+		Should(it.True(replacesIdx < mentionedInLabelIdx)).
+		Should(it.True(mentionedInLabelIdx < mentionsLabelIdx))
 
 	back, err := core.ParsePatch(strings.NewReader(out))
 	it.Then(t).Should(it.Nil(err))
@@ -1061,6 +1068,52 @@ func TestRenderPatchStableAcrossHeadingGroupReordering(t *testing.T) {
 	for k, v := range wantTargets {
 		it.Then(t).Should(it.Equal(v, gotTargets[k]))
 	}
+
+	second, err := core.RenderPatch(core.Patch{Document: p.Document, Published: p.Published, Nodes: back.Nodes}, testIndex)
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(out, string(second)))
+}
+
+// TestRenderPatchBoldLabelRoundTripsWithoutParserChange (BUG-001, T035):
+// confirms walkNodeBody's existing bold-label recognition (blockTitle/
+// boldLabel, introduced for BUG-003) already parses RenderPatch's corrected
+// "**Label**" bold-label block back into the same Edges shape, with no
+// parser change needed — RenderPatch(ParsePatch(RenderPatch(n, testIndex)),
+// testIndex) is byte-equal to RenderPatch(n, testIndex), mirroring
+// TestIdempotentRoundTrip's RenderNode pattern but for the patch format's
+// bold-label markup.
+func TestRenderPatchBoldLabelRoundTripsWithoutParserChange(t *testing.T) {
+	p := core.Patch{
+		Document:  "foo-2026-bold",
+		Published: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Nodes: []core.Node{
+			{
+				ID:   "BoldRoundTrip",
+				Type: "entity",
+				Edges: []core.Link{
+					{Predicate: "replaces", Target: "SSL Protocol"},
+					{Predicate: "mentions", Target: "A"},
+					{Predicate: "mentionedIn", Target: "B"},
+				},
+			},
+		},
+	}
+
+	first, err := core.RenderPatch(p, testIndex)
+	it.Then(t).Should(it.Nil(err))
+
+	out := string(first)
+	it.Then(t).
+		ShouldNot(it.String(out).Contain("## Mentions")).
+		ShouldNot(it.String(out).Contain("## MentionedIn")).
+		Should(it.String(out).Contain("## BoldRoundTrip")). // the node's own @id H2 heading is expected
+		Should(it.String(out).Contain("**Mentions**")).
+		Should(it.String(out).Contain("**MentionedIn**"))
+
+	back, err := core.ParsePatch(strings.NewReader(out))
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(1, len(back.Nodes)))
+	it.Then(t).Should(it.Equal(3, len(back.Nodes[0].Edges)))
 
 	second, err := core.RenderPatch(core.Patch{Document: p.Document, Published: p.Published, Nodes: back.Nodes}, testIndex)
 	it.Then(t).Should(it.Nil(err))

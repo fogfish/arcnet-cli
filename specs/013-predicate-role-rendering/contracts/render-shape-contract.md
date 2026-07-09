@@ -20,25 +20,40 @@ shim for an internal (non-`--json`) function signature.
 
 ## Rendering algorithm (normative)
 
+**⚠️ Amended — BUG-001 (2026-07-09)**: step 3's markup (below) originally applied identically to both
+`RenderNode` and `RenderPatch`. It now branches by caller — see the "Link-role group markup by format" note
+after step 3 — because ARCNET-CORE §14.2 reserves `##` exclusively for a patch document's own `@type`/`@id`
+structure; a `## Label` heading inside a patch's per-node body corrupts that structure. Steps 1, 2, 4, 5, and
+6 are unaffected by this amendment — the partition, ordering, and single-group-omission decisions are
+identical for both `RenderNode` and `RenderPatch`; only the literal Markdown markup step 3 emits for a
+link-role group differs by caller.
+
 For a given `Node`/`Index` pair, `RenderNode`/`RenderPatch` MUST render `n.Edges` as follows:
 
 1. Partition `n.Edges` by each occurrence's resolved role: `index.Predicates[l.Predicate].Role`, or `"edge"`
    when `l.Predicate` has no entry in `index.Predicates` (never an error, never a dropped occurrence).
 2. Every `"edge"`-role occurrence renders as one flat bulleted list (`renderLinkBullet` per line, unchanged
    format), in original relative order across all edge-role predicates, with **no** heading.
-3. Every `"link"`-role occurrence is grouped by its predicate name into one heading block per distinct name
-   present: `"## " + label + "\n"` followed by that predicate's occurrences (`renderLinkBullet` per line, in
-   original relative order within the group). `label` is `index.Predicates[name].Label` if non-empty, else
-   the predicate name capitalized (`titleCaseType`).
-4. Link-role heading blocks are ordered by their resolved `label`, ascending — this MAY differ from the
-   original document's block order (permitted normalization, spec FR-010).
+3. Every `"link"`-role occurrence is grouped by its predicate name into one block per distinct name present,
+   followed by that predicate's occurrences (`renderLinkBullet` per line, in original relative order within
+   the group). `label` is `index.Predicates[name].Label` if non-empty, else the predicate name capitalized
+   (`titleCaseType`). **Link-role group markup by format** (BUG-001): in `RenderNode`'s output, the block is
+   `"## " + label + "\n"` (ARCNET-CORE §5); in `RenderPatch`'s output, the block is `"**" + label + "**\n"`
+   — a bold-label paragraph, never a heading (ARCNET-CORE §14.2, "Markdown headings are reserved for type
+   and identity; node bodies use bold labels, never headings").
+4. Link-role blocks are ordered by their resolved `label`, ascending — this MAY differ from the original
+   document's block order (permitted normalization, spec FR-010). Ordering is identical regardless of
+   whether step 3 rendered a heading or a bold label.
 5. **Exception**: if step 1 produces zero edge-role occurrences and step 3 produces occurrences of exactly one
-   distinct link-role predicate name, that one group's heading is omitted and its occurrences render as a
-   bare bulleted list instead (same shape/position as step 2's flat list).
+   distinct link-role predicate name, that one group's heading/bold-label is omitted and its occurrences
+   render as a bare bulleted list instead (same shape/position as step 2's flat list). This applies
+   identically to both formats.
 6. The rendered order within a node's body is: leading text (unchanged) → step 2's flat list, if non-empty →
    step 3/5's link block(s), if any → trailing text (unchanged). This exact ordering is required for the
    *existing, unchanged* parser (`walkNodeBody`) to read the output back into the same `Edges` shape — this
-   contract does not change parsing (specs/010) or the parser's own grammar.
+   contract does not change parsing (specs/010) or the parser's own grammar. `walkNodeBody`'s `blockTitle`
+   helper already recognizes both an `## Label` heading and a `**Label**` bold-label paragraph as a valid
+   group title (BUG-003 precedent), so this amendment requires no parser change in either format.
 
 ## Round-trip guarantees
 

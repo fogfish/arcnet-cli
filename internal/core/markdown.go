@@ -728,7 +728,7 @@ func RenderNode(n Node, index Index) ([]byte, error) {
 	buf.Write(frontMatter)
 	buf.WriteString("---\n")
 	buf.WriteString("# " + n.ID + "\n")
-	buf.Write(renderNodeBody(n, index))
+	buf.Write(renderNodeBody(n, index, false))
 
 	return buf.Bytes(), nil
 }
@@ -738,7 +738,9 @@ func RenderNode(n Node, index Index) ([]byte, error) {
 // RenderPatch's per-node patch-exchange section (specs/007-arc-subgraph,
 // research.md D2/D9) — the only difference between the two callers is what
 // precedes this body (a "# <ID>" H1 heading vs. a "## <ID>" H2 heading plus
-// a fenced yaml block).
+// a fenced yaml block) and, per BUG-001, the markup renderEdges uses for a
+// link-role predicate group: patchFormat is false for RenderNode's own
+// graph-node-file shape, true for RenderPatch's patch-exchange shape.
 //
 // Physical layout (contracts/ast-contract.md: "matching the original
 // leading-prose/edges/trailing-prose visual layout"): the leading-slot key
@@ -753,7 +755,7 @@ func RenderNode(n Node, index Index) ([]byte, error) {
 // sandwiching Edges between the leading and trailing slots) would break
 // FR-014's round-trip by merging the trailing prose back into the leading
 // slot on re-parse.
-func renderNodeBody(n Node, index Index) []byte {
+func renderNodeBody(n Node, index Index, patchFormat bool) []byte {
 	var buf bytes.Buffer
 
 	consumed := make([]bool, len(n.HRefs))
@@ -786,7 +788,7 @@ func renderNodeBody(n Node, index Index) []byte {
 		writeText(k)
 	}
 
-	renderEdges(&buf, n.Edges, index)
+	renderEdges(&buf, n.Edges, index, patchFormat)
 
 	if _, ok := n.Texts[trailingKey]; ok {
 		writeText(trailingKey)
@@ -829,10 +831,16 @@ type linkGroup struct {
 // schema-driven partition: every edge-role occurrence first, as one bare
 // bulleted list in original relative order (identical to this package's
 // pre-existing always-flat rendering); then every link-role predicate's
-// occurrences, grouped by predicate name, one "## <label>" heading block
-// per distinct predicate present, blocks ordered by resolved label
-// ascending (data-model.md's partition table; research.md D2).
-func renderEdges(buf *bytes.Buffer, edges []Link, index Index) {
+// occurrences, grouped by predicate name, one block per distinct predicate
+// present, blocks ordered by resolved label ascending (data-model.md's
+// partition table; research.md D2). Per BUG-001/research.md D10, a link-role
+// group's block markup diverges by caller: patchFormat selects a
+// "**<label>**" bold-label paragraph (RenderPatch, ARCNET-CORE §14.2 —
+// headings are reserved for a patch's own @type/@id structure) instead of a
+// "## <label>" heading (RenderNode, ARCNET-CORE §5) — the partition,
+// ordering, and single-group-omission decisions below are identical either
+// way; only the two literal markup strings differ.
+func renderEdges(buf *bytes.Buffer, edges []Link, index Index, patchFormat bool) {
 	if len(edges) == 0 {
 		return
 	}
@@ -882,7 +890,11 @@ func renderEdges(buf *bytes.Buffer, edges []Link, index Index) {
 	sort.SliceStable(groups, func(i, j int) bool { return groups[i].label < groups[j].label })
 
 	for _, g := range groups {
-		buf.WriteString("\n## " + g.label + "\n")
+		if patchFormat {
+			buf.WriteString("\n**" + g.label + "**\n")
+		} else {
+			buf.WriteString("\n## " + g.label + "\n")
+		}
 		for _, e := range g.links {
 			buf.WriteString(renderLinkBullet(e))
 			buf.WriteString("\n")
@@ -898,7 +910,12 @@ func renderEdges(buf *bytes.Buffer, edges []Link, index Index) {
 // (attributes plus "@id"/"@type" — parsePatchBody reads "@type" from each
 // node's own fence, not from the enclosing H1, so it must be present there
 // too, unlike the old "kind"-omitted-under-H1 convention) and its body via
-// the same renderNodeBody RenderNode uses.
+// renderNodeBody with patchFormat=true (BUG-001): a link-role predicate
+// group renders as a "**Label**" bold-label paragraph here, never a "##"
+// heading, since ARCNET-CORE §14.2 reserves "##" exclusively for this
+// document's own @type/@id structure — every other part of the body
+// (leading/trailing prose, edge-role flat bullets) is identical to
+// RenderNode's own shape.
 func RenderPatch(p Patch, index Index) ([]byte, error) {
 	manifest, err := renderPatchManifest(p)
 	if err != nil {
@@ -928,7 +945,7 @@ func RenderPatch(p Patch, index Index) ([]byte, error) {
 			buf.WriteString("```yaml\n")
 			buf.Write(fence)
 			buf.WriteString("```\n")
-			buf.Write(renderNodeBody(n, index))
+			buf.Write(renderNodeBody(n, index, true))
 		}
 	}
 

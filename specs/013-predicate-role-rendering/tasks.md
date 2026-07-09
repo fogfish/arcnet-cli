@@ -27,6 +27,12 @@ Scenario 1 defines "canonical schema-driven shape" explicitly in terms of US2's 
 omission ("single-predicate heading omitted where applicable"), so US3 cannot be fully implemented or tested
 until US2's omission rule exists. Implementation order is therefore **US1 → US2 → US3**, not priority order.
 
+**Bugfix**: 2026-07-09 — [BUG-001](bugs/BUG-001.md) reopened T016/T018/T019/T027/T028/T029/T030/
+TN06/TN13/TN14 (marked `⚠️ Reopened` inline) and added Phase 6 (T032-T036): `RenderPatch`'s link-role group
+markup must be a `**Label**` bold-label paragraph (ARCNET-CORE §14.2), not the `## Label` heading `RenderNode`
+correctly uses (ARCNET-CORE §5) — the shared `renderNodeBody` implementation applied `RenderNode`'s markup to
+both formats, corrupting a patch document's fixed `H1=@type`/`H2=@id` structure.
+
 ---
 
 ## Phase 1: Setup
@@ -175,11 +181,17 @@ schema-declared shape.
 - [X] T015 [P] [US1] In `internal/core/markdown_test.go`, add
       `TestRenderNodeUnregisteredPredicateDefaultsToFlatEdge`: a predicate absent from `testIndex` entirely
       renders as a flat bullet with no heading (spec FR-013, research.md D3)
-- [X] T016 [P] [US1] In `cmd/arc/graph/subgraph_test.go`, add a new case seeding a fixture entity with a
+- [X] T016 [P] [US1] ⚠️ Reopened — BUG-001 (2026-07-09): this task's own assertion (`"## Mentions"` inside
+      `arc subgraph`'s **patch** output) is the bug — ARCNET-CORE §14.2 reserves `##` for a patch document's
+      `@type`/`@id` structure, so a `link`-role group inside a patch node's body MUST render under a
+      `"**Mentions**"` bold-label paragraph, never a heading (see FR-014, added by BUG-001's patch). Rewrite
+      the assertion accordingly before this task can be marked done again.
+      ~~In `cmd/arc/graph/subgraph_test.go`, add a new case seeding a fixture entity with a
       `link`-role predicate occurrence (`mentions`) plus an `edge`-role occurrence, run `arc subgraph`, and
       assert the exported patch's Markdown shows the `mentions` occurrence grouped under `"## Mentions"` while
       the edge-role occurrence stays a flat bullet — proving the schema-driven shape survives the full
-      `appgraph.Subgraph` → `resolveIndexOrDefault` → `core.RenderPatch` path, not just the unit-level function
+      `appgraph.Subgraph` → `resolveIndexOrDefault` → `core.RenderPatch` path, not just the unit-level
+      function~~
 
 ### Implementation for User Story 1
 
@@ -188,19 +200,26 @@ schema-declared shape.
       lookup, `.Role` if found, else `"edge"`) and a label-resolution step inline in `renderNodeBody` (or a
       small `labelFor(index Index, predicate string) string` helper: `index.Predicates[predicate].Label` if
       non-empty, else `titleCaseType(predicate)`, research.md D4) (depends on T006)
-- [X] T018 [US1] In `internal/core/markdown.go`'s `renderNodeBody`, replace the current unconditional "render
+- [X] T018 [US1] ⚠️ Reopened — BUG-001 (2026-07-09): the partition/order/omission logic below is correct and
+      unaffected, but the "`"## " + labelFor(...) + "\n"`" markup is `RenderNode`-only (ARCNET-CORE §5);
+      `RenderPatch` must instead emit `"**" + labelFor(...) + "**\n"` (ARCNET-CORE §14.2, research.md D10).
+      Split the markup by caller before this task can be marked done again — see new T032.
+      ~~In `internal/core/markdown.go`'s `renderNodeBody`, replace the current unconditional "render
       every `Edges` entry as one flat bulleted list" block (~lines 787-793) with the partition algorithm from
       data-model.md/contracts/render-shape-contract.md: partition `n.Edges` by `resolveRenderRole`; render the
       edge-role bucket as one bare bulleted list (`renderLinkBullet` per line, original relative order,
       unchanged format) first; then render each link-role bucket (grouped by predicate name) as `"## " +
       labelFor(...) + "\n"` followed by its occurrences, groups ordered by resolved label ascending
       (`sort.Strings`) — physical order: flat list, then heading blocks, landing in `walkNodeBody`'s existing
-      bare-list-then-heading-blocks parser grammar unchanged (depends on T017)
-- [X] T019 [US1] Run `go test ./internal/core/... -run TestRenderNode -v` and `go test ./cmd/arc/graph/... -run
-      TestSubgraph -v`; confirm T013-T016 now pass (green)
+      bare-list-then-heading-blocks parser grammar unchanged (depends on T017)~~
+- [X] T019 [US1] ⚠️ Reopened — BUG-001 (2026-07-09): re-run after T032/T033 land; T016's rewritten assertion
+      must pass against the corrected `RenderPatch` bold-label output.
+      ~~Run `go test ./internal/core/... -run TestRenderNode -v` and `go test ./cmd/arc/graph/... -run
+      TestSubgraph -v`; confirm T013-T016 now pass (green)~~
 
-**Checkpoint**: User Story 1's E2E test (T016) and unit tests (T013-T015) pass; a predicate's rendered shape
-is fully schema-driven and independently testable/demoable.
+**Checkpoint**: User Story 1's unit tests (T013-T015) pass; a predicate's rendered shape is fully
+schema-driven for `RenderNode`. E2E test T016 and its checkpoint claim are reopened pending BUG-001's fix
+(T032-T034) — see Phase 6 below.
 
 ---
 
@@ -269,10 +288,14 @@ roles, run it through the same path, and confirm it normalizes.
       `RenderNode(ParseNode(RenderNode(n, testIndex)), testIndex)` is byte-equal to `RenderNode(n, testIndex)`
       (spec FR-008), extending the existing pattern at line ~1003 to the new mixed-shape case rather than only
       the previously-all-flat one
-- [X] T027 [US3] Add `TestRenderPatchStableAcrossHeadingGroupReordering` (or extend an existing `RenderPatch`
+- [X] T027 [US3] ⚠️ Reopened — BUG-001 (2026-07-09): this test's own name/assertions ("heading-block
+      position," `"## MentionedIn"`/`"## Mentions"` inside `RenderPatch` output) encode the bug — per
+      research.md D10, `RenderPatch`'s link-role groups must be bold-label paragraphs, not headings. Rewrite
+      to assert bold-label block position/ordering instead before this task can be marked done again.
+      ~~Add `TestRenderPatchStableAcrossHeadingGroupReordering` (or extend an existing `RenderPatch`
       test): confirm that re-rendering never reorders anything beyond what contracts/render-shape-contract.md
       permits (heading-block position by label, edge-list-vs-link-groups position) — no `Link`'s
-      `Predicate`/`Target`/`Alias` is ever altered, dropped, or duplicated (spec FR-010)
+      `Predicate`/`Target`/`Alias` is ever altered, dropped, or duplicated (spec FR-010)~~
 
 ### Implementation for User Story 3
 
@@ -281,11 +304,57 @@ roles, run it through the same path, and confirm it normalizes.
       link-role groups by label ascending, D2/D5 — rather than needing new production code); if any case
       fails, fix `renderNodeBody`'s ordering/grouping logic in `internal/core/markdown.go` until it does
       (depends on T018, T023)
-- [X] T029 [US3] Run `go test ./internal/core/... -v` in full; confirm every rewritten and new test in Phases
-      3-5 passes together with zero regressions in unrelated existing tests
+- [X] T029 [US3] ⚠️ Reopened — BUG-001 (2026-07-09): re-run after T032-T034 land; T027's rewritten assertion
+      must pass against the corrected `RenderPatch` bold-label output.
+      ~~Run `go test ./internal/core/... -v` in full; confirm every rewritten and new test in Phases
+      3-5 passes together with zero regressions in unrelated existing tests~~
 
-**Checkpoint**: User Stories 1, 2, AND 3 all pass their tests independently; round-trip byte-stability and
-schema-driven normalization are both verified (spec SC-001, SC-002).
+**Checkpoint**: User Stories 1 AND 2 pass their tests independently for both `RenderNode` and `RenderPatch`;
+`RenderNode`'s round-trip byte-stability and schema-driven normalization are verified (spec SC-001, SC-002).
+`RenderPatch`'s equivalent guarantee (T027) is reopened pending BUG-001's fix — see Phase 6 below.
+
+---
+
+## Phase 6: Bugfix BUG-001 — `RenderPatch` bold-label correction (patch-format structural conformance)
+
+**Purpose**: Fix [bugs/BUG-001.md](bugs/BUG-001.md): `RenderPatch`'s per-node body must render `link`-role
+predicate groups under a `**Label**` bold-label paragraph (ARCNET-CORE §14.2), not the `## Label` heading
+`RenderNode` correctly uses (ARCNET-CORE §5) — the two formats' body markup for a link-role group MUST
+diverge; `RenderNode`'s own output is unaffected by this phase.
+
+**⚠️ CRITICAL**: T016/T018/T019/T027/T028/T029 are reopened above and cannot be re-closed until this phase's
+tasks land.
+
+- [X] T032 [US1] In `internal/core/markdown.go`, split link-role group markup by caller (research.md D10,
+      contracts/render-shape-contract.md step 3): give `renderEdges` (or `renderNodeBody`) a body-shape
+      parameter (e.g. `groupMarkup func(label string) string`, or an explicit `bool`/enum distinguishing
+      `RenderNode`/`RenderPatch`) so `RenderNode` continues to emit `"## " + label + "\n"` while `RenderPatch`
+      emits `"**" + label + "**\n"` instead — the partition/order/single-group-omission logic (T017/T018/T023)
+      is unchanged and stays shared between both callers; only the literal heading-vs-bold-label markup
+      differs (depends on T018, T023)
+- [X] T033 [P] In `internal/core/markdown_test.go`, rewrite `TestRenderPatchStableAcrossHeadingGroupReordering`
+      (T027) to assert `"**MentionedIn**"`/`"**Mentions**"` bold-label paragraphs — never `"## "` — inside
+      `RenderPatch`'s output, preserving its existing ordering/content-preservation assertions otherwise
+      (depends on T032)
+- [X] T034 [P] In `cmd/arc/graph/subgraph_test.go`, rewrite
+      `TestSubgraphSchemaDrivenShapeAppliesEndToEndViaResolvedIndex` (T016) to assert `"**Mentions**"` — never
+      `"## Mentions"` — inside `arc subgraph`'s patch output, confirming the corrected shape survives the full
+      `appgraph.Subgraph` → `resolveIndexOrDefault` → `core.RenderPatch` path (depends on T032)
+- [X] T035 Confirm `walkNodeBody`'s existing bold-label parsing (`blockTitle`/`boldLabel`, BUG-003) round-trips
+      `RenderPatch`'s corrected bold-label output without any parser change — extend or add a
+      `RenderPatch`/`ParsePatch` round-trip test alongside T026's `RenderNode` equivalent; run
+      `go test ./internal/core/... ./cmd/arc/graph/... -v` in full and confirm T016/T019/T027/T029/T033/T034
+      are all green with zero regressions elsewhere (depends on T032, T033, T034)
+- [X] T036 [P] Update [quickstart.md](quickstart.md) Scenarios C and D (BUG-001): both use `arc subgraph`
+      (`RenderPatch`) and were manually validated against T030 without catching that the observed
+      `"## Mentions"` in `arc subgraph`'s output violates ARCNET-CORE §14.2 — correct their expected-output
+      text to `"**Mentions**"`, then re-validate both scenarios against a real `arc init`-seeded graph running
+      the fixed binary (supersedes T030's Scenario C/D validation, which passed against the pre-fix,
+      spec-violating behavior)
+
+**Checkpoint**: BUG-001 fixed — `RenderNode` and `RenderPatch` now diverge correctly on link-role group markup
+per ARCNET-CORE §5/§14.2; every previously-reopened task (T016, T018, T019, T027, T028, T029) is re-verified
+green.
 
 ---
 
@@ -293,8 +362,12 @@ schema-driven normalization are both verified (spec SC-001, SC-002).
 
 **Purpose**: Improvements that affect multiple user stories, beyond what's already required above.
 
-- [X] T030 [P] Run [quickstart.md](quickstart.md) Scenarios A-D manually against a real `arc init`-seeded
-      graph, confirming the written scenarios' expected output actually matches
+- [X] T030 [P] ⚠️ Reopened — BUG-001 (2026-07-09): Scenarios C/D's manual validation passed against the
+      pre-fix, spec-violating `## Mentions`-in-patch behavior without flagging the ARCNET-CORE §14.2
+      conflict — see new T036, which supersedes Scenario C/D's re-validation once T032-T035 land. Scenarios A
+      and B (both `RenderNode`-only) are unaffected and remain valid as originally verified.
+      ~~Run [quickstart.md](quickstart.md) Scenarios A-D manually against a real `arc init`-seeded
+      graph, confirming the written scenarios' expected output actually matches~~
 - [X] T031 [P] Run `staticcheck ./...` and confirm it is clean on every file this feature touched
       (`internal/core/markdown.go`, `internal/app/schema/service/schema.go`,
       `internal/app/graph/service/apply.go`, `cmd/arc/graph/subgraph.go`, `cmd/arc/graph/serve.go`)
@@ -317,8 +390,10 @@ schema-driven normalization are both verified (spec SC-001, SC-002).
 - [X] TN04 No new architectural pattern introduced; no new ADR required (Principle I)
 - [X] TN05 `internal/core` stays free of `cmd`/Cobra imports; `RenderNode`/`RenderPatch` remain pure functions
       (no `context.Context`, no I/O) (Principle III)
-- [X] TN06 T013-T016, T020-T022, T025-T027 were written and confirmed failing (red) before their
-      corresponding implementation tasks (T017-T019, T023-T024, T028-T029) (Principle VI)
+- [X] TN06 ⚠️ Reopened — BUG-001 (2026-07-09): T016/T027 must be red again against T032's split-markup fix
+      before turning green via T033/T034 (Principle VI's red-green discipline applies to the bugfix too).
+      ~~T013-T016, T020-T022, T025-T027 were written and confirmed failing (red) before their
+      corresponding implementation tasks (T017-T019, T023-T024, T028-T029) (Principle VI)~~
 - [X] TN07 All new/changed tests use `github.com/fogfish/it/v2` exclusively — no `testify`/stdlib-only
       comparisons introduced (Principle VI)
 - [X] TN08 No Bash script was used to validate unit-level rendering correctness (Principle VI)
@@ -327,10 +402,15 @@ schema-driven normalization are both verified (spec SC-001, SC-002).
       (headings appear) but their styling/TTY/`NO_COLOR` handling is untouched (Principle X)
 - [X] TN11 N/A — no new configuration value or secret (Principle XI)
 - [X] TN12 N/A — no new/changed command help text (Principle XII)
-- [X] TN13 E2E tests (T016, T022) turned GREEN and changed minimally beyond what T013-T027 already specify
-      (Principle VIII)
-- [X] TN14 Every spec.md acceptance scenario (US1 1-3, US2 1-2, US3 1-2) has a passing test per the T005
-      mapping (Principle VIII)
+- [X] TN13 ⚠️ Reopened — BUG-001 (2026-07-09): T016 turned green against spec-violating behavior; must be
+      re-verified green against T032's corrected `RenderPatch` bold-label output (T034).
+      ~~E2E tests (T016, T022) turned GREEN and changed minimally beyond what T013-T027 already specify
+      (Principle VIII)~~
+- [X] TN14 ⚠️ Reopened — BUG-001 (2026-07-09): US1's new Acceptance Scenario 4 (patch-document bold-label
+      rendering, added by this bugfix) has no passing test yet — T034 (rewriting T016) and T033 (rewriting
+      T027) are what will satisfy it.
+      ~~Every spec.md acceptance scenario (US1 1-3, US2 1-2, US3 1-2) has a passing test per the T005
+      mapping (Principle VIII)~~
 - [X] TN15 Release/versioning impact: this changes `arc subgraph`/`arc serve`'s human-readable Markdown
       *content* (not their `--json` schema or command/flag surface) — per constitution Principle XIV, only
       `--json`/`--plain` are stable scriptable contracts, so this is a minor/patch-level content change, not a
@@ -352,8 +432,11 @@ schema-driven normalization are both verified (spec SC-001, SC-002).
 - **User Story 3 (Phase 5, P1)**: Depends on Phase 2.5, Phase 3, **and** Phase 4 (its own acceptance criteria
   are defined in terms of "canonical shape," which includes US2's omission rule — see the priority-order note
   above)
-- **Additional Polish**: Depends on Phases 3-5 all complete
-- **Constitution Compliance Verification (Phase N)**: Final gate — depends on all preceding phases
+- **Bugfix BUG-001 (Phase 6)**: Depends on Phase 5 (T018/T023's partition/omission logic) — BLOCKS re-closing
+  T016/T018/T019/T027/T028/T029/T030 and TN06/TN13/TN14, all reopened by this bugfix
+- **Additional Polish**: Depends on Phases 3-5 all complete; T036 additionally depends on Phase 6
+- **Constitution Compliance Verification (Phase N)**: Final gate — depends on all preceding phases, including
+  Phase 6
 
 ### Within Each User Story
 

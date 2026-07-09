@@ -23,6 +23,15 @@ only the write path, threaded through every existing `RenderNode`/`RenderPatch` 
 with two read-only commands (`arc subgraph`, `arc serve`) resolving their `Index` defensively so they keep
 working against a bare, schema-less directory exactly as they do today (research.md D7).
 
+**Bugfix note (BUG-001, 2026-07-09)**: The `"## Label"` heading grouping described above governs `RenderNode`
+(a standalone graph node file, ARCNET-CORE §5) only. `RenderPatch` (a patch-exchange document) has a distinct,
+fixed structure per ARCNET-CORE §14.2 — `H1 = @type`, `H2 = @id`, "Markdown headings are reserved for type and
+identity; node bodies use bold labels, never headings" — so `RenderPatch`'s link-role groups MUST render under
+a `**Label**` bold-label paragraph instead of a heading. The two formats therefore need two distinct body-
+rendering code paths sharing only the role/label/omission decision logic (`resolveRenderRole`/`labelFor`/the
+single-group-omission check), not one shared `renderNodeBody`/`renderEdges` producing identical Markdown
+markup for both. See spec.md FR-014 (added) and FR-001/FR-004 (scope-clarified).
+
 ## Technical Context
 
 **Language/Version**: Go 1.26 (`go.mod`)
@@ -122,7 +131,14 @@ internal/
 ├── core/                                  # shared domain tier (ADR 001) — no internal/app dependency
 │   ├── markdown.go                        # RenderNode/RenderPatch/renderNodeBody gain `index Index`;
 │   │                                       # new resolveRenderRole/labelFor helpers; role-partitioned
-│   │                                       # render algorithm (research.md D2-D5)
+│   │                                       # render algorithm (research.md D2-D5). BUG-001 (2026-07-09):
+│   │                                       # the render algorithm's link-role grouping MUST diverge by
+│   │                                       # caller — `## Label` heading for RenderNode (CORE §5),
+│   │                                       # `**Label**` bold-label paragraph for RenderPatch (CORE
+│   │                                       # §14.2) — a shared body-shape-agnostic helper for the
+│   │                                       # role/label/omission decision, plus two distinct rendering
+│   │                                       # code paths, not one shared renderNodeBody/renderEdges
+│   │                                       # producing identical markup for both
 │   └── markdown_test.go                   # every RenderNode/RenderPatch call site gains an Index arg;
 │                                           # TestRenderNodeEdgesFlatBulletedListNoGroupedHeadings and
 │                                           # TestCosmeticExceptionGroupedHeadingFlattensOnRoundTrip
@@ -176,3 +192,7 @@ existing call sites in `internal/app/{schema,graph}/service` and `cmd/arc/graph`
 ## Complexity Tracking
 
 *No entries — no Constitution Check violation requires justification.*
+
+**Bugfix**: 2026-07-09 — BUG-001 Updated from bugfix patch. Summary and Project Structure amended to require
+`RenderNode`/`RenderPatch` to diverge on link-role rendering shape (heading vs. bold-label paragraph) per
+ARCNET-CORE §5 vs §14.2, rather than sharing one identical render algorithm.

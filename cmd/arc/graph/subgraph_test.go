@@ -654,12 +654,16 @@ const subgraphEntityMixedShape = `---
 `
 
 // arc subgraph "MixedShapeEntity" --depth 0
-// spec.md User Story 1 (T016): the schema-driven shape survives the full
+// spec.md User Story 1 (T016) / Acceptance Scenario 4 (BUG-001, added by the
+// bugfix patch): the schema-driven shape survives the full
 // appgraph.Subgraph -> resolveIndexOrDefault -> core.RenderPatch path, not
 // just the unit-level renderNodeBody function. initGraph seeds the real
 // CorePredicateDefs vocabulary, where mentions is link-role and replaces is
-// edge-role, so the exported patch must show mentions grouped under
-// "## Mentions" while replaces stays a flat bullet.
+// edge-role. Because arc subgraph's output is a patch-exchange document
+// (ARCNET-CORE §14.2), mentions must render under a "**Mentions**"
+// bold-label paragraph — never a "## Mentions" heading, which would corrupt
+// the patch's own reserved @type/@id heading structure — while replaces
+// stays a flat bullet.
 func TestSubgraphSchemaDrivenShapeAppliesEndToEndViaResolvedIndex(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
@@ -672,11 +676,12 @@ func TestSubgraphSchemaDrivenShapeAppliesEndToEndViaResolvedIndex(t *testing.T) 
 
 	it.Then(t).ShouldNot(it.Error(out, err))
 	it.Then(t).
-		Should(it.String(out).Contain("## Mentions")).
+		ShouldNot(it.String(out).Contain("## Mentions")).
+		Should(it.String(out).Contain("**Mentions**")).
 		Should(it.String(out).Contain("mentions:: [[Transport Layer Security]]")).
 		Should(it.String(out).Contain("replaces:: [[SSL Protocol]]"))
 
 	replacesIdx := strings.Index(out, "replaces::")
-	mentionsHeadingIdx := strings.Index(out, "## Mentions")
-	it.Then(t).Should(it.True(replacesIdx >= 0 && replacesIdx < mentionsHeadingIdx))
+	mentionsLabelIdx := strings.Index(out, "**Mentions**")
+	it.Then(t).Should(it.True(replacesIdx >= 0 && replacesIdx < mentionsLabelIdx))
 }

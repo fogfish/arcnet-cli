@@ -23,6 +23,17 @@ call back into `internal/app/schema` to resolve a graph's schema itself — woul
 
 ## D2: Partitioning `Node.Edges` by role, and the flat/grouped render algorithm
 
+**⚠️ Superseded in part — BUG-001 (2026-07-09)**: the algorithm below, as originally decided, applies
+identically to both `RenderNode` and `RenderPatch` via one shared `renderNodeBody`. That is correct for
+`RenderNode` (ARCNET-CORE §5: a `link`-role predicate's occurrences form their own `## Predicate` block) but
+wrong for `RenderPatch`: ARCNET-CORE §14.2 fixes a patch document's headings (`H1`/`H2`) to `@type`/`@id`
+structure exclusively — "node bodies use bold labels, never headings" — so `RenderPatch`'s link-role groups
+MUST render under a `**Label**` bold-label paragraph, not a `"## " + label` heading. The partition/grouping/
+ordering/omission logic below (which predicate goes in which bucket, sort-by-label, the single-group
+omission) is unaffected and still shared by both callers; only the final markup emitted for a link-role
+group's heading differs by caller. See spec.md FR-014 (added) and the corresponding fix in
+contracts/render-shape-contract.md.
+
 **Decision**: `renderNodeBody` partitions `n.Edges` into two ordered collections, in one pass, preserving each
 predicate's first-seen relative order:
 - **edge-role occurrences**: rendered as a single **bare** bulleted list (no heading), each line via the
@@ -105,6 +116,12 @@ optional link predicates, which spec.md has already settled.
 
 ## D6: Signature/call-site blast radius
 
+**Bugfix note (BUG-001, 2026-07-09)**: this table's `RenderPatch` rows (`humanSubgraphPrinter.Show`,
+`subgraphGetHandler`) supply the same `Index` value D2 always assumed would drive an identical rendering
+algorithm to `RenderNode`. The `Index` sourcing itself is unaffected by this bugfix — only D2's downstream
+choice of markup (heading vs. bold label) needs to branch on which function (`RenderNode` vs `RenderPatch`)
+is doing the rendering, not on anything about how `Index` was obtained.
+
 **Decision** — every existing production call site of `core.RenderNode`/`core.RenderPatch`, and how each
 supplies its `Index`:
 
@@ -186,3 +203,30 @@ which is no longer true. Append one clause noting that *rendering* (not the in-m
 flat-vs-grouped from each predicate's own schema `Role`, cross-referencing this spec. No other glossary entry
 needs a new term — this feature adds no new domain concept beyond the already-glossary'd `Role`/`Label`
 fields of **Predicate Schema Node**.
+
+## D10: `RenderNode` vs `RenderPatch` link-role markup diverges by format (BUG-001)
+
+**Decision**: D2's "one `## Predicate` block per link-role predicate" markup choice governs `RenderNode`
+only. `RenderPatch` renders the identical link-role group (same partition, same label resolution, same
+single-group omission) under a `"**" + label + "**\n"` bold-label paragraph instead, followed by that
+group's bullets — never a `## Label` heading. This is not a new decision so much as D2's original decision
+scoped correctly: ARCNET-CORE §5 (graph node files) and §14.2 (patch documents) always specified different
+body markup for link-role groups; D2 simply failed to consult §14.2 when generalizing "one shared
+`renderNodeBody`" to both `RenderNode` and `RenderPatch`.
+
+**Rationale**: ARCNET-CORE §14.2's patch structure is fixed and load-bearing: `H1 = @type`, `H2 = @id`, one
+`H2` per node, with no other heading permitted anywhere in a patch document ("Markdown headings are reserved
+for type and identity; node bodies use bold labels, never headings"). A `## Label` heading inside a patch's
+per-node body is indistinguishable, to a reader or to `parsePatchBody`'s own `isSectionBoundary` heuristic
+recognizing only heading-immediately-followed-by-yaml-fence as a node boundary, from a poorly-formed or
+ambiguous document — `arc`'s own parser happens to tolerate it via that heuristic, but an external,
+spec-conforming patch consumer is not obligated to. Rendering link-role groups as bold labels in
+`RenderPatch` matches this codebase's own pre-existing bold-label parsing precedent
+(`internal/core/markdown.go`'s `blockTitle`/`boldLabel`, introduced for BUG-003), so no parser change is
+required — `walkNodeBody` already recognizes a `**Label**` paragraph immediately followed by a list as a
+predicate-grouped block.
+
+**Alternatives considered**: Leaving `RenderPatch` unchanged (still emitting `## Label` headings) on the
+grounds that `arc`'s own round-trip tolerates it — rejected: this is a spec-conformance defect against the
+external, authoritative ARCNET-CORE format, not merely an internal round-trip property; "our own parser
+doesn't choke on it" is not the same as "the format is correct."
