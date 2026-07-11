@@ -31,6 +31,10 @@ const (
 	RuleUnrecognizedKind    Rule = "unrecognizedKind"
 	RuleIngestCommit        Rule = "ingestCommit"
 	RuleMergeConflict       Rule = "mergeConflict"
+	RuleTypeRequires        Rule = "typeRequires"
+	RuleTypeOptional        Rule = "typeOptional"
+	RuleIdentityQuoting     Rule = "identityQuoting"
+	RulePredicateRole       Rule = "predicateRole"
 )
 
 // Violation is the domain value one failed check produces.

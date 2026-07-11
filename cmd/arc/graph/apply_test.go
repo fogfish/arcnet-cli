@@ -22,6 +22,7 @@ import (
 	"github.com/fogfish/it/v2"
 	"github.com/spf13/cobra"
 
+	"github.com/fogfish/arcnet-cli/cmd/arc/lint"
 	appschema "github.com/fogfish/arcnet-cli/internal/app/schema"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
@@ -256,6 +257,27 @@ func TestApplyCreatesTimelineEntriesChronologically(t *testing.T) {
 	it.Then(t).
 		ShouldNot(it.String(yearly).Contain("## ")).
 		ShouldNot(it.String(monthly).Contain("## "))
+}
+
+// BUG-002 regression: a full arc init -> arc apply -> arc lint round trip
+// (using the reporter's own dmitry-2026-graph scenario shape) must produce
+// zero [typeRequires]/[typeOptional] violations against the timeline period
+// files arc apply generates — before this fix, every such file failed both
+// checks (missing "entries"/"cites", unregistered "period").
+func TestApplyGeneratedTimelinePeriodFilesPassLintCleanly(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+
+	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
+	_, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Nil(err))
+
+	lintOut, _ := sut(lint.NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.String(lintOut).Contain("timeline/yearly/2026.md")).
+		ShouldNot(it.String(lintOut).Contain("timeline/monthly/2026-04.md"))
 }
 
 // arc apply tls13.patch.md

@@ -85,3 +85,38 @@ func TestCheckUnrecognizedKindConfigRegistered(t *testing.T) {
 	out := checkUnrecognizedKind(node, "hypothesis/foo.md", index)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
+
+func TestCheckIdentityKeyQuotingBothQuotedNoViolation(t *testing.T) {
+	raw := []byte("---\n\"@id\": foo\n\"@type\": source\n---\n")
+	out := checkIdentityKeyQuoting(core.Node{}, "sources/foo.md", raw)
+	it.Then(t).Should(it.Equal(0, len(out)))
+}
+
+func TestCheckIdentityKeyQuotingUnquotedIdReportsViolation(t *testing.T) {
+	raw := []byte("---\n@id: foo\n\"@type\": source\n---\n")
+	out := checkIdentityKeyQuoting(core.Node{}, "sources/foo.md", raw)
+	it.Then(t).Should(it.Equal(1, len(out)))
+	it.Then(t).
+		Should(it.Equal(kernel.RuleIdentityQuoting, out[0].Rule)).
+		Should(it.Equal(2, out[0].Line)).
+		Should(it.String(out[0].Message).Contain("@id"))
+}
+
+func TestCheckIdentityKeyQuotingUnquotedTypeReportsViolation(t *testing.T) {
+	raw := []byte("---\n\"@id\": foo\n@type: source\n---\n")
+	out := checkIdentityKeyQuoting(core.Node{}, "sources/foo.md", raw)
+	it.Then(t).Should(it.Equal(1, len(out)))
+	it.Then(t).
+		Should(it.Equal(kernel.RuleIdentityQuoting, out[0].Rule)).
+		Should(it.String(out[0].Message).Contain("@type"))
+}
+
+func TestCheckIdentityKeyQuotingMissingKeyDistinctMessage(t *testing.T) {
+	raw := []byte("---\n\"@id\": foo\n---\n")
+	out := checkIdentityKeyQuoting(core.Node{}, "sources/foo.md", raw)
+	it.Then(t).Should(it.Equal(1, len(out)))
+	it.Then(t).
+		Should(it.Equal(kernel.RuleIdentityQuoting, out[0].Rule)).
+		Should(it.String(out[0].Message).Contain("missing")).
+		Should(it.String(out[0].Message).Contain("@type"))
+}

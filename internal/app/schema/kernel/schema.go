@@ -35,6 +35,10 @@ var CorePredicateDefs = map[string]core.PredicateDef{
 	"published": {Role: "meta", Merge: core.MergeImmutable, Description: "ISO-8601 production date of the document a node derives from; drives the timeline."},
 	"created":   {Role: "meta", Merge: core.MergeImmutable, Description: "ISO-8601 timestamp the node was created in the graph."},
 	"updated":   {Role: "meta", Merge: core.MergeLastWriteWin, Description: "ISO-8601 timestamp of the node's last modification."},
+	"indexed":   {Role: "meta", Merge: core.MergeImmutable, Aligned: "arc:indexed", Description: "ISO-8601 timestamp (second resolution) marking when the node first entered the graph; set once at creation by arc apply and never modified by any later merge (spec 009)."},
+
+	"scoreZ": {Role: "meta", Merge: core.MergeValidatedOverwrite, Aligned: "arc:scoreZ", Description: "A graph-analytics z-score (e.g. centrality) recomputed by a validation/ingest pass; overwritten only by that designated pass, never by ordinary content merges."},
+	"scoreC": {Role: "meta", Merge: core.MergeValidatedOverwrite, Aligned: "arc:scoreC", Description: "A graph-analytics centrality-style score recomputed by a validation/ingest pass; overwritten only by that designated pass, never by ordinary content merges."},
 
 	"mentions":    {Role: "link", Merge: core.MergeUnion, Aligned: "schema:mentions", Description: "Asserts that the source document mentions the entity; recorded under the source's own Mentions block."},
 	"mentionedIn": {Role: "link", Merge: core.MergeUnion, Aligned: "schema:subjectOf", Description: "The inverse of mentions — recorded as a backlink under the entity's own mentionedIn block."},
@@ -48,8 +52,9 @@ var CorePredicateDefs = map[string]core.PredicateDef{
 	"isReplacedBy": {Role: "edge", Merge: core.MergeUnion, Aligned: "dcterms:isReplacedBy", Description: "The inverse of replaces — an optional backlink from the superseded subject to its successor."},
 	"conformsTo":   {Role: "edge", Merge: core.MergeUnion, Aligned: "dcterms:conformsTo", Description: "Standard adherence: the subject complies with a named specification or schema."},
 	"related":      {Role: "edge", Merge: core.MergeUnion, Aligned: "skos:related", Description: "A non-hierarchical, non-compositional association between two subjects, used only when no more specific predicate applies."},
+	"referencedBy": {Role: "edge", Merge: core.MergeUnion, Description: "A non-hierarchical, non-compositional asymmetric association when the object's own node doesn't explicitly link the subject back."},
 
-	"cites":            {Role: "link", Merge: core.MergeUnion, Aligned: "cito:cites", Description: "The general-purpose citation predicate; the source's own structural link to a cited resource."},
+	"cites":            {Role: "link", Merge: core.MergeAppend, Aligned: "cito:cites", Description: "The general-purpose citation predicate; a source's own structural link to a cited resource, or a timeline's chronological reference to a source node it contains."},
 	"citesAsEvidence":  {Role: "edge", Merge: core.MergeUnion, Aligned: "cito:citesAsEvidence", Description: "Cites the target as evidence for the citing statement."},
 	"citesAsAuthority": {Role: "edge", Merge: core.MergeUnion, Aligned: "cito:citesAsAuthority", Description: "Cites the target as an authoritative source for the citing statement."},
 	"supports":         {Role: "edge", Merge: core.MergeUnion, Aligned: "cito:supports", Description: "The citing statement is supported by the target."},
@@ -74,8 +79,8 @@ var CorePredicateDefs = map[string]core.PredicateDef{
 	"status":      {Role: "meta", Merge: core.MergeLastWriteWin, Description: "read or backlog — a backlog resource is a research target."},
 	"relevance":   {Role: "text", Merge: core.MergeAppend, Description: "A one-to-two sentence note on why the resource matters."},
 	"granularity": {Role: "meta", Merge: core.MergeImmutable, Description: "yearly or monthly."},
-	"entries":     {Role: "link", Merge: core.MergeAppend, Description: "The source nodes whose published date falls in this period, ordered by date."},
 	"heading":     {Role: "meta", Merge: core.MergeFirstWriteWin, Description: "A human-readable title for the period, shown in place of the bare @id (period code)."},
+	"period":      {Role: "meta", Merge: core.MergeImmutable, Aligned: "arc:period", Description: "A timeline node's own period code (YYYY or YYYY-MM), duplicated from its @id so a bare 4-digit yearly value always decodes as a YAML string rather than an integer."},
 
 	"role":        {Role: "meta", Merge: core.MergeImmutable, Description: "One of meta/text/href/edge/link (CORE §5): the predicate's serialization position."},
 	"merge":       {Role: "meta", Merge: core.MergeImmutable, Description: "One of the merge behaviors (CORE §9.3): how contributions to this predicate combine."},
@@ -96,25 +101,32 @@ var CoreTypeDefs = map[string]core.TypeDef{
 	"source": {
 		Merge:       core.MergeImmutable,
 		Required:    []string{"title", "published", "abstract", "mentions"},
-		Optional:    []string{"authors", "url", "cites", "tags", "doi"},
+		Optional:    []string{"authors", "url", "cites", "tags", "doi", "created", "updated", "indexed", "scoreZ", "scoreC"},
 		Description: "A node for one ingested document — the provenance origin other nodes derive from.",
 	},
 	"entity": {
-		Merge:       core.MergeUnion,
-		Required:    []string{"category", "definition", "mentionedIn"},
-		Optional:    []string{"aliases", "tags"},
+		Merge:    core.MergeUnion,
+		Required: []string{"category", "definition", "mentionedIn"},
+		Optional: []string{
+			"aliases", "tags", "notes", "published", "created", "updated", "indexed", "scoreZ", "scoreC", "mentions",
+			"broader", "narrower", "isPartOf", "hasPart", "requires", "replaces", "isReplacedBy", "conformsTo", "related", "referencedBy",
+		},
 		Description: "A node for a subject occurring in sources, typed by Sowa category.",
 	},
 	"resource": {
-		Merge:       core.MergeFirstWriteWin,
-		Required:    []string{"ref", "relevance"},
-		Optional:    []string{"url", "isCitedBy", "authors", "year", "doi", "status", "notes"},
+		Merge:    core.MergeFirstWriteWin,
+		Required: []string{"ref", "relevance"},
+		Optional: []string{
+			"url", "isCitedBy", "authors", "year", "doi", "status", "notes",
+			"tags", "text", "published", "created", "updated", "indexed", "scoreZ", "scoreC", "mentions", "mentionedIn",
+			"broader", "narrower", "isPartOf", "hasPart", "requires", "replaces", "isReplacedBy", "conformsTo", "related", "referencedBy",
+		},
 		Description: "A node for an external work the graph points to but has not ingested, or a topic/area tracked for reading or research.",
 	},
 	"timeline": {
 		Merge:       core.MergeAppend,
-		Required:    []string{"granularity", "entries"},
-		Optional:    []string{"heading"},
+		Required:    []string{"granularity", "cites", "period"},
+		Optional:    []string{"heading", "tags", "text", "created", "updated", "indexed", "scoreZ", "scoreC", "mentions", "mentionedIn"},
 		Description: "A production-date index of ingested documents.",
 	},
 	"Property": {

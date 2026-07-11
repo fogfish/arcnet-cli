@@ -20,10 +20,13 @@ func TimelinePeriods(published time.Time) (yearly, monthly string) {
 	return published.Format("2006"), published.Format("2006-01")
 }
 
-// TimelineEntry renders one CORE §9.4 timeline bullet. The per-entry
-// display annotation (title, authors, date) is derived here from the
-// source's own data and never stored on the timeline node itself (AST
-// §6.4) — the timeline node's own Edges carry only the bare target.
+// TimelineEntry renders one CORE §9.4 timeline bullet as a "cites"-tagged
+// edge (BUG-002 — a timeline's own chronological reference to a source node
+// it contains, reusing the citation predicate rather than a distinct
+// "entries" name). The per-entry display annotation (title, authors, date)
+// is derived here from the source's own data and never stored on the
+// timeline node itself (AST §6.4) — it is discarded on re-parse, kept only
+// for human readability.
 func TimelineEntry(id, title string, authors []string, published time.Time) string {
-	return fmt.Sprintf("- [[%s]] — *%s* (%s) — %s", id, title, strings.Join(authors, ", "), published.Format("2006-01-02"))
+	return fmt.Sprintf("- cites:: [[%s]] — *%s* (%s) — %s", id, title, strings.Join(authors, ", "), published.Format("2006-01-02"))
 }

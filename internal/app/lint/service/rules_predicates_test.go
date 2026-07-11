@@ -70,21 +70,55 @@ func TestCheckPredicateRegisteredFromFormerlyDistinctGroups(t *testing.T) {
 		Should(it.String(out[0].Message).Contain("citesAsEvidence"))
 }
 
+var citationRegistryFixture = map[string]core.PredicateDef{
+	"cites":           {Aligned: "cito:cites"},
+	"randomPredicate": {Aligned: "schema:randomPredicate"},
+}
+
 func TestCheckCitationPredicateValid(t *testing.T) {
 	node := core.Node{HRefs: []core.Link{{Predicate: "cites", Target: "RFC 8446"}}}
-	out := checkCitationPredicate(node, "x.md", []byte("[cites:: [[RFC 8446]]]\n"))
+	out := checkCitationPredicate(node, "x.md", []byte("[cites:: [[RFC 8446]]]\n"), citationRegistryFixture)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
 func TestCheckCitationPredicateInvalid(t *testing.T) {
 	node := core.Node{HRefs: []core.Link{{Predicate: "randomPredicate", Target: "RFC 8446"}}}
-	out := checkCitationPredicate(node, "x.md", []byte("[randomPredicate:: [[RFC 8446]]]\n"))
+	out := checkCitationPredicate(node, "x.md", []byte("[randomPredicate:: [[RFC 8446]]]\n"), citationRegistryFixture)
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).Should(it.Equal(kernel.RuleCitationPredicate, out[0].Rule))
 }
 
 func TestCheckCitationPredicateBareLinkExempt(t *testing.T) {
 	node := core.Node{HRefs: []core.Link{{Target: "Widget"}}}
-	out := checkCitationPredicate(node, "x.md", []byte("[[Widget]]\n"))
+	out := checkCitationPredicate(node, "x.md", []byte("[[Widget]]\n"), citationRegistryFixture)
 	it.Then(t).Should(it.Equal(0, len(out)))
+}
+
+// spec User Story 4 Acceptance Scenario 1: a domain-registered cito:-aligned
+// predicate not in the old hardcoded list is accepted, since the vocabulary
+// is now sourced from the graph's own schema, not a fixed Go list.
+func TestCheckCitationPredicateDomainRegisteredCitoAlignedAccepted(t *testing.T) {
+	node := core.Node{HRefs: []core.Link{{Predicate: "citesAsExample", Target: "Widget"}}}
+	registry := map[string]core.PredicateDef{"citesAsExample": {Aligned: "cito:citesAsExample"}}
+	out := checkCitationPredicate(node, "x.md", []byte("[citesAsExample:: [[Widget]]]\n"), registry)
+	it.Then(t).Should(it.Equal(0, len(out)))
+}
+
+// spec User Story 4 Acceptance Scenario 2: a registered but non-cito:-
+// aligned predicate is still rejected.
+func TestCheckCitationPredicateRegisteredNonCitoAlignedRejected(t *testing.T) {
+	node := core.Node{HRefs: []core.Link{{Predicate: "mentions", Target: "Widget"}}}
+	registry := map[string]core.PredicateDef{"mentions": {Aligned: "schema:mentions"}}
+	out := checkCitationPredicate(node, "x.md", []byte("[mentions:: [[Widget]]]\n"), registry)
+	it.Then(t).Should(it.Equal(1, len(out)))
+	it.Then(t).Should(it.Equal(kernel.RuleCitationPredicate, out[0].Rule))
+}
+
+// spec User Story 4 Acceptance Scenario 3: a graph with zero cito:-aligned
+// predicates rejects every citation usage — no built-in fallback vocabulary.
+func TestCheckCitationPredicateEmptyRegistryRejectsEverything(t *testing.T) {
+	node := core.Node{HRefs: []core.Link{{Predicate: "cites", Target: "Widget"}}}
+	out := checkCitationPredicate(node, "x.md", []byte("[cites:: [[Widget]]]\n"), map[string]core.PredicateDef{})
+	it.Then(t).Should(it.Equal(1, len(out)))
+	it.Then(t).Should(it.Equal(kernel.RuleCitationPredicate, out[0].Rule))
 }

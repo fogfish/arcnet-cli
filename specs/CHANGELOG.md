@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-07-09
+
+/speckit-specify Extend `arc lint` to validate a graph against ARCNET-CORE v0.7's actual conformance checklist (§16), which today's lint only partially covers. See the spec https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-CORE.md
+
+Today `arc lint` checks: predicate names are registered and camelCase, a fixed hardcoded list of citation predicate names is used correctly, a source's id matches its filename, an entity's category decodes to a valid four-word Sowa code, basenames are unique, and a node's kind is recognized. It does not check whether a node actually carries every predicate its type requires, nor whether a node carries a predicate its type doesn't permit at all.
+
+The new spec requires `arc lint` to additionally check, for every node: every predicate listed in its type's "## Requires" section is present on the node; every predicate present on the node that isn't in "## Requires" is listed in "## Optional" (or is one of the two universal identity predicates); the "@id"/"@type" front-matter keys are present and correctly quoted; a citation predicate's validity is checked against the schema's registered predicates whose alignment is a cito: vocabulary term, rather than a hardcoded Go list, so a domain profile can register additional citation predicates that get recognized automatically; and a node's declared predicates match their schema-declared role (e.g. a predicate registered with role "text" should not appear as a body edge, and vice versa).
+
+Every new check must report a clear rule name, the offending file and line where determinable, and a human-readable message, consistent with arc lint's existing violation format and its "collect everything, don't stop at first failure" behavior.
+
+Out of scope: auto-fixing violations; changes to arc apply's own behavior (this is a read-only validation feature, consistent with lint's existing scope).
+
+/speckit-plan Technical approach: internal/app/lint/service — new rules_type_conformance.go alongside the existing rules_frontmatter.go/rules_identity.go/rules_predicates.go/rules_links.go/rules_history.go, following the same one-function-per-rule, kernel.Violation-returning pattern already established.
+
+New rule constants in internal/app/lint/kernel/lint.go: RuleTypeRequires (a required predicate missing), RuleTypeOptional (a present predicate not in Requires or Optional), RuleIdentityQuoting (@id/@type present but not as quoted-string keys — likely only checkable from raw YAML parse behavior, since a Go yaml.v3 decode wouldn't distinguish `@id: x` from `"@id": x` after decoding; investigate in research.md whether this needs raw-text/line-based detection like today's locateFrontMatterField helper, or whether it's actually unenforceable post-parse and should be dropped from scope with that reasoning documented), RulePredicateRole (a predicate's occurrence position — front-matter vs. body-text vs. body-edge — doesn't match its schema-declared role).
+
+Depends on spec 011 (Schema Index) for Requires/Optional lookups and for role/aligned lookups — this spec's rules are essentially "walk Node.Attrs/Texts/Edges, cross-reference against schema.Index.types[node.Type] and schema.Index.predicates[name]."
+
+checkCitationPredicate (rules_predicates.go) rewrite: replace the hardcoded `citoPredicates map[string]bool` with a lookup that treats any predicate whose schema `aligned` field has prefix "cito:" as a valid citation predicate — preserves today's exact fixed set (since spec 011 seeds those same nine predicates with cito: alignment) while making it extensible by a domain profile without a code change.
+
+checkUnrecognizedKind (rules_identity.go) rewrite: today checks presence in `core.MergeRuleSet` (a Kind->MergeOp map); after spec 011, check presence in the Schema Index's types map instead — same intent, different backing data structure.
+
+Testing: table-driven unit tests per new rule in internal/app/lint/service, covering both the "conformant node passes" and "each specific violation fires" cases, mirroring the existing rules_identity_test.go/rules_predicates_test.go structure; extend cmd/arc/lint/lint_test.go E2E coverage with at least one fixture graph exercising a Requires-violation and an Optional-violation end to end.
+
+Constraints: lint remains strictly read-only (no fsys writes, no git operations) per its existing, explicitly documented invariant; new rules must not report false positives against every existing testdata fixture graph in this repo — plan should include a task to run the new rules against testdata/ and fix any fixtures that were only "conformant" under the old, weaker checks.
+
+
 ## 2026-07-08
 
 /speckit-specify Change how arc decides whether a node's outgoing links are written to Markdown as a flat bulleted list or grouped under a "## Heading" block, so that decision comes from each predicate's own declared schema (its role: edge = flat, link = grouped) rather than from whatever shape happened to be used in whichever file arc last read.
