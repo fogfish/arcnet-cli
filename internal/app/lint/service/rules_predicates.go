@@ -11,18 +11,11 @@ package service
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/fogfish/arcnet-cli/internal/app/lint/kernel"
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
-
-// citoPredicates is CORE §8's fixed, cito:-aligned citation predicate
-// vocabulary (research.md D10).
-var citoPredicates = map[string]bool{
-	"cites": true, "citesAsEvidence": true, "citesAsAuthority": true,
-	"supports": true, "confirms": true, "extends": true,
-	"critiques": true, "disputes": true, "refutes": true, "isCitedBy": true,
-}
 
 var camelCasePattern = regexp.MustCompile(`^[a-z][a-zA-Z0-9]*$`)
 
@@ -96,12 +89,14 @@ func checkPredicateRegistered(node core.Node, path string, raw []byte, registry 
 }
 
 // checkCitationPredicate reports one RuleCitationPredicate violation per
-// HRefs entry whose Predicate is non-empty but not one of CORE §8's fixed
-// cito:-aligned set (research.md D10/spec FR-009).
-func checkCitationPredicate(node core.Node, path string, raw []byte) []kernel.Violation {
+// HRefs entry whose Predicate is non-empty but is not registered in registry
+// with a "cito:"-prefixed Aligned value (spec FR-006/FR-007, research.md
+// D3) — the valid citation-predicate vocabulary is sourced dynamically from
+// the graph's own schema, with no built-in fallback list.
+func checkCitationPredicate(node core.Node, path string, raw []byte, registry map[string]core.PredicateDef) []kernel.Violation {
 	var out []kernel.Violation
 	for _, l := range node.HRefs {
-		if l.Predicate == "" || citoPredicates[l.Predicate] {
+		if l.Predicate == "" || strings.HasPrefix(registry[l.Predicate].Aligned, "cito:") {
 			continue
 		}
 		out = append(out, kernel.Violation{

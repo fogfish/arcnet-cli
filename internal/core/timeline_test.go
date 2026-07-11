@@ -33,7 +33,7 @@ func TestTimelineEntry(t *testing.T) {
 	entry := core.TimelineEntry("rescorla-2026-tls13", "TLS 1.3: Design and Rationale", []string{"Eric Rescorla"}, published)
 
 	it.Then(t).Should(it.Equal(
-		"- [[rescorla-2026-tls13]] — *TLS 1.3: Design and Rationale* (Eric Rescorla) — 2026-04-12",
+		"- cites:: [[rescorla-2026-tls13]] — *TLS 1.3: Design and Rationale* (Eric Rescorla) — 2026-04-12",
 		entry,
 	))
 }

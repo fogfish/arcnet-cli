@@ -22,6 +22,7 @@ import (
 	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
 	lintmock "github.com/fogfish/arcnet-cli/internal/app/lint/adapter/mock"
 	"github.com/fogfish/arcnet-cli/internal/app/lint/service"
+	schemakernel "github.com/fogfish/arcnet-cli/internal/app/schema/kernel"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
@@ -152,23 +153,22 @@ A test document.
 const conformantEntityFixture = `---
 "@id": "Widget"
 "@type": entity
-title: Widget
 category: [independent, abstract, occurrent, script]
 ---
 # Widget
 
 A test entity.
-- mentions:: [[foo-2026-x]]
+- mentionedIn:: [[foo-2026-x]]
 `
 
 var coreIndexFixtureLint = core.Index{
 	Types: map[string]core.TypeDef{
-		"source":   {Merge: core.MergeImmutable},
-		"entity":   {Merge: core.MergeUnion},
-		"resource": {Merge: core.MergeFirstWriteWin},
-		"timeline": {Merge: core.MergeAppend},
+		"source":   schemakernel.CoreTypeDefs["source"],
+		"entity":   schemakernel.CoreTypeDefs["entity"],
+		"resource": schemakernel.CoreTypeDefs["resource"],
+		"timeline": schemakernel.CoreTypeDefs["timeline"],
 	},
-	Predicates: map[string]core.PredicateDef{"mentions": {}},
+	Predicates: schemakernel.CorePredicateDefs,
 }
 
 func newConformantStore() *memStore {

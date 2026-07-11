@@ -25,11 +25,12 @@ var validRoles = map[string]bool{"meta": true, "text": true, "href": true, "edge
 func TestCorePredicateDefsContainsFullCoreVocabulary(t *testing.T) {
 	names := []string{
 		"tags", "text",
-		"published", "created", "updated",
+		"published", "created", "updated", "indexed",
+		"scoreZ", "scoreC",
 		"mentions", "mentionedIn",
-		"broader", "narrower", "isPartOf", "hasPart", "requires", "replaces", "isReplacedBy", "conformsTo", "related",
+		"broader", "narrower", "isPartOf", "hasPart", "requires", "replaces", "isReplacedBy", "conformsTo", "related", "referencedBy",
 		"cites", "citesAsEvidence", "citesAsAuthority", "supports", "confirms", "extends", "critiques", "disputes", "refutes", "isCitedBy",
-		"title", "abstract", "authors", "url", "doi", "category", "aliases", "definition", "notes", "ref", "year", "status", "relevance", "granularity", "entries", "heading",
+		"title", "abstract", "authors", "url", "doi", "category", "aliases", "definition", "notes", "ref", "year", "status", "relevance", "granularity", "period", "heading",
 		"role", "merge", "label", "aligned", "description", "required", "optional",
 	}
 
@@ -71,8 +72,56 @@ func TestCoreTypeDefsRequiredListsMatchCoreSection11(t *testing.T) {
 	resource := kernel.CoreTypeDefs["resource"]
 	it.Then(t).Should(it.Seq(resource.Required).Equal("ref", "relevance"))
 
+	// timeline deliberately diverges from CORE §11.5 here (BUG-002,
+	// research.md D12): "entries" is replaced by "cites" (reusing the
+	// existing citation predicate rather than the name CORE's own worked
+	// example uses), and "period" is an arc-internal addition CORE never
+	// documents (spec 003 BUG-007).
 	timeline := kernel.CoreTypeDefs["timeline"]
-	it.Then(t).Should(it.Seq(timeline.Required).Equal("granularity", "entries"))
+	it.Then(t).Should(it.Seq(timeline.Required).Equal("granularity", "cites", "period"))
+}
+
+// BUG-001 / spec.md FR-014-FR-020, research.md D8: cross-cutting Content
+// (tags, text), Metadata/Control (created, updated, indexed, scoreZ,
+// scoreC), Structural (mentions, mentionedIn), and — for entity/resource —
+// Semantic (§10.5) predicates MUST be listed under every relevant core
+// type's Optional list, not just Required, so a real node using one of them
+// is never falsely reported as not-permitted by checkTypeOptional. This is
+// the closed test gap: TestCoreTypeDefsRequiredListsMatchCoreSection11 only
+// ever asserted Required, never Optional.
+func TestCoreTypeDefsOptionalListsIncludeCrossCuttingPredicates(t *testing.T) {
+	semantic := []string{"broader", "narrower", "isPartOf", "hasPart", "requires", "replaces", "isReplacedBy", "conformsTo", "related", "referencedBy"}
+
+	tests := []struct {
+		typ  string
+		want []string
+	}{
+		{"source", []string{"authors", "url", "cites", "tags", "doi", "created", "updated", "indexed", "scoreZ", "scoreC"}},
+		{"entity", append([]string{"aliases", "tags", "notes", "published", "created", "updated", "indexed", "scoreZ", "scoreC", "mentions"}, semantic...)},
+		{"resource", append([]string{"url", "isCitedBy", "authors", "year", "doi", "status", "notes", "tags", "text", "published", "created", "updated", "indexed", "scoreZ", "scoreC", "mentions", "mentionedIn"}, semantic...)},
+		{"timeline", []string{"heading", "tags", "text", "created", "updated", "indexed", "scoreZ", "scoreC", "mentions", "mentionedIn"}},
+	}
+
+	for _, tc := range tests {
+		def := kernel.CoreTypeDefs[tc.typ]
+		it.Then(t).Should(it.Seq(def.Optional).Equal(tc.want...))
+	}
+}
+
+// BUG-001 / spec.md FR-014-FR-020: every registered instance of the seed
+// data's cross-cutting predicates is present in CorePredicateDefs itself
+// (registration), not only referenced by a type's Optional list.
+func TestCorePredicateDefsIndexedAndScorePredicatesAreRegistered(t *testing.T) {
+	for _, name := range []string{"indexed", "scoreZ", "scoreC"} {
+		def, ok := kernel.CorePredicateDefs[name]
+		it.Then(t).Should(it.True(ok))
+		it.Then(t).Should(it.Equal("meta", def.Role))
+	}
+
+	it.Then(t).Should(it.Equal(core.MergeImmutable, kernel.CorePredicateDefs["indexed"].Merge))
+	it.Then(t).
+		Should(it.Equal(core.MergeValidatedOverwrite, kernel.CorePredicateDefs["scoreZ"].Merge)).
+		Should(it.Equal(core.MergeValidatedOverwrite, kernel.CorePredicateDefs["scoreC"].Merge))
 }
 
 // BUG-001 / spec.md FR-018: every role:"text" predicate in the built-in

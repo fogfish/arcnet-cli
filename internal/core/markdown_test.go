@@ -266,6 +266,22 @@ func TestParseNode(t *testing.T) {
 		Should(it.Equal("rescorla-2026-tls13", node.Edges[2].Target))
 }
 
+// BUG-002: a predicate-tagged wikilink bullet followed by display-only
+// trailing annotation — ARCNET-CORE §11.5's own worked timeline example
+// convention — must parse into a real Edges entry, not be silently dropped.
+func TestParseNodeListItemWithTrailingAnnotationParsesAsEdge(t *testing.T) {
+	doc := "---\n\"@id\": \"2026\"\n\"@type\": timeline\ngranularity: yearly\n---\n# 2026\n\n" +
+		"- entries:: [[rescorla-2026-tls13]] — *TLS 1.3: Design and Rationale* (Eric Rescorla) — 2026-04-12\n"
+
+	node, err := core.ParseNode(strings.NewReader(doc))
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(1, len(node.Edges)))
+	it.Then(t).
+		Should(it.Equal("entries", node.Edges[0].Predicate)).
+		Should(it.Equal("rescorla-2026-tls13", node.Edges[0].Target))
+}
+
 func TestParseNodeLegacyKindFieldRejected(t *testing.T) {
 	fixture := `---
 kind: entity

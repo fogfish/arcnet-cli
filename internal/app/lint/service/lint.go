@@ -85,6 +85,10 @@ func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios
 
 		node, err := core.ParseNode(bytes.NewReader(raw))
 		if err != nil {
+			if quoting := checkBareIdentityKeys(path, raw); len(quoting) > 0 {
+				fileViolations[path] = append(fileViolations[path], quoting...)
+				continue
+			}
 			fileViolations[path] = append(fileViolations[path], kernel.Violation{
 				Rule: kernel.RuleFrontMatter, Path: path, Line: locateFrontMatterDelimiter(raw),
 				Message: err.Error(),
@@ -132,7 +136,11 @@ func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios
 	for _, p := range parsed {
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkPredicateCase(p.Node, p.Path, p.Raw)...)
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkPredicateRegistered(p.Node, p.Path, p.Raw, index.Predicates)...)
-		fileViolations[p.Path] = append(fileViolations[p.Path], checkCitationPredicate(p.Node, p.Path, p.Raw)...)
+		fileViolations[p.Path] = append(fileViolations[p.Path], checkCitationPredicate(p.Node, p.Path, p.Raw, index.Predicates)...)
+		fileViolations[p.Path] = append(fileViolations[p.Path], checkTypeRequires(p.Node, p.Path, p.Raw, index)...)
+		fileViolations[p.Path] = append(fileViolations[p.Path], checkTypeOptional(p.Node, p.Path, p.Raw, index)...)
+		fileViolations[p.Path] = append(fileViolations[p.Path], checkIdentityKeyQuoting(p.Node, p.Path, p.Raw)...)
+		fileViolations[p.Path] = append(fileViolations[p.Path], checkPredicateRole(p.Node, p.Path, p.Raw, index)...)
 	}
 	reporter.Done(labelCheckingPredicates, time.Since(start))
 

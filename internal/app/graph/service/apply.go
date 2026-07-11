@@ -512,7 +512,12 @@ type timelineEntry struct {
 	line      string
 }
 
-var timelineEntryPattern = regexp.MustCompile(`^- \[\[([^\]]+)\]\].* — (\d{4}-\d{2}-\d{2})$`)
+// timelineEntryPattern re-parses an already-written period file's entries
+// (BUG-002) so upsertTimelinePeriod can insert a new one in chronological
+// order. The "cites:: " prefix is optional, not required, so a period file
+// written before this fix (a bare, untyped link) still re-parses correctly
+// on the next application, without losing or duplicating entries.
+var timelineEntryPattern = regexp.MustCompile(`^- (?:cites:: )?\[\[([^\]]+)\]\].* — (\d{4}-\d{2}-\d{2})$`)
 
 func parseTimelineEntries(content string) []timelineEntry {
 	var out []timelineEntry

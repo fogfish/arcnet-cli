@@ -86,6 +86,27 @@ func locateBlockLabel(raw []byte, title string) int {
 	})
 }
 
+// locateUnquotedIdentityKey returns the line of a bare (unquoted) "@id"/
+// "@type" front-matter key — e.g. "@id: x" rather than "\"@id\": x"
+// (research.md D1) — or 0 when key is written quoted or is absent
+// altogether. key is the bare name, e.g. "@id".
+func locateUnquotedIdentityKey(raw []byte, key string) int {
+	pattern := regexp.MustCompile(`^` + regexp.QuoteMeta(key) + `\s*:`)
+	return locateFirstLine(raw, func(l string) bool {
+		return pattern.MatchString(strings.TrimSpace(l))
+	})
+}
+
+// locateIdentityKey returns the line of "@id"/"@type" front matter key in
+// either quoted or bare form, or 0 when entirely absent. key is the bare
+// name, e.g. "@id".
+func locateIdentityKey(raw []byte, key string) int {
+	pattern := regexp.MustCompile(`^"?` + regexp.QuoteMeta(key) + `"?\s*:`)
+	return locateFirstLine(raw, func(l string) bool {
+		return pattern.MatchString(strings.TrimSpace(l))
+	})
+}
+
 var (
 	conflictStartPattern = regexp.MustCompile(`^<{7}`)
 	conflictMidPattern   = regexp.MustCompile(`^={7}$`)

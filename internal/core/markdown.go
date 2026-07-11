@@ -658,7 +658,17 @@ func boldLabel(p *ast.Paragraph, source []byte) (string, bool) {
 	return strings.TrimSpace(m[1]), true
 }
 
-var listItemPattern = regexp.MustCompile(`^(?:(\w+)::\s*)?\[\[([^\]|]+?)(?:\|([^\]]+?))?\]\]$`)
+// listItemPattern recognizes a bullet's bare/aliased wikilink, optionally
+// predicate-tagged, tolerating trailing display-only annotation text after
+// the wikilink's closing "]]" (BUG-002 — ARCNET-CORE §11.5's own worked
+// timeline example writes exactly this shape, e.g.
+// "entries:: [[id]] — *title* (authors) — date"; before this fix, any text
+// after "]]" caused the entire bullet to be silently dropped — neither an
+// edge nor an href). Trailing content, if present, MUST begin with
+// whitespace, so a malformed line immediately following "]]" with no
+// separator (e.g. "[[Target]]garbage") still fails to match rather than
+// silently absorbing what is likely an authoring mistake.
+var listItemPattern = regexp.MustCompile(`^(?:(\w+)::\s*)?\[\[([^\]|]+?)(?:\|([^\]]+?))?\]\](?:\s.*)?$`)
 
 func parseListItemLink(line string) (Link, bool) {
 	m := listItemPattern.FindStringSubmatch(line)

@@ -134,15 +134,14 @@ A test document.
 const conformantEntity = `---
 "@id": Widget
 "@type": entity
-title: Widget
 category: [independent, abstract, occurrent, script]
 ---
 # Widget
 
 A test entity.
 
-## Mentions
-- mentions:: [[foo-2026-x]]
+## MentionedIn
+- mentionedIn:: [[foo-2026-x]]
 `
 
 // buildConformantGraph builds a graph satisfying every base CORE §14 rule:
@@ -197,7 +196,7 @@ func TestLintSchemaBasenameDoesNotCollideWithContentNode(t *testing.T) {
 	dir := t.TempDir()
 	buildConformantGraph(t, dir)
 	writeNode(t, dir, "_schema/types/hypothesis.md", "---\n\"@id\": hypothesis\n\"@type\": Class\nmerge: union\n---\n# hypothesis\n\nA domain type registered by this test fixture.\n")
-	writeNode(t, dir, "entities/hypothesis.md", "---\n\"@id\": hypothesis\n\"@type\": entity\ntitle: hypothesis\ncategory: [independent, abstract, occurrent, script]\n---\n# hypothesis\n\nA namesake entity, unrelated to the schema kind of the same name.\n\n## Mentions\n- mentions:: [[foo-2026-x]]\n")
+	writeNode(t, dir, "entities/hypothesis.md", "---\n\"@id\": hypothesis\n\"@type\": entity\ncategory: [independent, abstract, occurrent, script]\n---\n# hypothesis\n\nA namesake entity, unrelated to the schema kind of the same name.\n\n## MentionedIn\n- mentionedIn:: [[foo-2026-x]]\n")
 	commitAll(t, dir, "seed: hypothesis entity and schema doc")
 	chdir(t, dir)
 
@@ -528,4 +527,525 @@ func readFile(t *testing.T, path string) string {
 	content, err := os.ReadFile(path)
 	it.Then(t).Should(it.Nil(err))
 	return string(content)
+}
+
+// arc lint
+// Scenario 1 from spec.md User Story 1: a node missing a type-required
+// predicate is reported under [typeRequires], naming the predicate, type,
+// and file.
+func TestLintTypeRequiresMissingPredicateReported(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	missingMentions := `---
+"@id": foo-2026-x
+"@type": source
+title: "A Test Document"
+authors: [Test Author]
+published: "2026-04-12"
+---
+# foo-2026-x
+
+A test document.
+`
+	writeNode(t, dir, "sources/foo-2026-x.md", missingMentions)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("sources/foo-2026-x.md")).
+		Should(it.String(out).Contain("[typeRequires]")).
+		Should(it.String(out).Contain(`type "source" requires predicate "mentions", but this node does not carry it`))
+}
+
+// arc lint
+// Scenario 2 from spec.md User Story 1: a node carrying every predicate its
+// type requires produces no [typeRequires] violation.
+func TestLintTypeRequiresAllPresentNoViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("typeRequires"))
+}
+
+// arc lint
+// Scenario 3 from spec.md User Story 1: a node of an unregistered type
+// produces no [typeRequires] violation — only the pre-existing
+// unrecognizedKind violation covers that gap.
+func TestLintTypeRequiresUnregisteredTypeNotDoubleReported(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	unregistered := "---\n\"@id\": A Test Hypothesis\n\"@type\": hypothesis\ntitle: A Test Hypothesis\n---\n# A Test Hypothesis\n\nA conclusion.\n"
+	writeNode(t, dir, "hypothesis/A Test Hypothesis.md", unregistered)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("[unrecognizedKind]")).
+		ShouldNot(it.String(out).Contain("typeRequires"))
+}
+
+// arc lint
+// Scenario 1 from spec.md User Story 2: a node carrying a predicate its
+// type's schema lists under neither Requires nor Optional is reported under
+// [typeOptional].
+func TestLintTypeOptionalUnlistedPredicateReported(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	extraPredicate := `---
+"@id": foo-2026-x
+"@type": source
+title: "A Test Document"
+authors: [Test Author]
+published: "2026-04-12"
+status: read
+---
+# foo-2026-x
+
+A test document.
+
+## Mentions
+- mentions:: [[Widget]]
+`
+	writeNode(t, dir, "sources/foo-2026-x.md", extraPredicate)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("[typeOptional]")).
+		Should(it.String(out).Contain(`predicate "status" is not permitted by type "source" (not listed under its Requires or Optional)`))
+}
+
+// arc lint
+// Scenario 2 from spec.md User Story 2: a node carrying only predicates
+// listed under its type's Requires/Optional sections produces no
+// [typeOptional] violation.
+func TestLintTypeOptionalAllListedPredicatesNoViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("typeOptional"))
+}
+
+// arc lint
+// Scenario 3 from spec.md User Story 2: the universal identity predicates
+// ("@id"/"@type") are never reported as "not permitted" by a type's schema —
+// structurally guaranteed, since core.identityFields strips them out of the
+// manifest before Attrs is ever populated, so they never enter the
+// occurrence set checkTypeOptional walks.
+func TestLintIdentityPredicatesNeverReportedAsTypeOptionalViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain(`predicate "@id"`)).
+		ShouldNot(it.String(out).Contain(`predicate "@type"`))
+}
+
+// arc lint
+// Scenario 1 from spec.md User Story 3: an unresolved merge-conflict-free
+// node missing "@type" entirely fails to parse at all — the pre-existing
+// frontMatter violation already covers this gap (spec Edge Cases: "the new
+// missing/unquoted-key check applies to nodes whose front matter is
+// otherwise parseable"; core.ParseNode itself rejects a document with no
+// "@type" before any identityQuoting-level check could ever run against it).
+func TestLintMissingTypeReportsFrontMatterViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	missingType := "---\n\"@id\": Legacy\ntitle: Legacy\ncategory: [independent]\n---\n# Legacy\n\nAn entity missing its mandatory \"@type\" field.\n"
+	writeNode(t, dir, "entities/Legacy.md", missingType)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("entities/Legacy.md")).
+		Should(it.String(out).Contain("[frontMatter]")).
+		Should(it.String(out).Contain(`missing mandatory "@type" field`))
+}
+
+// arc lint
+// Scenario 2 from spec.md User Story 3: a node's front matter writing "@id"
+// as a bare (unquoted) key is reported under [identityQuoting], naming the
+// key and line, while the node still parses correctly (no frontMatter
+// violation).
+func TestLintUnquotedIdKeyReportsIdentityQuotingViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	unquotedID := `---
+@id: foo-2026-x
+"@type": source
+title: "A Test Document"
+authors: [Test Author]
+published: "2026-04-12"
+---
+# foo-2026-x
+
+A test document.
+
+## Mentions
+- mentions:: [[Widget]]
+`
+	writeNode(t, dir, "sources/foo-2026-x.md", unquotedID)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("sources/foo-2026-x.md")).
+		Should(it.String(out).Contain("[identityQuoting]")).
+		Should(it.String(out).Contain(`"@id" must be a quoted YAML string key, found it unquoted`)).
+		ShouldNot(it.String(out).Contain("[frontMatter]"))
+}
+
+// arc lint
+// Scenario 3 from spec.md User Story 3: a node with both "@id" and "@type"
+// present and quoted produces no [identityQuoting] violation.
+func TestLintQuotedIdentityKeysNoViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("identityQuoting"))
+}
+
+// registerCitesAsExample writes a domain-registered cito:-aligned citation
+// predicate to dir's schema — not one of the old hardcoded citoPredicates
+// (research.md D3) — and commits it.
+func registerCitesAsExample(t *testing.T, dir string) {
+	t.Helper()
+	writeNode(t, dir, "_schema/predicates/citesAsExample.md", `---
+"@id": citesAsExample
+"@type": Property
+aligned: "cito:citesAsExample"
+merge: union
+role: edge
+---
+# citesAsExample
+
+A domain-specific citation relationship, not built into arc itself.
+`)
+	commitAll(t, dir, "seed: register citesAsExample predicate")
+}
+
+// arc lint
+// Scenario 1 from spec.md User Story 4: a domain-registered predicate whose
+// alignment is a cito: vocabulary term is recognized as a valid citation
+// predicate — with zero changes to arc's own source code.
+func TestLintDomainRegisteredCitoPredicateAcceptedAsCitation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	registerCitesAsExample(t, dir)
+
+	citing := `---
+"@id": foo-2026-x
+"@type": source
+title: "A Test Document"
+authors: [Test Author]
+published: "2026-04-12"
+---
+# foo-2026-x
+
+A test document. [citesAsExample:: [[Widget]]]
+
+## Mentions
+- mentions:: [[Widget]]
+`
+	writeNode(t, dir, "sources/foo-2026-x.md", citing)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+	_ = err
+
+	it.Then(t).
+		ShouldNot(it.String(out).Contain("[citationPredicate]"))
+}
+
+// arc lint
+// Scenario 2 from spec.md User Story 4: an unregistered/non-cito:-aligned
+// predicate used as a citation is still reported.
+func TestLintUnregisteredCitationPredicateStillReported(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	citing := `---
+"@id": foo-2026-x
+"@type": source
+title: "A Test Document"
+authors: [Test Author]
+published: "2026-04-12"
+---
+# foo-2026-x
+
+A test document. [bogusCite:: [[Widget]]]
+
+## Mentions
+- mentions:: [[Widget]]
+`
+	writeNode(t, dir, "sources/foo-2026-x.md", citing)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("[citationPredicate]")).
+		Should(it.String(out).Contain(`citation predicate "bogusCite" is not a recognized cito-aligned predicate`))
+}
+
+// arc lint
+// Scenario 3 from spec.md User Story 4: a graph whose schema registers zero
+// cito:-aligned predicates reports every citation usage as a violation —
+// there is no built-in fallback vocabulary.
+func TestLintZeroCitoAlignedPredicatesRejectsEveryCitation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	entries, err := os.ReadDir(filepath.Join(dir, "_schema", "predicates"))
+	it.Then(t).Should(it.Nil(err))
+	for _, e := range entries {
+		path := filepath.Join(dir, "_schema", "predicates", e.Name())
+		content := readFile(t, path)
+		if !strings.Contains(content, "cito:") {
+			continue
+		}
+		it.Then(t).Should(it.Nil(os.WriteFile(path, []byte(strings.ReplaceAll(content, "cito:", "test:")), 0o644)))
+	}
+	commitAll(t, dir, "seed: strip cito: alignment from every predicate")
+
+	citing := `---
+"@id": foo-2026-x
+"@type": source
+title: "A Test Document"
+authors: [Test Author]
+published: "2026-04-12"
+---
+# foo-2026-x
+
+A test document. [cites:: [[Widget]]]
+
+## Mentions
+- mentions:: [[Widget]]
+`
+	writeNode(t, dir, "sources/foo-2026-x.md", citing)
+	chdir(t, dir)
+
+	out, err2 := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err2)).
+		Should(it.String(out).Contain("[citationPredicate]")).
+		Should(it.String(out).Contain(`citation predicate "cites" is not a recognized cito-aligned predicate`))
+}
+
+// registerHighlightPredicate registers a role:"text" predicate and adds it
+// to entity's Optional list, so a node can carry it in the wrong structural
+// position (an edge bullet instead of prose) for the predicateRole check.
+func registerHighlightPredicate(t *testing.T, dir string) {
+	t.Helper()
+	writeNode(t, dir, "_schema/predicates/highlight.md", `---
+"@id": highlight
+"@type": Property
+merge: union
+role: text
+---
+# highlight
+
+A short highlighted note about the entity, always written as prose.
+`)
+	writeNode(t, dir, "_schema/types/entity.md", `---
+"@id": entity
+"@type": Class
+merge: union
+---
+# entity
+
+A node for a subject occurring in sources, typed by Sowa category.
+
+## Requires
+- required:: [[category]]
+- required:: [[definition]]
+- required:: [[mentionedIn]]
+
+## Optional
+- optional:: [[aliases]]
+- optional:: [[tags]]
+- optional:: [[highlight]]
+`)
+	commitAll(t, dir, "seed: register highlight predicate on entity")
+}
+
+// arc lint
+// Scenario 1 from spec.md User Story 5: a predicate registered with role
+// "text" written as a typed edge bullet is reported under [predicateRole],
+// naming the predicate, its declared role, and where it was found.
+func TestLintTextRolePredicateAsEdgeReportsPredicateRoleViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	registerHighlightPredicate(t, dir)
+
+	misplaced := `---
+"@id": Widget
+"@type": entity
+category: [independent, abstract, occurrent, script]
+---
+# Widget
+
+A test entity.
+
+## MentionedIn
+- mentionedIn:: [[foo-2026-x]]
+- highlight:: [[foo-2026-x]]
+`
+	writeNode(t, dir, "entities/Widget.md", misplaced)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("entities/Widget.md")).
+		Should(it.String(out).Contain("[predicateRole]")).
+		Should(it.String(out).Contain(`predicate "highlight" is registered with role "text", but appears as a edge occurrence`))
+}
+
+// arc lint
+// Scenario 2 from spec.md User Story 5: a node where every predicate's
+// usage matches its declared role produces no [predicateRole] violation.
+func TestLintPredicateRoleMatchingNoViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("predicateRole"))
+}
+
+// arc lint
+// Scenario 3 from spec.md User Story 5: a node using an unregistered
+// predicate produces no [predicateRole] violation — only the pre-existing
+// predicateRegistered violation covers that gap.
+func TestLintUnregisteredPredicateNoPredicateRoleViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	unregistered := `---
+"@id": Widget
+"@type": entity
+category: [independent, abstract, occurrent, script]
+---
+# Widget
+
+A test entity.
+
+## MentionedIn
+- mentionedIn:: [[foo-2026-x]]
+- totallyUnknownPred:: [[foo-2026-x]]
+`
+	writeNode(t, dir, "entities/Widget.md", unregistered)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("[predicateRegistered]")).
+		ShouldNot(it.String(out).Contain("predicateRole"))
+}
+
+// arc lint
+// BUG-001 regression: an entity node using a §10.5 semantic predicate
+// (conformsTo) and notes — exactly per ARCNET-CORE §11.3's own worked
+// example — produces no [typeOptional] violation. This is this bug's own
+// originally-reported false positive.
+func TestLintEntitySemanticPredicateAndNotesNoTypeOptionalViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	widget := `---
+"@id": Widget
+"@type": entity
+category: [independent, abstract, occurrent, script]
+---
+# Widget
+
+A test entity.
+
+Additional prose about the entity.
+
+- conformsTo:: [[foo-2026-x]]
+
+## MentionedIn
+- mentionedIn:: [[foo-2026-x]]
+`
+	writeNode(t, dir, "entities/Widget.md", widget)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("typeOptional"))
+}
+
+// arc lint
+// BUG-001 regression: a resource node using a §10.5 semantic predicate
+// produces no [typeOptional] violation, per this bugfix's explicit scope
+// decision that semantic predicates are usable on entity or resource nodes.
+func TestLintResourceSemanticPredicateNoTypeOptionalViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	resource := `---
+"@id": RFC 8446
+"@type": resource
+ref: standard
+---
+# RFC 8446
+
+A normative specification.
+
+- conformsTo:: [[foo-2026-x]]
+`
+	writeNode(t, dir, "resources/RFC 8446.md", resource)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("typeOptional"))
 }

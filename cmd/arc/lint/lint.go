@@ -102,16 +102,18 @@ func NewLintCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "lint",
-		Short: "Validate the graph against the CORE §14 conformance checklist.",
+		Short: "Validate the graph against the CORE §14/§16 conformance checklist.",
 		Long: `
 arc lint walks every node file in the graph and checks it against the full
-CORE §14 conformance checklist: valid front-matter and kind, unique
+CORE §14/§16 conformance checklist: valid front-matter and kind, unique
 basenames, resolvable [[link]]s, source citekey identity, entity Sowa
 category, derived-node provenance, registered camelCase predicates,
-cito-aligned citation predicates, one graph(ingest): commit per document,
-extension-kind recognition, and absence of unresolved git merge-conflict
-markers. Every violation is reported with its file and line; the run never
-stops at the first one found. lint is strictly read-only.
+schema-driven cito-aligned citation predicates, one graph(ingest): commit per
+document, extension-kind recognition, absence of unresolved git
+merge-conflict markers, a node's own type-declared Requires/Optional
+predicate contract, "@id"/"@type" front-matter quoting, and predicate-role
+structural conformance. Every violation is reported with its file and line;
+the run never stops at the first one found. lint is strictly read-only.
 
 See more info https://github.com/fogfish/arcnet-cli`,
 		Example: `
