@@ -205,7 +205,7 @@ func TestSubgraphFilterExcludesNonSeedCandidatesOnlyNeverSeed(t *testing.T) {
 		"resources/RFC 8446.md":          resourceNodeWithAttrs("RFC 8446", "cryptography", "draft"),
 	})
 
-	filter := core.Filter{Kinds: []string{"source"}}
+	filter := core.Filter{Types: []string{"source"}}
 	result, err := service.Subgraph(context.Background(), mounter, filter, "TLS", 1, configkernel.SubgraphConfig{}, "/graph", false)
 
 	it.Then(t).Should(it.Nil(err))
@@ -223,7 +223,7 @@ func TestSubgraphFilterMatchingZeroReachableNodesYieldsSeedAloneNoError(t *testi
 		"sources/rescorla-2026-tls13.md": sourceNodeWithAttrs("rescorla-2026-tls13", "cryptography", "mature"),
 	})
 
-	filter := core.Filter{Kinds: []string{"resource"}}
+	filter := core.Filter{Types: []string{"resource"}}
 	result, err := service.Subgraph(context.Background(), mounter, filter, "TLS", 1, configkernel.SubgraphConfig{}, "/graph", false)
 
 	it.Then(t).
@@ -240,7 +240,7 @@ func TestSubgraphCombinedKindTagAttrFilterNarrowsToExactSubset(t *testing.T) {
 	})
 
 	filter := core.Filter{
-		Kinds: []string{"source"},
+		Types: []string{"source"},
 		Tags:  []string{"cryptography"},
 		Attrs: map[string]string{"status": "mature"},
 	}

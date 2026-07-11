@@ -43,9 +43,9 @@ func TestOptsFilterBuildRejectsMalformedAttrValue(t *testing.T) {
 	it.Then(t).Should(it.True(errors.Is(err, service.ErrInvalidAttrFlag)))
 }
 
-func TestOptsFilterBuildComposesKindTagAttr(t *testing.T) {
+func TestOptsFilterBuildComposesTypeTagAttr(t *testing.T) {
 	opts := optsFilter{
-		kind: []string{"entity", "source"},
+		typ:  []string{"entity", "source"},
 		tag:  []string{"cryptography"},
 		attr: []string{"status=mature"},
 	}
@@ -54,8 +54,8 @@ func TestOptsFilterBuildComposesKindTagAttr(t *testing.T) {
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
-		Should(it.Equal(2, len(f.Kinds))).
-		Should(it.Seq(f.Kinds).Equal("entity", "source")).
+		Should(it.Equal(2, len(f.Types))).
+		Should(it.Seq(f.Types).Equal("entity", "source")).
 		Should(it.Equal(1, len(f.Tags))).
 		Should(it.Equal("mature", f.Attrs["status"]))
 }

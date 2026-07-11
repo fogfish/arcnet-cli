@@ -79,7 +79,7 @@ TLS is mentioned here without the cryptography tag.
 // seedGrepFixture writes a 4-node graph used across most scenarios below:
 // unfiltered "TLS" matches exactly 4 nodes (source, 2 entities, 1
 // resource), "--tag cryptography" matches exactly 3 (excludes the
-// resource), "--kind entity" matches exactly 2, and "--kind entity --attr
+// resource), "--type entity" matches exactly 2, and "--type entity --attr
 // status=mature" narrows to exactly 1.
 func seedGrepFixture(t *testing.T, dir string) {
 	t.Helper()
@@ -90,7 +90,7 @@ func seedGrepFixture(t *testing.T, dir string) {
 }
 
 // arc grep TLS
-// Scenario 1 from spec.md US1: every occurrence is reported with kind/id/line.
+// Scenario 1 from spec.md US1: every occurrence is reported with type/id/line.
 func TestGrepReportsEveryOccurrenceAcrossWholeGraph(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
@@ -142,16 +142,16 @@ func TestGrepNodeMatchingMultipleLinesReportsEachLineSeparately(t *testing.T) {
 		Should(it.String(lines[1]).Contain("source  rescorla-2026-tls13  11"))
 }
 
-// arc grep --kind entity TLS
-// Scenario 1 from spec.md US2: --kind restricts to that kind.
-func TestGrepKindFilterRestrictsToThatKind(t *testing.T) {
+// arc grep --type entity TLS
+// Scenario 1 from spec.md US2: --type restricts to that type.
+func TestGrepTypeFilterRestrictsToThatType(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	seedGrepFixture(t, dir)
 	chdir(t, dir)
 
 	cmd := NewGrepCmd()
-	it.Then(t).Should(it.Nil(cmd.Flags().Set("kind", "entity")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "entity")))
 	out, err := sut(cmd, []string{"TLS"})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
@@ -182,16 +182,16 @@ func TestGrepTagFilterRestrictsToNodesCarryingTag(t *testing.T) {
 	it.Then(t).ShouldNot(it.String(out).Contain("Unrelated Note"))
 }
 
-// arc grep --kind entity --attr status=mature TLS
-// Scenario 3 from spec.md US2: combined kind+attribute narrows further.
-func TestGrepCombinedKindAndAttrFilterNarrowsFurther(t *testing.T) {
+// arc grep --type entity --attr status=mature TLS
+// Scenario 3 from spec.md US2: combined type+attribute narrows further.
+func TestGrepCombinedTypeAndAttrFilterNarrowsFurther(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	seedGrepFixture(t, dir)
 	chdir(t, dir)
 
 	cmd := NewGrepCmd()
-	it.Then(t).Should(it.Nil(cmd.Flags().Set("kind", "entity")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "entity")))
 	it.Then(t).Should(it.Nil(cmd.Flags().Set("attr", "status=mature")))
 	out, err := sut(cmd, []string{"TLS"})
 
@@ -201,7 +201,7 @@ func TestGrepCombinedKindAndAttrFilterNarrowsFurther(t *testing.T) {
 	it.Then(t).Should(it.String(out).Contain("entity  Transport Layer Security"))
 }
 
-// arc grep --kind hypothesis TLS
+// arc grep --type hypothesis TLS
 // Scenario 4 from spec.md US2: a filter matching zero nodes behaves like a
 // pattern matching nothing — no output, non-zero exit, no error.
 func TestGrepFilterMatchingZeroNodesProducesNoOutputAndNonZeroExit(t *testing.T) {
@@ -211,7 +211,7 @@ func TestGrepFilterMatchingZeroNodesProducesNoOutputAndNonZeroExit(t *testing.T)
 	chdir(t, dir)
 
 	cmd := NewGrepCmd()
-	it.Then(t).Should(it.Nil(cmd.Flags().Set("kind", "hypothesis")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "hypothesis")))
 	out, err := sut(cmd, []string{"TLS"})
 
 	it.Then(t).Should(it.Equal("", out))
@@ -239,12 +239,12 @@ func TestGrepOutputPipedThroughLineCounterYieldsExactCount(t *testing.T) {
 	}
 }
 
-// arc grep --kind source TLS | awk '{print $1, $2, $3}'
-// Scenario 2 from spec.md US3: a field-extraction tool splits kind/id/line
+// arc grep --type source TLS | awk '{print $1, $2, $3}'
+// Scenario 2 from spec.md US3: a field-extraction tool splits type/id/line
 // cleanly, remainder is the matched text. Restricted to the source node
 // here, whose id has no embedded space, since a title-derived id (e.g. an
 // entity's "Transport Layer Security") legitimately can contain spaces —
-// whitespace-splitting a single-token id/kind pair is the well-defined
+// whitespace-splitting a single-token id/type pair is the well-defined
 // case this scenario exercises.
 func TestGrepOutputFieldsSplitCleanlyByWhitespace(t *testing.T) {
 	dir := t.TempDir()
@@ -253,7 +253,7 @@ func TestGrepOutputFieldsSplitCleanlyByWhitespace(t *testing.T) {
 	chdir(t, dir)
 
 	cmd := NewGrepCmd()
-	it.Then(t).Should(it.Nil(cmd.Flags().Set("kind", "source")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "source")))
 	out, err := sut(cmd, []string{"TLS"})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
@@ -299,6 +299,20 @@ func TestGrepInvalidPatternRefusesWithoutScanning(t *testing.T) {
 	out, err := sut(NewGrepCmd(), []string{"[TLS"})
 
 	it.Then(t).Should(it.Error(out, err).Contain("not a valid pattern"))
+}
+
+// arc grep --kind entity TLS
+// Edge case from spec.md: the retired --kind flag now fails with the
+// standard Cobra unknown-flag error — no alias, no deprecation warning.
+func TestGrepOldKindFlagRejectedAsUnknownFlag(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedGrepFixture(t, dir)
+	chdir(t, dir)
+
+	cmd := NewGrepCmd()
+	cmd.SetArgs([]string{"--kind", "entity", "TLS"})
+	it.Then(t).Should(it.Fail(cmd.Execute).Contain("unknown flag: --kind"))
 }
 
 // Edge case: target not an initialized graph.

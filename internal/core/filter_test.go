@@ -23,11 +23,11 @@ func TestFilterZeroValueMatchesEveryNode(t *testing.T) {
 	it.Then(t).Should(it.True(core.Filter{}.Match(node)))
 }
 
-func TestFilterKindsIsOR(t *testing.T) {
+func TestFilterTypesIsOR(t *testing.T) {
 	source := core.Node{Type: "source"}
 	entity := core.Node{Type: "entity"}
 	resource := core.Node{Type: "resource"}
-	f := core.Filter{Kinds: []string{"source", "entity"}}
+	f := core.Filter{Types: []string{"source", "entity"}}
 
 	it.Then(t).
 		Should(it.True(f.Match(source))).
@@ -87,21 +87,21 @@ func TestFilterCombinedGroupsAreANDed(t *testing.T) {
 		},
 	}
 	f := core.Filter{
-		Kinds:        []string{"entity"},
+		Types:        []string{"entity"},
 		Tags:         []string{"cryptography"},
 		Attrs:        map[string]string{"status": "mature"},
 		AttrPatterns: map[string]*regexp.Regexp{"status": regexp.MustCompile(`^mat`)},
 	}
-	fWrongKind := core.Filter{Kinds: []string{"resource"}, Tags: []string{"cryptography"}}
+	fWrongType := core.Filter{Types: []string{"resource"}, Tags: []string{"cryptography"}}
 
 	it.Then(t).
 		Should(it.True(f.Match(node))).
-		Should(it.True(!fWrongKind.Match(node)))
+		Should(it.True(!fWrongType.Match(node)))
 }
 
 func TestFilterMatchingZeroNodes(t *testing.T) {
 	node := core.Node{Type: "source"}
-	f := core.Filter{Kinds: []string{"resource"}}
+	f := core.Filter{Types: []string{"resource"}}
 
 	it.Then(t).Should(it.True(!f.Match(node)))
 }

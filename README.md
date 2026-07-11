@@ -28,9 +28,9 @@ go build -o arc ./cmd/arc
 
 `arc lint` validates the graph against the full CORE §14 conformance checklist — front-matter/kind, unique basenames, resolvable links, source citekey identity, entity Sowa category, predicate registration, citation predicates, one ingest commit per document, and absence of merge-conflict markers — reporting every violation with its file and line. `_schema/` documents are exempt from these checks. It is strictly read-only.
 
-`arc grep <pattern>` scans every node file's content for lines matching a regexp, optionally narrowed by a `--kind`/`--tag`/`--attr` filter (see Filtering in [specs/VISION.md](specs/VISION.md)), printing one `<kind>  <id>  <line>  <text>` row per match — suitable for piping to standard tools. It is strictly read-only.
+`arc grep <pattern>` scans every node file's content for lines matching a regexp, optionally narrowed by a `--type`/`--tag`/`--attr` filter (see Filtering in [specs/VISION.md](specs/VISION.md)), printing one `<type>  <id>  <line>  <text>` row per match — suitable for piping to standard tools. It is strictly read-only.
 
-`arc subgraph <basename>` extracts a seed node plus everything reachable from it within `--depth` hops (both outgoing and incoming structural connections, default `1`), optionally narrowed by the same `--kind`/`--tag`/`--attr` filter, and serializes the result as one patch-exchange document — ready to re-ingest via `arc apply` or paste into an LLM prompt. It is strictly read-only.
+`arc subgraph <basename>` extracts a seed node plus everything reachable from it within `--depth` hops (both outgoing and incoming structural connections, default `1`), optionally narrowed by the same `--type`/`--tag`/`--attr` filter, and serializes the result as one patch-exchange document — ready to re-ingest via `arc apply` or paste into an LLM prompt. It is strictly read-only.
 
 `arc serve [--http <addr>]` starts a Model Context Protocol (MCP) server exposing three read-only tools — `node_get`, `node_grep`, `subgraph_get` — backed by the same use-case functions `arc grep`/`arc subgraph` already call, so an LLM client can read the graph directly. It serves over stdio by default, or over Streamable HTTP/SSE when `--http <addr>` is given (a bare port or `:port` binds loopback-only; an explicit host binds exactly that host). It is strictly read-only.
 

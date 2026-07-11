@@ -94,9 +94,9 @@ func NewSubgraphCmd() *cobra.Command {
 arc subgraph extracts the seed node named by <basename> plus everything
 reachable from it within --depth hops — following both a node's own
 outgoing structural connections and any other node's connection that
-targets it — optionally narrowed by a --kind/--tag/--attr filter (see
+targets it — optionally narrowed by a --type/--tag/--attr filter (see
 Filtering; the filter never excludes the seed itself). The result is
-serialized as one patch-exchange document, grouped by kind, ready to
+serialized as one patch-exchange document, grouped by type, ready to
 re-ingest via arc apply or paste into an LLM prompt. subgraph is strictly
 read-only.
 
@@ -104,7 +104,7 @@ See more info https://github.com/fogfish/arcnet-cli`,
 		Example: `
 	arc subgraph TLS
 	arc subgraph TLS --depth 2
-	arc subgraph TLS --kind source
+	arc subgraph TLS --type source
 	arc subgraph TLS --json
 	arc subgraph TLS --stubs`,
 		Args:          cobra.ExactArgs(1),
@@ -180,7 +180,7 @@ See more info https://github.com/fogfish/arcnet-cli`,
 	}
 
 	cmd.Flags().IntVar(&depth, "depth", 1, "Number of hops to traverse from the seed (both directions)")
-	cmd.Flags().BoolVar(&stubs, "stubs", false, "Emit a minimal placeholder node (kind and id only) for every extraction-boundary link target, so the output has no dangling reference when applied elsewhere")
+	cmd.Flags().BoolVar(&stubs, "stubs", false, "Emit a minimal placeholder node (type and id only) for every extraction-boundary link target, so the output has no dangling reference when applied elsewhere")
 	opts.apply(cmd)
 
 	return cmd
