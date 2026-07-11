@@ -32,29 +32,29 @@ const (
 	defaultGrepMaxLineWidth = 512
 )
 
-// optsFilter is arc grep's own local --kind/--tag/--attr options struct
+// optsFilter is arc grep's own local --type/--tag/--attr options struct
 // (ADR 002 DS-02, research.md D14) — not yet promoted to a shared location,
 // since arc grep is the first command in this codebase to implement
 // VISION.md's Filtering section.
 type optsFilter struct {
-	kind []string
+	typ  []string
 	tag  []string
 	attr []string
 }
 
 func (o *optsFilter) apply(cmd *cobra.Command) {
-	cmd.Flags().StringArrayVar(&o.kind, "kind", nil, "Restrict to nodes of this kind (repeatable, OR)")
+	cmd.Flags().StringArrayVar(&o.typ, "type", nil, "Restrict to nodes of this type (repeatable, OR)")
 	cmd.Flags().StringArrayVar(&o.tag, "tag", nil, "Restrict to nodes carrying this tag (repeatable, AND)")
 	cmd.Flags().StringArrayVar(&o.attr, "attr", nil, "Restrict to nodes matching name=value or name~=pattern (repeatable, AND)")
 }
 
 // build assembles a core.Filter from the parsed flag values, per VISION.md's
-// Filtering section (research.md D8): --kind is OR'd, --tag/--attr are
+// Filtering section (research.md D8): --type is OR'd, --tag/--attr are
 // AND'd, all three groups are ANDed together.
 func (o optsFilter) build() (core.Filter, error) {
 	f := core.Filter{}
 
-	f.Kinds = append(f.Kinds, o.kind...)
+	f.Types = append(f.Types, o.typ...)
 	f.Tags = append(f.Tags, o.tag...)
 
 	for _, a := range o.attr {
@@ -196,14 +196,14 @@ func NewGrepCmd() *cobra.Command {
 		Long: `
 arc grep scans every node file's content (not just front-matter) in the
 graph for lines matching a regexp <pattern>, optionally narrowed by a
---kind/--tag/--attr filter (see Filtering). One line is printed per match:
-<kind>  <id>  <line>  <text> — suitable for piping to standard tools. grep
+--type/--tag/--attr filter (see Filtering). One line is printed per match:
+<type>  <id>  <line>  <text> — suitable for piping to standard tools. grep
 is strictly read-only.
 
 See more info https://github.com/fogfish/arcnet-cli`,
 		Example: `
 	arc grep TLS
-	arc grep --kind source TLS
+	arc grep --type source TLS
 	arc grep --tag cryptography --attr status=mature "TLS 1\.3"
 	arc grep --json TLS`,
 		Args:          cobra.ExactArgs(1),

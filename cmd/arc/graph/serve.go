@@ -49,7 +49,7 @@ const (
 // drivers' native input shapes (CLI flags vs. MCP JSON) do not share a
 // common decoding path.
 type mcpFilter struct {
-	Kind         []string          `json:"kind,omitempty"`
+	Type         []string          `json:"type,omitempty"`
 	Tags         []string          `json:"tags,omitempty"`
 	Attrs        map[string]string `json:"attrs,omitempty"`
 	AttrPatterns map[string]string `json:"attrPatterns,omitempty"`
@@ -64,7 +64,7 @@ func (f *mcpFilter) toCoreFilter() (core.Filter, error) {
 		return core.Filter{}, nil
 	}
 
-	out := core.Filter{Tags: f.Tags, Kinds: append([]string(nil), f.Kind...)}
+	out := core.Filter{Tags: f.Tags, Types: append([]string(nil), f.Type...)}
 	if len(f.Attrs) > 0 {
 		out.Attrs = f.Attrs
 	}
@@ -115,7 +115,7 @@ func logCall(tool, args string, err error) {
 // only when matches is empty (spec FR-009).
 func renderMatchTable(matches []kernel.Match) string {
 	var b strings.Builder
-	b.WriteString("| id | kind | line | snippet |\n|---|---|---|---|\n")
+	b.WriteString("| id | type | line | snippet |\n|---|---|---|---|\n")
 	for _, m := range matches {
 		fmt.Fprintf(&b, "| %s | %s | %d | %s |\n", m.ID, m.Type, m.Line, m.Text)
 	}

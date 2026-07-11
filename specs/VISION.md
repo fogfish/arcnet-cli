@@ -18,9 +18,9 @@ The `.arc/` directory is the single location for all arc-managed state that is n
 
 Several commands accept a filter to narrow the set of nodes they operate on. Filters are composable: all flags present in a single invocation are ANDed together. Where a flag is repeatable, the repeated values combine as stated below.
 
-**Kind filter**
+**Type filter**
 
-`--kind <kind>` restricts results to nodes whose `kind` field equals `<kind>`. The flag is repeatable; multiple `--kind` values form an OR set — a node matches if its kind equals any of the listed values. Any kind value is accepted, including extension kinds introduced by domain profiles.
+`--type <type>` restricts results to nodes whose `type` field equals `<type>`. The flag is repeatable; multiple `--type` values form an OR set — a node matches if its type equals any of the listed values. Any type value is accepted, including extension types introduced by domain profiles.
 
 **Tag filter**
 
@@ -40,7 +40,7 @@ MCP tools that accept a filter receive it as a single JSON object parameter `fil
 
 ```json
 {
-  "kind":         ["source", "entity"],
+  "type":         ["source", "entity"],
   "tags":         ["cryptography", "protocols"],
   "attrs":        { "status": "backlog", "ref": "standard" },
   "attrPatterns": { "title": "TLS.*", "category": "independent" }
@@ -164,7 +164,7 @@ A knowledge graph grows patch by patch. When patch D1 was produced, entity E did
 - [ ] `arc relink` — scan every node's `text` and `notes` fields for plain-text occurrences of any entity basename or alias registered in `_meta/aliases.md`, then for each match: add `[[EntityBasename]]` markup at the point of occurrence in the prose (or append a `mentions:: [[EntityBasename]]` edge where the kind uses a headed `## Mentions` block); append the corresponding `mentionedIn:: [[SourceNode]]` backlink on the entity node; insert `[[Canonical|alias-text]]` when the match is an alias so the displayed text is preserved; skip nodes that already carry `[[EntityBasename]]` or a `mentions::` edge to that entity (idempotent); commit all changes as `graph(relink): add N inline mentions across M nodes`
 - [ ] `arc relink --dry-run` — print every proposed match as `<node-id>  ·  "<matched text>"  →  [[EntityBasename]]`; make no writes
 - [ ] `arc relink --interactive` — confirm or skip each proposed match individually before writing; useful when entity names are short and ambiguous
-- [ ] `arc relink [<filter>]` — restrict the set of nodes scanned to those matching the filter (see Filtering); e.g. `--kind source` to link only source abstracts, or `--attr maturity=mature` to restrict to mature thoughts
+- [ ] `arc relink [<filter>]` — restrict the set of nodes scanned to those matching the filter (see Filtering); e.g. `--type source` to link only source abstracts, or `--attr maturity=mature` to restrict to mature thoughts
 - [ ] `arc relink --entity <basename>` — re-link a single newly-added entity across all existing nodes; intended to be run immediately after a patch that introduces a new entity
 
 **Synonym merging**
@@ -185,7 +185,7 @@ Graph exploration backed by the Phase 4 index for structured queries, and direct
 
 **Content search**
 
-- [x] `arc grep [<filter>] <pattern>` — scan nodes matching the filter (see Filtering) for lines matching the regexp `<pattern>`; print `<kind>  <id>  <line-number>  <matched line>`, one match per output line; without a filter, scans every node file; suitable for piping to standard tools
+- [x] `arc grep [<filter>] <pattern>` — scan nodes matching the filter (see Filtering) for lines matching the regexp `<pattern>`; print `<type>  <id>  <line-number>  <matched line>`, one match per output line; without a filter, scans every node file; suitable for piping to standard tools
 
 **Structured graph queries (index-backed)**
 
@@ -196,7 +196,7 @@ Graph exploration backed by the Phase 4 index for structured queries, and direct
 
 **Context assembly (RAG and agent memory)**
 
-- [x] `arc subgraph <basename> [--depth <n>] [<filter>]` — extract a self-contained subgraph: the seed node plus all nodes reachable within N hops (default 1), optionally filtered by kind or attributes on the reached nodes; the filter applies to the expanded nodes, not the seed; output uses the patch exchange format (CORE §12.2) as the serialization: nodes are grouped by kind under `# <Kind>` headings, each node under `## <basename>`, front-matter in a fenced YAML block, body verbatim below — human-readable, LLM-friendly, and round-trippable back into `arc apply`
+- [x] `arc subgraph <basename> [--depth <n>] [<filter>]` — extract a self-contained subgraph: the seed node plus all nodes reachable within N hops (default 1), optionally filtered by type or attributes on the reached nodes; the filter applies to the expanded nodes, not the seed; output uses the patch exchange format (CORE §12.2) as the serialization: nodes are grouped by type under `# <Type>` headings, each node under `## <basename>`, front-matter in a fenced YAML block, body verbatim below — human-readable, LLM-friendly, and round-trippable back into `arc apply`
 - [ ] `arc context <query> [<filter>]` — multi-signal retrieval that returns a ranked set of nodes most relevant to `<query>`, serialized in the same patch exchange format as `arc subgraph` so the output is ready to inject into an LLM prompt; the optional filter (see Filtering) narrows the candidate set before retrieval; **note: the specific retrieval algorithm — how signals are combined and ranked — is not specified here and must be developed through experimentation; the interface is fixed but the implementation strategy is an open research question**
 
 ---

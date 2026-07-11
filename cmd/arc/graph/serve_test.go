@@ -189,13 +189,46 @@ func TestServeNodeGrepReturnsOneRowPerMatch(t *testing.T) {
 	it.Then(t).ShouldNot(it.True(result.IsError))
 	text := textOf(t, result)
 	it.Then(t).
-		Should(it.String(text).Contain("| id | kind | line | snippet |")).
+		Should(it.String(text).Contain("| id | type | line | snippet |")).
 		Should(it.String(text).Contain("rescorla-2026-tls13"))
 }
 
-// { "name": "node_grep", "arguments": { "pattern": "TLS", "filter": { "kind": ["source"] } } }
+// { "name": "node_grep", "arguments": { "pattern": "TLS", "filter": { "type": ["source"] } } }
 // Scenario 2 from spec.md US2: a filter object narrows the matched nodes.
 func TestServeNodeGrepFilterNarrowsMatchedNodes(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "node_grep",
+		Arguments: map[string]any{
+			"pattern": "TLS",
+			"filter":  map[string]any{"type": []string{"source"}},
+		},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("rescorla-2026-tls13")).
+		ShouldNot(it.String(text).Contain("Transport Layer Security |"))
+}
+
+// { "name": "node_grep", "arguments": { "pattern": "TLS", "filter": { "kind": ["source"] } } }
+// Edge case from spec.md: a filter payload still keyed "kind" (the retired
+// wire field name) is rejected with a clear tool error identifying "kind" as
+// an unrecognized filter property — node_grep's argument schema disallows
+// additional properties (the MCP SDK's default posture for every tool's
+// struct-derived argument schema, not something this rename introduces), so
+// a stale "kind" key is never silently dropped, mirroring the CLI's own
+// no-alias treatment of the retired --kind flag.
+func TestServeNodeGrepOldKindFieldRejectedAsUnrecognizedProperty(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	seedServeFixture(t, dir)
@@ -213,11 +246,8 @@ func TestServeNodeGrepFilterNarrowsMatchedNodes(t *testing.T) {
 	})
 
 	it.Then(t).Should(it.Nil(err))
-	it.Then(t).ShouldNot(it.True(result.IsError))
-	text := textOf(t, result)
-	it.Then(t).
-		Should(it.String(text).Contain("rescorla-2026-tls13")).
-		ShouldNot(it.String(text).Contain("Transport Layer Security |"))
+	it.Then(t).Should(it.True(result.IsError))
+	it.Then(t).Should(it.String(textOf(t, result)).Contain(`additional properties ["kind"]`))
 }
 
 // Scenario 3 from spec.md US2: a non-matching pattern returns an empty
@@ -239,7 +269,7 @@ func TestServeNodeGrepNonMatchingPatternReturnsHeaderOnly(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).ShouldNot(it.True(result.IsError))
 	text := textOf(t, result)
-	it.Then(t).Should(it.String(text).Contain("| id | kind | line | snippet |"))
+	it.Then(t).Should(it.String(text).Contain("| id | type | line | snippet |"))
 }
 
 // Scenario 4 from spec.md US2: a syntactically invalid pattern returns a
@@ -547,7 +577,7 @@ func TestRenderMatchTableZeroMatchesHeaderOnly(t *testing.T) {
 	out := renderMatchTable(nil)
 
 	it.Then(t).
-		Should(it.String(out).Contain("| id | kind | line | snippet |")).
+		Should(it.String(out).Contain("| id | type | line | snippet |")).
 		ShouldNot(it.String(out).Contain("\n| "))
 }
 

@@ -72,9 +72,9 @@ func seedSubgraphFixture(t *testing.T, dir string) {
 
 // arc subgraph "Transport Layer Security"
 // Scenario 1 from spec.md US1: the seed plus every directly connected node
-// (in either direction) is included, grouped by kind, front-matter/body
+// (in either direction) is included, grouped by type, front-matter/body
 // preserved verbatim.
-func TestSubgraphDefaultDepthIncludesSeedAndDirectConnectionsGroupedByKind(t *testing.T) {
+func TestSubgraphDefaultDepthIncludesSeedAndDirectConnectionsGroupedByType(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	seedSubgraphFixture(t, dir)
@@ -344,34 +344,34 @@ TLS 1.3 design rationale.
 	writeGrepNode(t, dir, "sources/other-2026.md", subgraphSourceOther)
 }
 
-// arc subgraph "Transport Layer Security" --kind source
+// arc subgraph "Transport Layer Security" --type source
 // Scenario 1 from spec.md US3: the seed is still included even though its
-// own kind doesn't match the filter.
-func TestSubgraphKindFilterStillIncludesSeedDespiteMismatch(t *testing.T) {
+// own type doesn't match the filter.
+func TestSubgraphTypeFilterStillIncludesSeedDespiteMismatch(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	seedSubgraphFilterFixture(t, dir)
 	chdir(t, dir)
 
 	cmd := NewSubgraphCmd()
-	it.Then(t).Should(it.Nil(cmd.Flags().Set("kind", "source")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "source")))
 	out, err := sut(cmd, []string{"Transport Layer Security"})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
 	it.Then(t).Should(it.String(out).Contain("## Transport Layer Security"))
 }
 
-// arc subgraph "Transport Layer Security" --kind resource
-// Scenario 2 from spec.md US3: --kind restricts which reachable nodes are
+// arc subgraph "Transport Layer Security" --type resource
+// Scenario 2 from spec.md US3: --type restricts which reachable nodes are
 // added, alongside the always-present seed.
-func TestSubgraphKindFilterRestrictsReachableNodes(t *testing.T) {
+func TestSubgraphTypeFilterRestrictsReachableNodes(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	seedSubgraphFilterFixture(t, dir)
 	chdir(t, dir)
 
 	cmd := NewSubgraphCmd()
-	it.Then(t).Should(it.Nil(cmd.Flags().Set("kind", "resource")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "resource")))
 	out, err := sut(cmd, []string{"Transport Layer Security"})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
@@ -381,7 +381,7 @@ func TestSubgraphKindFilterRestrictsReachableNodes(t *testing.T) {
 		ShouldNot(it.String(out).Contain("## other-2026"))
 }
 
-// arc subgraph "Transport Layer Security" --kind hypothesis
+// arc subgraph "Transport Layer Security" --type hypothesis
 // Scenario 3 from spec.md US3: a filter matching zero reachable nodes
 // still yields the seed alone, no error.
 func TestSubgraphFilterMatchingZeroReachableYieldsSeedAloneNoErrorCLI(t *testing.T) {
@@ -391,7 +391,7 @@ func TestSubgraphFilterMatchingZeroReachableYieldsSeedAloneNoErrorCLI(t *testing
 	chdir(t, dir)
 
 	cmd := NewSubgraphCmd()
-	it.Then(t).Should(it.Nil(cmd.Flags().Set("kind", "hypothesis")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "hypothesis")))
 	out, err := sut(cmd, []string{"Transport Layer Security"})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
@@ -402,8 +402,8 @@ func TestSubgraphFilterMatchingZeroReachableYieldsSeedAloneNoErrorCLI(t *testing
 		ShouldNot(it.String(out).Contain("## other-2026"))
 }
 
-// arc subgraph "Transport Layer Security" --kind source --tag cryptography --attr status=mature
-// Scenario 4 from spec.md US3: a combined kind+tag+attr filter narrows to
+// arc subgraph "Transport Layer Security" --type source --tag cryptography --attr status=mature
+// Scenario 4 from spec.md US3: a combined type+tag+attr filter narrows to
 // the exact expected subset.
 func TestSubgraphCombinedFilterNarrowsFurtherCLI(t *testing.T) {
 	dir := t.TempDir()
@@ -412,7 +412,7 @@ func TestSubgraphCombinedFilterNarrowsFurtherCLI(t *testing.T) {
 	chdir(t, dir)
 
 	cmd := NewSubgraphCmd()
-	it.Then(t).Should(it.Nil(cmd.Flags().Set("kind", "source")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "source")))
 	it.Then(t).Should(it.Nil(cmd.Flags().Set("tag", "cryptography")))
 	it.Then(t).Should(it.Nil(cmd.Flags().Set("attr", "status=mature")))
 	out, err := sut(cmd, []string{"Transport Layer Security"})

@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-07-11
+
+/speckit-specify Update every arc command whose output or behavior depends on a graph node's shape (arc apply, arc grep, arc subgraph, arc serve's MCP tools) so they correctly produce and consume the new predicate-first node representation (@id/@type, open texts, array-valued attrs, unified edges) instead of the old kind/id/text-notes/attrs/edges-links shape, and update the corresponding `--json` output schemas.
+
+This includes: arc apply's per-node create/merge reporting (which today references Kind in its human-readable and --json output); arc grep and arc subgraph's node filtering (which today filters on a flat Kinds list and flat Attrs map — the filter semantics need to keep working sensibly against array-valued attrs); arc subgraph's exported patch shape (kernel.SubgraphResult.Patch.Nodes, an already-documented --json contract that external tools may depend on); and arc serve's MCP tool responses, if they expose node shape directly.
+
+Out of scope: adding new CLI flags or commands; changing arc's human-readable (non-JSON) terminal output beyond what's mechanically required by the field renames (e.g. "kind:" labels in reporter output becoming "type:").
+
+/speckit-plan Technical approach: mechanical propagation of spec 010's Node/Patch shape changes through internal/app/graph/{kernel,service} (apply.go, grep.go, subgraph.go), internal/core/filter.go (Filter.Kinds -> Filter.Types, Filter.Attrs/AttrPatterns matching logic against []Predicate instead of raw any), internal/pkg/grep/grep.go, and cmd/arc/graph/*.go plus cmd/arc/ctrl/init.go and internal/app/ctrl/service/init.go wherever they reference core.Kind/Node.Attrs directly.
+
+internal/core/filter.go changes: `Kinds []Kind` -> `Types []string`; matchAttrs/matchAttrPatterns need to unwrap `[]Predicate` (checking `.Value` for scalar predicates, `.Target` for link-shaped ones per AST §7) instead of today's raw `[]any`/scalar `any` — write this as a small `predicateStrings(node.Attrs[name])` helper mirroring today's `attrStrings`.
+
+kernel.ApplyResult / kernel.SubgraphResult (graph/kernel): audit every field for Kind/Attrs/Edges/Links references; since AST invariant changes mean this genuinely breaks the JSON schema (no way to make it purely additive — attrs values are no longer bare scalars), this is a deliberate breaking version bump for these two contracts specifically. Recommend: bump a `schemaVersion`-style marker in both `--json` payloads if one doesn't already exist (check first — if arc has no existing versioning convention for its JSON output, research.md should note this as a gap worth raising, not silently invent one this feature doesn't own).
+
+arc serve (internal/app/graph/kernel + cmd/arc/graph/serve.go): audit MCP tool schemas/responses for any direct Node field exposure; update accordingly.
+
+Testing: this is largely a "make it compile and keep existing test intent" pass — every existing E2E test in cmd/arc/graph/*_test.go and cmd/arc/ctrl/init_test.go needs its fixtures/assertions updated to the new field names/shapes; add a small number of new tests specifically asserting the new --json shapes (one golden-file-style test per command's --json output, since this is the primary artifact external consumers depend on).
+
+Documentation: produce a CHANGELOG entry and, if this repo has a docs/contracts area (check contracts/ under relevant specs/00X folders for precedent), a migration note listing old-field -> new-field mappings for --json consumers.
+
+Constraints: sequence this spec last among 010-015 — it should only start once 010/011/012/013/014 are merged, since it's the integration/cleanup pass across all of them, not a parallel-track item.
+
+/speckit-implement **Breaking change**: `arc grep`'s and `arc subgraph`'s `--kind` flag is renamed to `--type`; `arc serve`'s `node_grep` MCP tool's filter field renames from `"kind"` to `"type"` and its result table's column header renames from "kind" to "type"; `arc apply`'s unrecognized-type warning now reads "... is not a recognized node type for this graph ..." (was "kind"). No backward-compatible alias: invoking `--kind` after this release fails with the standard Cobra "unknown flag: --kind" error; an MCP `node_grep` call whose filter is still keyed `"kind"` fails with a tool error identifying `kind` as an unrecognized property (the MCP server's argument schema disallows unlisted properties for every tool, not only `node_grep`). Filtering/matching semantics are otherwise unchanged — this is a vocabulary-only rename (`internal/core.Filter.Kinds` → `Types`), consistent with the node-shape migration (specs 010/012/013) that already made `@type`/`Node.Type` the sole concept everywhere else in this codebase.
+
 ## 2026-07-09
 
 /speckit-specify Extend `arc lint` to validate a graph against ARCNET-CORE v0.7's actual conformance checklist (§16), which today's lint only partially covers. See the spec https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/ARCNET-CORE.md

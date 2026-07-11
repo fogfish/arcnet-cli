@@ -19,9 +19,9 @@ import (
 // specs/006-arc-grep-content-search). A zero-value Filter{} matches every
 // node.
 type Filter struct {
-	// Kinds is empty-matches-every-kind, otherwise OR'd: a node matches if
+	// Types is empty-matches-every-type, otherwise OR'd: a node matches if
 	// its Type is any listed value.
-	Kinds []string
+	Types []string
 	// Tags is empty-matches-every-node, otherwise AND'd: every listed tag
 	// must be present among the values of node.Attrs["tags"].
 	Tags []string
@@ -38,14 +38,14 @@ type Filter struct {
 // Match reports whether node satisfies every condition in f. Match mutates
 // neither f nor node.
 func (f Filter) Match(node Node) bool {
-	return f.matchKinds(node) && f.matchTags(node) && f.matchAttrs(node) && f.matchAttrPatterns(node)
+	return f.matchTypes(node) && f.matchTags(node) && f.matchAttrs(node) && f.matchAttrPatterns(node)
 }
 
-func (f Filter) matchKinds(node Node) bool {
-	if len(f.Kinds) == 0 {
+func (f Filter) matchTypes(node Node) bool {
+	if len(f.Types) == 0 {
 		return true
 	}
-	for _, k := range f.Kinds {
+	for _, k := range f.Types {
 		if node.Type == k {
 			return true
 		}

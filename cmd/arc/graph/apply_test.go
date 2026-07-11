@@ -679,7 +679,7 @@ func TestApplyRegisteredKindUsesRegisteredBehaviorNoWarning(t *testing.T) {
 	stdout, stderr, err := sutCaptureStderr(t, NewApplyCmd(), []string{patch})
 
 	it.Then(t).ShouldNot(it.Error(stdout, err))
-	it.Then(t).ShouldNot(it.String(stderr).Contain("not a recognized node kind"))
+	it.Then(t).ShouldNot(it.String(stderr).Contain("not a recognized node type"))
 	assertIsFile(t, filepath.Join(dir, "hypothesis", "Forward Secrecy Requires Ephemeral Keys.md"))
 }
 
@@ -793,7 +793,7 @@ func TestApplyRegisteringKindRemovesWarningOnNextApply(t *testing.T) {
 
 	_, stderr2, err := sutCaptureStderr(t, NewApplyCmd(), []string{patch2})
 	it.Then(t).Should(it.Nil(err))
-	it.Then(t).ShouldNot(it.String(stderr2).Contain("not a recognized node kind"))
+	it.Then(t).ShouldNot(it.String(stderr2).Contain("not a recognized node type"))
 }
 
 const hypothesisSeedConfirmed = `---

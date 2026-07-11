@@ -222,7 +222,7 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 		_, ok := index.Types[node.Type]
 		if !ok {
 			result.Warnings = append(result.Warnings, fmt.Sprintf(
-				"%s is not a recognized node kind for this graph — auto-registered with a default schema document", node.Type))
+				"%s is not a recognized node type for this graph — auto-registered with a default schema document", node.Type))
 			if _, err := schema.RegisterType(store, node.Type); err != nil {
 				reporter.Error(labelApplyingNodes, err)
 				rollback(store, createdPaths)
