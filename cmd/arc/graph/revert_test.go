@@ -63,6 +63,58 @@ func TestRevertWholeCommitRemovesJustAppliedPatch(t *testing.T) {
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }
 
+// arc apply tls13.patch.md; arc revert rescorla-2026-tls13 --force;
+// arc apply tls13.patch.md; arc revert rescorla-2026-tls13 --force
+// spec.md FR-020/SC-009 (Bugfix BUG-001, 2026-07-12): a document reverted
+// once and then re-applied has two ingest commits in the graph's history
+// carrying the same Source-Id trailer — the second revert must locate
+// and act on the newer one rather than refusing with "more than one
+// ingest commit found".
+func TestRevertSucceedsAfterRetractReapplyCycle(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
+
+	_, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Nil(err))
+	out, err := sut(forcedRevertCmd(t), []string{"rescorla-2026-tls13"})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	_, statErr := os.Stat(filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+
+	// The whole-commit revert (`git revert`) undid the entire ingest
+	// commit, including tls13.patch.md itself (it was staged alongside
+	// the node files by arc apply's own `git add -A`) — write it again
+	// before re-applying it.
+	patch = writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
+
+	// Re-apply the identical patch — its source node no longer exists,
+	// so arc apply's own idempotency check does not block it, producing
+	// a second, independent ingest commit with the same Source-Id
+	// trailer.
+	_, err = sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Nil(err))
+	assertIsFile(t, filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+
+	before := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
+	beforeCount := len(strings.Split(before, "\n"))
+
+	out, err = sut(forcedRevertCmd(t), []string{"rescorla-2026-tls13"})
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).
+		ShouldNot(it.String(out).Contain("more than one ingest commit")).
+		Should(it.String(out).Contain("whole-commit"))
+
+	after := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
+	afterCount := len(strings.Split(after, "\n"))
+	it.Then(t).Should(it.Equal(beforeCount+1, afterCount))
+
+	_, statErr = os.Stat(filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+}
+
 const unrelatedNotePatchDifferentYear = `---
 kind: patch
 document: kolesnikov-2020-note

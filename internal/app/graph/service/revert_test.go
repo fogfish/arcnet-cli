@@ -44,16 +44,30 @@ func TestRevertNoIngestCommitRefuses(t *testing.T) {
 	it.Then(t).Should(it.True(errors.Is(err, service.ErrNoIngestCommit)))
 }
 
-// research.md D1: more than one match is an integrity anomaly, refused.
-func TestRevertAmbiguousIngestCommitRefuses(t *testing.T) {
+// research.md D1 (corrected — BUG-001): more than one match is the
+// expected result of a prior retract-then-reapply cycle for sourceID, not
+// an integrity anomaly — the newest match (hashes[0], CommitsMatching's
+// own newest-first ordering) is always the currently active ingest
+// commit, and Revert acts on it without refusing.
+func TestRevertUsesNewestIngestCommitWhenMultipleMatchesExist(t *testing.T) {
 	store := newGraphStore()
 	vcs := &graphmock.VCS{
-		CommitsMatchingFn: func(dir, needle string) ([]string, error) { return []string{"aaa", "bbb"}, nil },
+		Tracked:           map[string]bool{"sources/foo-2026-x.md": true},
+		CommitsMatchingFn: func(dir, needle string) ([]string, error) { return []string{"newer456", "older123"}, nil },
+		ChangedPathsFn:    func(dir, hash string) ([]string, error) { return []string{"sources/foo-2026-x.md"}, nil },
+		CommitsTouchingFn: func(dir, path string) ([]string, error) { return []string{"newer456"}, nil },
+		RevertCommitFn:    func(dir, hash string) (string, error) { return "rev789", nil },
 	}
 
-	_, err := service.Revert(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, "/graph", "foo-2026-x")
+	result, err := service.Revert(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, "/graph", "foo-2026-x")
 
-	it.Then(t).Should(it.True(errors.Is(err, service.ErrAmbiguousIngestCommit)))
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal("whole-commit", result.Approach)).
+		Should(it.Equal("rev789", result.CommitHash))
+	it.Then(t).
+		Should(it.Seq(vcs.Calls).Contain("ChangedPaths:/graph:newer456")).
+		Should(it.Seq(vcs.Calls).Contain("RevertCommit:/graph:newer456"))
 }
 
 // research.md D2 / Clarifications Session 2026-07-12: an already-retracted

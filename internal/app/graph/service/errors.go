@@ -35,12 +35,10 @@ const (
 	ErrHTTPAddr             = faults.Safe1[string]("invalid or unavailable --http address %s")
 	ErrInvalidFilterPattern = faults.Safe1[string]("%s is not a valid pattern")
 
-	// ErrNoIngestCommit and ErrAmbiguousIngestCommit are arc revert's own
-	// sentinels (research.md D1): no commit at all, or more than one —
-	// the latter is an integrity anomaly the patch format guarantees
-	// cannot happen (spec 003 FR-011), so it points at arc lint's own
-	// RuleIngestCommit check rather than guessing which commit is "the"
-	// one.
-	ErrNoIngestCommit        = faults.Safe1[string]("no ingest commit found for %s")
-	ErrAmbiguousIngestCommit = faults.Safe1[string]("more than one ingest commit found for %s — run `arc lint` to check the Source-Id: trailer invariant")
+	// ErrNoIngestCommit is arc revert's own sentinel (research.md D1) for
+	// the "no commit at all" case. More than one match is not an error —
+	// see D1's corrected rationale (BUG-001): it is the expected result
+	// of a retract-then-reapply cycle, resolved by acting on the newest
+	// match rather than refusing.
+	ErrNoIngestCommit = faults.Safe1[string]("no ingest commit found for %s")
 )

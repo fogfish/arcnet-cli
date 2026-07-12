@@ -59,11 +59,15 @@ func Revert(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bi
 		reporter.Error(labelLocatingIngestCommit, err)
 		return kernel.RevertResult{}, err
 	}
-	if len(hashes) > 1 {
-		err := ErrAmbiguousIngestCommit.With(errNoCause, sourceID)
-		reporter.Error(labelLocatingIngestCommit, err)
-		return kernel.RevertResult{}, err
-	}
+	// More than one match is the expected result of a prior
+	// retract-then-reapply cycle for sourceID, not an integrity anomaly
+	// (research.md D1, corrected — BUG-001): arc apply's own idempotency
+	// check guarantees at most one ingest commit's contribution can ever
+	// be active at a time, so every match older than the newest must
+	// already have been fully retracted before the newer one was
+	// created. CommitsMatching's own git log --all ordering is
+	// newest-first, so hashes[0] is always the currently active ingest
+	// commit to act on.
 	ingestHash := hashes[0]
 	reporter.Done(labelLocatingIngestCommit, time.Since(start))
 

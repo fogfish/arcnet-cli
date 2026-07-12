@@ -24,6 +24,18 @@ ls resources/ 2>/dev/null   # empty or absent
 
 **Expected**: `resources/rfc-9110.md` no longer exists, exactly one new commit exists on top of `arc apply`'s own, and `arc revert`'s own summary reports `approach: whole-commit` (D3/D4 — nothing has touched this patch's files since it was applied, so it takes the fast path even though it's phrased generically, not specifically "is this literally HEAD").
 
+### Scenario A.1 — revert, re-apply, revert again (regression test for BUG-001, spec FR-020/SC-009)
+
+Continuing directly from Scenario A (`rfc-9110` has just been reverted):
+
+```sh
+arc apply patch-1.md
+git log --oneline
+arc revert rfc-9110
+```
+
+**Expected**: the second `arc revert rfc-9110` succeeds and reports `approach: whole-commit`, exactly as the first one did — it does **not** refuse with "more than one ingest commit found for rfc-9110." The graph's history now has two `graph(ingest): rfc-9110` commits (one from each apply) and two revert commits; `arc revert` locates and acts on the most recent ingest commit, since `arc apply`'s own idempotency check guarantees the older one had already been fully retracted before the second apply could create it (FR-020).
+
 ## Scenario B — retract an old patch nothing has touched since (spec User Story 2)
 
 Repeat Scenario A's setup, then apply a second, unrelated patch `patch-2.md` (a different document, no shared entities/resources) before reverting the first:
