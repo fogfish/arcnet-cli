@@ -153,9 +153,9 @@ description: "Task list for Per-Predicate Merge Reconciliation for arc apply"
 
 **Purpose**: Addresses [specs/012-predicate-merge-policies/bugs/BUG-001.md](bugs/BUG-001.md), reported after live validation: `arc apply --verbose` stayed node-level after per-predicate dispatch shipped (FR-017), and `abstract`/`definition`/`notes`/`relevance`/`description` (all `role: text`) were seeded `firstWriteWin` instead of `append` (FR-018), which is what produced an unexpected conflict marker on a real graph's `LLM`/`Graph OS` entities.
 
-- [X] T035 [P] Widen `internal/core/merge.go`'s `Merge` to also return a per-predicate outcome trail (e.g. `[]PredicateOutcome{Name, Op, Outcome}` for every predicate present on either side, not only flagged ones) alongside the existing `conflicts []string` — additive, no existing caller's use of the first two return values changes
+- [ ] T035 [P] ⚠️ Reopened — BUG-002 Widen `internal/core/merge.go`'s `Merge` to also return a per-predicate outcome trail (e.g. `[]PredicateOutcome{Name, Op, Outcome}` for every predicate present on either side, not only flagged ones) alongside the existing `conflicts []string` — additive, no existing caller's use of the first two return values changes (reopened — BUG-002: the `isListMerge` branch inside `mergeTexts`/`mergeAttrs` always reports `OutcomeAppended`/`OutcomeCreated`, never `OutcomeUnchanged`, even when the merged value is byte-identical to the existing one; see T043)
 - [X] T036 [P] Update `internal/core/merge_test.go`: assert the new outcome trail's contents (name/op/outcome) for a representative case of each of the seven `MergeOp`s
-- [X] T037 Update `internal/app/graph/service/apply.go`'s node-processing loop to emit one additional `Reporter.Step` per present predicate (name, resolved op, outcome) when `--verbose` is set, sourced from T035's new return value, alongside the existing one-line-per-node summary (FR-017)
+- [ ] T037 ⚠️ Reopened — BUG-002 Update `internal/app/graph/service/apply.go`'s node-processing loop to emit one additional `Reporter.Step` per present predicate (name, resolved op, outcome) when `--verbose` is set, sourced from T035's new return value, alongside the existing one-line-per-node summary (FR-017) (reopened — BUG-002: correctly wires whatever T035 returns, but T035's own `union`/`append` outcome is currently wrong in the no-op case; see T043)
 - [X] T038 [P] Update `internal/app/graph/service/apply_test.go`/`cmd/arc/graph/apply_test.go`: add assertions that `--verbose` output contains a per-predicate line for a merged node exercising at least one predicate of each dispatch class (freeze/flagOnDiverge/alwaysOverwrite/list)
 - [X] T039 [P] Update `internal/app/schema/kernel/schema.go`'s `CorePredicateDefs`: repoint `abstract`/`definition`/`notes`/`relevance`/`description` from `MergeFirstWriteWin` to `MergeAppend` (FR-018); update `internal/app/schema/kernel/schema_test.go`/`internal/app/schema/service/schema_test.go` assertions tied to the old values
 - [X] T040 Update every test fixture/assertion elsewhere in the repo that currently depends on one of these five predicates flagging a conflict (notably `internal/core/merge_test.go`'s `abstract`-based `TestMergeFirstWriteWin*`/`TestMergeFirstWriteWinReplayDoesNotRewrapMarker` cases and `cmd/arc/graph/apply_test.go`'s `TestApply012US2ConflictFlaggingScopedToFirstWriteWin`/`TestApply012US3ReplayDoesNotRewrapConflictMarker`, which use `abstract` as their firstWriteWin exemplar) — repoint them to a genuinely `role: meta`, `firstWriteWin`-declared predicate (e.g. `category`) instead, since `abstract` no longer flags
@@ -163,6 +163,20 @@ description: "Task list for Per-Predicate Merge Reconciliation for arc apply"
 - [X] T042 [P] Manually re-run quickstart.md Scenario B (or an equivalent ad hoc check) confirming `abstract` now appends instead of flagging, and confirming `--verbose` shows a per-predicate line
 
 **Checkpoint**: TN10 (reopened above) can be re-closed once T037/T038 land and are confirmed passing.
+
+---
+
+## Phase 7: Bugfix BUG-002 — `union`/`append` Outcome Must Reflect the Actual Merge Result
+
+**Purpose**: Addresses [specs/012-predicate-merge-policies/bugs/BUG-002.md](bugs/BUG-002.md), reported after applying `dmitry-2026-graph.md` then `dmitry-2026-article.md` to a fresh graph: `arc apply --verbose` reported `definition: append -> appended` for the `LLM` entity even though `definition`'s value never changed (the incoming paragraph was a byte-identical duplicate, correctly dropped by `mergeText`'s own near-duplicate detection). Root cause: `mergeTexts`/`mergeAttrs`'s `isListMerge` branch (`internal/core/merge.go`) derives its reported outcome from which merge behavior dispatched, not from whether the dispatch actually changed the value — the one dispatch class where `OutcomeUnchanged` was never reachable (FR-019).
+
+- [ ] T043 [P] Fix `internal/core/merge.go`'s `mergeTexts` and `mergeAttrs` `isListMerge` branches: after computing the merged value (`mergeText(ev, iv)` / `unionPredicates(ev, iv)`), compare it against the existing value before choosing the outcome — `OutcomeCreated` when the key was absent from `existing`, `OutcomeUnchanged` when the merged value equals the existing value, `OutcomeAppended` only when it genuinely differs (FR-019)
+- [ ] T044 [P] Add `internal/core/merge_test.go` case(s): a re-contribution whose paragraph is a full (and, separately, a Jaccard near-) duplicate of existing `append`-declared prose reports `OutcomeUnchanged`, not `OutcomeAppended`; likewise for a `union`-declared list predicate re-contributing an already-present value
+- [ ] T045 [P] Update `cmd/arc/graph/apply_test.go` (or `internal/app/graph/service/apply_test.go`): add a `--verbose` assertion that re-applying a patch whose contribution to an `append`/`union` predicate is fully duplicate reports `unchanged`, not `appended`, in the per-predicate report line (SC-007)
+- [ ] T046 Run `go build ./... && go test ./... && go vet ./... && staticcheck ./...`; confirm all green
+- [ ] T047 [P] Manually re-verify against the exact files that triggered this report (a `dmitry-2026-graph.md`-then-`dmitry-2026-article.md`-shaped fixture) that `definition: append -> unchanged` is now reported for the `LLM` entity's fully-duplicate contribution
+
+**Checkpoint**: BUG-002 fixed — T035/T037 (reopened above) re-closed once T043 lands and T044/T045 pass; `mergeTexts`/`mergeAttrs`'s `isListMerge` branch reports `unchanged` for a genuine no-op, matching every other dispatch class's own accuracy standard.
 
 ---
 
@@ -252,3 +266,5 @@ Because Phase 2.5 implements all three stories' behavior in one pass (they share
 - Commit after each phase, not each task, given how tightly Phase 2.5's tasks are coupled (T021 is a prerequisite for T023-T025 to even compile)
 
 **Bugfix**: 2026-07-08 — BUG-001 Updated from bugfix patch. Added Phase 6 (T035-T042); reopened TN10; annotated TN15.
+
+**Bugfix**: 2026-07-12 — BUG-002 Updated from bugfix patch. Reopened T035/T037; added Phase 7 (T043-T047) to fix `mergeTexts`/`mergeAttrs`'s `isListMerge` branch reporting `appended` for a genuine no-op merge (FR-019).
