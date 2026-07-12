@@ -11,6 +11,8 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 
 **Tests**: Unit and E2E acceptance tests are NOT optional for this project (constitution Principles VI, VIII) — every spec.md acceptance scenario maps 1:1 to an E2E test in `cmd/arc/graph/revert_test.go`, written before implementation (red-green-refactor).
 
+**Bugfix**: 2026-07-12 — BUG-001 Updated from bugfix patch. Reopened T020/T023 (D1's ingest-commit lookup and its unit tests) and TN06/TN14 (compliance checks that depended on them); added T040-T043 to fix the "more than one ingest commit found" false refusal after a retract-then-reapply cycle and add regression coverage.
+
 **Organization**: Tasks are grouped by user story (spec.md: US1 P1, US2 P2, US3 P3) to enable independent implementation and testing.
 
 ## Format: `[ID] [P?] [Story] Description`
@@ -98,10 +100,10 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 - [X] T017 [US1] Implement `CommitsMatching`, `ChangedPaths`, `CommitsTouching`, `RevertCommit` on `internal/adapter/git.VCS` in `internal/adapter/git/git.go` (contracts/vcs-port-contract.md's git-command mapping) plus `ErrGitDiffTree`/`ErrGitRevert` error sentinels
 - [X] T018 [P] [US1] Add `internal/adapter/git/git_test.go` cases for the four new methods (success + failure exit codes)
 - [X] T019 [US1] Implement `internal/bios.Confirm(prompt string) (bool, error)` in `internal/bios/confirm.go` (research.md D10: TTY-gated, refuses when non-interactive without `--force`) plus `internal/bios/confirm_test.go`
-- [X] T020 [US1] Implement `service.Revert`'s D1 (locate ingest commit via `CommitsMatching`)/D2 (idempotency via `IsTracked`)/D3 (per-path eligibility loop)/D4 (`RevertCommit` call) logic in `internal/app/graph/service/revert.go`, per contracts/revert-algorithm-contract.md's top-level decision pseudocode
+- [ ] T020 [US1] ⚠️ Reopened — BUG-001 Implement `service.Revert`'s D1 (locate ingest commit via `CommitsMatching`)/D2 (idempotency via `IsTracked`)/D3 (per-path eligibility loop)/D4 (`RevertCommit` call) logic in `internal/app/graph/service/revert.go`, per contracts/revert-algorithm-contract.md's top-level decision pseudocode (reopened — BUG-001: D1's "more than one match" branch refused instead of selecting the newest match; see T040)
 - [X] T021 [US1] Implement `cmd/arc/graph/revert.go`'s real `RunE`: mount graph, resolve `--force`/`-f`, call `bios.Confirm` unless `--force`, call `appgraph.Revert`, render via a new `revertRenderers` (`bios.Registry[kernel.RevertResult]`, mirrors `applyRenderers` in `apply.go`)
 - [X] T022 [US1] Populate `Short`/`Long`/`Example` help text for `arc revert` in `cmd/arc/graph/revert.go` (Principle XII)
-- [X] T023 [P] [US1] Add unit tests for `service.Revert`'s D1-D4 branches in `internal/app/graph/service/revert_test.go`, using the widened mock `VCS`
+- [ ] T023 [P] [US1] ⚠️ Reopened — BUG-001 Add unit tests for `service.Revert`'s D1-D4 branches in `internal/app/graph/service/revert_test.go`, using the widened mock `VCS` (reopened — BUG-001: missing coverage for "more than one match, newest is active" — see T041)
 
 **Checkpoint**: At this point, User Story 1's E2E tests (T009) pass and `arc revert` works end-to-end for the simple case
 
@@ -160,6 +162,21 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 
 ---
 
+## Bugfix Tasks (BUG-001)
+
+**Bugfix**: 2026-07-12 — BUG-001 Updated from bugfix patch. `service.Revert`'s D1 ingest-commit lookup refused whenever `CommitsMatching` returned more than one hash, treating a normal retract-then-reapply cycle (which legitimately produces a second ingest commit for the same `source-id`) as a data-integrity anomaly. Fixed to always act on the newest match (spec.md FR-020); the old `len(hashes) > 1` refusal is removed.
+
+**Purpose**: Fix BUG-001 (a second `arc revert` of a retracted-then-reapplied identifier wrongly refuses with "more than one ingest commit found") and add regression coverage for the cycle that triggers it.
+
+- [ ] T040 [P] Fix `service.Revert`'s D1 branch in `internal/app/graph/service/revert.go`: drop the `len(hashes) > 1` refusal (`ErrAmbiguousIngestCommit`) and act on `hashes[0]` — `CommitsMatching`'s own `git log --all` ordering is already newest-first, and the newest match is always the currently-active ingest commit once `arc apply`'s own idempotency check is accounted for (research.md D1, corrected). `ErrAmbiguousIngestCommit` itself may be retired if nothing else references it after this change.
+- [ ] T041 [P] Add unit test(s) to `internal/app/graph/service/revert_test.go` covering D1's "more than one match" branch: `CommitsMatchingFn` returns two hashes (older, newer), assert `Revert` acts on the newer one and does not refuse (supersedes `TestRevertAmbiguousIngestCommitRefuses`'s old expectation, which reopened T023 exists to update)
+- [ ] T042 Add an E2E regression test to `cmd/arc/graph/revert_test.go`: apply a patch, revert it (whole-commit path), re-apply the identical patch, revert it again — assert the second revert succeeds (no "more than one ingest commit" refusal) and correctly retracts the re-applied contribution
+- [ ] T043 Re-run `quickstart.md`'s Scenario A end-to-end but repeated twice (apply → revert → apply → revert) against a built `arc` binary, confirming the second revert no longer fails, and update quickstart.md with this as an explicit scenario step if not already covered
+
+**Checkpoint**: BUG-001 fixed — `TestRevertAmbiguousIngestCommitRefuses` (T023) updated or removed to match the corrected D1 behavior, new regression tests (T041/T042) pass, full `go test ./...` and `staticcheck ./...` remain clean
+
+---
+
 ## Phase N: Constitution Compliance Verification
 
 **Purpose**: Implements the constitution's Compliance Checklist (Implementation Phase). This phase MUST be retained verbatim; do not omit or merge it into other phases.
@@ -174,7 +191,7 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 
 - [X] TN04 Major decisions recorded in `adrs/` with correct numbering, if a new architectural pattern was introduced — assess whether `internal/bios.Confirm` (research.md D10, the first destructive-operation confirmation gate in this codebase) warrants its own ADR entry or is adequately covered by ADR 002's existing, already-binding CLIG checklist item (Principle I)
 - [X] TN05 Domain logic uses ports (interfaces); Cobra wiring (`cmd/arc/graph/revert.go`) and adapters (`internal/adapter/git`) remain separated from `internal/app/graph/service` (Principle III)
-- [X] TN06 Unit tests (T023, T024, T034) were written first, compiled, and failed semantically before implementation (Principle VI)
+- [ ] TN06 ⚠️ Reopened — BUG-001 Unit tests (T023, T024, T034) were written first, compiled, and failed semantically before implementation (Principle VI) (reopened — BUG-001: T023's D1 coverage needs updating for the corrected "more than one match" behavior, see T041)
 - [X] TN07 Unit and E2E tests use `github.com/fogfish/it/v2` exclusively — no `testify` or stdlib-only comparisons mixed in (Principle VI)
 - [X] TN08 No Bash scripts were used for unit-level code correctness validation — `quickstart.md`'s scenarios (T038) are a manual/smoke validation only, not a substitute for `go test` (Principle VI)
 - [X] TN09 The five new git primitives extend the existing `internal/adapter/git.VCS` adapter only; no vendor SDK/`exec.Cmd`/`exec.ExitError` type leaks through `port.VCS` (Principle VII)
@@ -182,7 +199,7 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 - [X] TN11 Configuration precedence and XDG locations respected; no secrets logged or accepted only via plaintext flags — N/A confirmed at T012 (Principle XI)
 - [X] TN12 Help text (`Short`/`Long`/`Example`) populated for `arc revert` (Principle XII) — T022
 - [X] TN13 E2E tests from Phase 2d (T009-T011) turned GREEN and changed minimally during implementation (Principle VIII)
-- [X] TN14 All spec.md scenarios for this feature (US1 x3, US2 x2, US3 x4, plus the Edge Cases in T036) have a passing, colocated E2E test (Principle VIII)
+- [ ] TN14 ⚠️ Reopened — BUG-001 All spec.md scenarios for this feature (US1 x3, US2 x2, US3 x4, plus the Edge Cases in T036) have a passing, colocated E2E test (Principle VIII) (reopened — BUG-001: the new FR-020/SC-009 retract-reapply-revert scenario needs its own E2E test, see T042)
 - [X] TN15 Release/versioning impact assessed: `arc revert` is a wholly new command and `RevertResult`'s `--json` shape is its first version — no existing `--json`/`--plain` contract is broken, so no major version bump is required (Principle XIV)
 
 ---

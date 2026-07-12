@@ -20,7 +20,10 @@ func Revert(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bi
 ```
 hashes := vcs.CommitsMatching(dir, "Source-Id: " + sourceID)
 if len(hashes) == 0 { refuse FR-002 }
-if len(hashes) > 1  { refuse, integrity anomaly }
+// hashes is newest-first (CommitsMatching's documented ordering); more
+// than one match is the expected result of a prior retract-then-reapply
+// cycle for sourceID, not an error — the newest match is always the
+// active one (FR-020, Bugfix BUG-001, 2026-07-12).
 ingestHash := hashes[0]
 
 tracked := vcs.IsTracked(dir, "sources/" + sourceID + ".md")

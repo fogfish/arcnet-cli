@@ -14,6 +14,8 @@
 
 - Q: How should `arc revert` detect, on a later invocation, that a given patch has already been retracted — especially after a merge-aware (per-node) reconciliation, which doesn't produce a literal whole-commit undo the way the simple path does? → A: By checking whether the document's own source node file no longer exists in the graph — the same signal `arc apply` already uses for its own idempotency check (spec 003 FR-003), just inverted. No new commit-trailer convention is introduced for detection. This is independent of, and does not replace, the existing requirement that every revert — including the merge-aware path — still produces its own commit (FR-015).
 
+**Bugfix**: 2026-07-12 — BUG-001 A second `arc revert` of an identifier that was previously reverted and then re-applied wrongly refused with "more than one ingest commit found," treating the expected result of a retract-then-reapply cycle as a data-integrity anomaly. Added FR-020, a corresponding Edge Case, SC-009, and clarified the "Re-applying a retracted patch" Out of Scope note and the one-ingest-commit-per-identifier Assumption.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Undo the patch just applied (Priority: P1)
@@ -73,6 +75,7 @@ A user wants to retract a patch that introduced a node later touched by one or m
 - What happens when text the reverted patch contributed was, at the time it was written, judged a near-duplicate of content already present and therefore never distinctly recorded? There is nothing distinctly attributable to remove for that content, and the revert proceeds without error on that basis.
 - What happens when reverting is interrupted partway (process killed, disk full, permission error)? The graph and its git history must be left exactly as they were before the attempt — no partially removed nodes, no partially stripped text, no dangling commit.
 - What happens when every node the patch touched turns out to be exclusively owned by it (no shared nodes at all)? The revert behaves the same as reverting the most recent commit — a clean, whole removal of everything the patch contributed.
+- What happens when the given identifier matches more than one ingest commit, because the patch was reverted once and then re-applied? The tool must treat the most recent matching ingest commit as the one to revert. This is not a corruption of the "exactly one ingest commit per document" invariant — `arc apply`'s own idempotency check guarantees at most one ingest commit's contribution can ever be active (tracked) at a time, so every older matching commit must, by construction, already have been fully retracted before the newer one was created. *(Bugfix BUG-001, 2026-07-12)*
 
 ## Requirements *(mandatory)*
 
@@ -97,12 +100,13 @@ A user wants to retract a patch that introduced a node later touched by one or m
 - **FR-017**: On success, the tool MUST report to the user what happened — nodes removed, nodes reconciled (content stripped) versus left untouched, and links removed — without requiring a separate inspection command to confirm the outcome.
 - **FR-018**: The tool MUST report, as part of its output, which of the two reconciliation approaches (whole-commit undo, or per-node reconciliation) was used for the revert, so the user can tell which case they were in.
 - **FR-019**: The tool MUST offer an opt-in, more detailed report that, for each node the revert touched, identifies the node and states how it was reconciled (removed, content stripped, or left untouched because another patch's contribution required it); this detail MUST NOT appear in the tool's default output.
+- **FR-020**: When more than one commit in the graph's history carries the given identifier's ingest trailer — the expected result of a prior retract-then-reapply cycle for the same identifier, not a data-integrity failure — the tool MUST treat the most recent such commit as the one to locate and revert, and MUST NOT refuse solely because more than one match exists. *(Bugfix BUG-001, 2026-07-12)*
 
 ### Out of Scope
 
 - **Retracting more than one patch per invocation**: This feature covers retracting exactly one previously-applied patch, identified by its own `Source-Id`, per command invocation. Batch retraction of several patches at once is separate, later work.
 - **Reviewing or resolving conflict records left by `arc apply`**: This feature only guarantees that its own removal of a reverted patch's contribution from a flagged conflict record does not corrupt or discard the other side's value (FR-013). Presenting, listing, or resolving conflict records in general remains the existing, separate mechanism.
-- **Re-applying a retracted patch**: Restoring a patch's contribution after it has been retracted is a separate capability from retracting it in the first place.
+- **Re-applying a retracted patch**: Restoring a patch's contribution after it has been retracted is a separate capability from retracting it in the first place. This does not exempt `arc revert` itself from correctly handling a *subsequent* revert of an identifier that was retracted and then independently re-applied via `arc apply` — see FR-020 and the corresponding Edge Case above. *(Bugfix BUG-001, 2026-07-12: clarified scope boundary — re-apply mechanics stay out of scope, but a later revert's own lookup must not break because a re-apply happened.)*
 
 ### Key Entities
 
@@ -127,10 +131,11 @@ A user wants to retract a patch that introduced a node later touched by one or m
 - **SC-006**: After a node is fully removed by a revert, a full-graph search finds 0 remaining references to that node's identity.
 - **SC-007**: A user can determine, from the revert command's own output, which reconciliation approach was used, without inspecting the graph or its history manually.
 - **SC-008**: 100% of attempts to revert an already-retracted patch result in zero graph or history changes, with a clear "nothing to do" outcome.
+- **SC-009**: A user can revert an identifier that was previously reverted and later re-applied, with the tool correctly locating and acting on the most recent ingest commit, in 100% of tested retract-then-reapply-then-revert cycles. *(Bugfix BUG-001, 2026-07-12)*
 
 ## Assumptions
 
-- The graph being reverted was created and grown by `arc init`/`arc apply`, and each patch application corresponds to exactly one ingest commit, as already guaranteed by `arc apply` — this feature relies on that one-commit-per-patch invariant to identify which commits touched which files.
+- The graph being reverted was created and grown by `arc init`/`arc apply`, and each patch application corresponds to exactly one ingest commit, as already guaranteed by `arc apply` — this feature relies on that one-commit-per-patch invariant to identify which commits touched which files. ~~This invariant holds for the identifier's history overall~~ — corrected (Bugfix BUG-001, 2026-07-12): the invariant holds only *per apply invocation*, not for the whole history of a given identifier — a retract-then-reapply cycle legitimately produces a second ingest commit for the same identifier, and `arc revert` must treat the newest one as authoritative (FR-020) rather than treating the resulting multiplicity as corruption.
 - Node rendering is deterministic and stable, so a commit's diff for a given node reflects only genuinely new or changed content, never an incidental rewrite of unrelated content — an existing precondition this feature depends on rather than introduces.
 - "Text content" a patch contributed refers to body-prose content on a node; scalar and list-valued predicates, edges, and links on a shared node are left untouched by a revert regardless of which patch originally wrote them (FR-011), consistent with the user's own instruction to never blanket-modify a shared node's metadata.
 - Reverting is fully local and offline, consistent with `arc apply` — no network access is required or attempted.
