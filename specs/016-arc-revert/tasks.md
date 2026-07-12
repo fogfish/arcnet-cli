@@ -32,8 +32,8 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 
 **Purpose**: Confirm the existing build is clean and stub the new files this feature adds — no new module dependency (plan.md Technical Context).
 
-- [ ] T001 Confirm `go build ./...` and `go test ./...` pass on `016-arc-revert` before any change (baseline)
-- [ ] T002 [P] Create empty file skeletons with the CLAUDE.md-mandated license header only: `internal/app/graph/kernel/revert.go`, `internal/app/graph/service/revert.go`, `cmd/arc/graph/revert.go`, `internal/bios/confirm.go`
+- [X] T001 Confirm `go build ./...` and `go test ./...` pass on `016-arc-revert` before any change (baseline)
+- [X] T002 [P] Create empty file skeletons with the CLAUDE.md-mandated license header only: `internal/app/graph/kernel/revert.go`, `internal/app/graph/service/revert.go`, `cmd/arc/graph/revert.go`, `internal/bios/confirm.go`
 
 ---
 
@@ -45,28 +45,28 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 
 ### Phase 2a: Domain Model & Glossary (Principles II, V)
 
-- [ ] T003 Add "Ingest Commit", "Exclusively-Owned Node", "Shared Node", "Reconciliation Approach" to `ARCHITECTURE.md`'s Glossary section (data-model.md's Domain Entities)
-- [ ] T004 Confirm none of `kernel.RevertResult`/`kernel.NodeOutcome`/`port.BlameLine` (data-model.md) duplicates an existing `internal/app/graph` type — record the check; none found in research.md/data-model.md's own review
+- [X] T003 Add "Ingest Commit", "Exclusively-Owned Node", "Shared Node", "Reconciliation Approach" to `ARCHITECTURE.md`'s Glossary section (data-model.md's Domain Entities)
+- [X] T004 Confirm none of `kernel.RevertResult`/`kernel.NodeOutcome`/`port.BlameLine` (data-model.md) duplicates an existing `internal/app/graph` type — record the check; none found in research.md/data-model.md's own review
 
 ### Phase 2b: Command & Flag Contract Design (Principle IX)
 
-- [ ] T005 Confirm `arc revert <source-id> [--force|-f]`'s noun-verb ordering and single positional "subject" argument matches `arc apply <patch.md>`'s existing precedent (plan.md Constitution Check)
-- [ ] T006 [P] Confirm contracts/revert-algorithm-contract.md's top-level decision pseudocode and contracts/vcs-port-contract.md's git-command table are complete design references for T016-T031 below (no separate flag-table doc needed — single boolean flag)
+- [X] T005 Confirm `arc revert <source-id> [--force|-f]`'s noun-verb ordering and single positional "subject" argument matches `arc apply <patch.md>`'s existing precedent (plan.md Constitution Check)
+- [X] T006 [P] Confirm contracts/revert-algorithm-contract.md's top-level decision pseudocode and contracts/vcs-port-contract.md's git-command table are complete design references for T016-T031 below (no separate flag-table doc needed — single boolean flag)
 
 ### Phase 2c: External Integration & Adapter Design (Principle VII)
 
-- [ ] T007 [P] Confirm `internal/adapter/git.VCS` (already shared across `ctrl`/`graph`/`lint` ports) is the correct adapter to extend — no new git client (research.md D1/D11)
-- [ ] T008 Add the six new method signatures (`CommitsMatching`, `ChangedPaths`, `CommitsTouching`, `RevertCommit`, `Blame`, `ShowFile`) plus the `BlameLine` type to the `VCS` interface in `internal/app/graph/port/vcs.go` (contracts/vcs-port-contract.md)
+- [X] T007 [P] Confirm `internal/adapter/git.VCS` (already shared across `ctrl`/`graph`/`lint` ports) is the correct adapter to extend — no new git client (research.md D1/D11)
+- [X] T008 Add the six new method signatures (`CommitsMatching`, `ChangedPaths`, `CommitsTouching`, `RevertCommit`, `Blame`, `ShowFile`) plus the `BlameLine` type to the `VCS` interface in `internal/app/graph/port/vcs.go` (contracts/vcs-port-contract.md)
 
 ### Phase 2d: E2E Acceptance Test Design (Principle VIII)
 
-- [ ] T009 [P] [US1] Write E2E tests in `cmd/arc/graph/revert_test.go` for US1's 3 acceptance scenarios (whole-commit revert of the just-applied patch: nodes removed/restored, exactly one commit, summary reports what was removed), via `sut()`; MUST compile and fail semantically (red phase)
-- [ ] T010 [P] [US2] Write E2E tests in `cmd/arc/graph/revert_test.go` for US2's 2 acceptance scenarios (older, non-overlapping patch reverts cleanly; unrelated later patches untouched) (red phase)
-- [ ] T011 [P] [US3] Write E2E tests in `cmd/arc/graph/revert_test.go` for US3's 4 acceptance scenarios (exclusive-node removal + backlink sweep; shared-node text-only stripping; conflict-marker provenance; mixed exclusive/shared nodes in one revert) (red phase)
+- [X] T009 [P] [US1] Write E2E tests in `cmd/arc/graph/revert_test.go` for US1's 3 acceptance scenarios (whole-commit revert of the just-applied patch: nodes removed/restored, exactly one commit, summary reports what was removed), via `sut()`; MUST compile and fail semantically (red phase)
+- [X] T010 [P] [US2] Write E2E tests in `cmd/arc/graph/revert_test.go` for US2's 2 acceptance scenarios (older, non-overlapping patch reverts cleanly; unrelated later patches untouched) (red phase)
+- [X] T011 [P] [US3] Write E2E tests in `cmd/arc/graph/revert_test.go` for US3's 4 acceptance scenarios (exclusive-node removal + backlink sweep; shared-node text-only stripping; conflict-marker provenance; mixed exclusive/shared nodes in one revert) (red phase)
 
 ### Phase 2e: Configuration & Secrets Review (Principle XI)
 
-- [ ] T012 Confirm N/A: `arc revert` introduces no new config file, environment variable, or secret — only the `--force`/`-f` flag (no precedence chain to verify)
+- [X] T012 Confirm N/A: `arc revert` introduces no new config file, environment variable, or secret — only the `--force`/`-f` flag (no precedence chain to verify)
 
 **Checkpoint**: All Phase 2 subsections complete — user story implementation can now begin
 
@@ -76,10 +76,10 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 
 **Purpose**: Empty-but-compiling scaffolding so Phase 2d's E2E tests (T009-T011) compile and fail semantically (red), not fail to build.
 
-- [ ] T013 [P] Register `arc revert` in `cmd/arc/graph/revert.go` with a `RunE` returning a "not implemented" error, wired into the root command tree
-- [ ] T014 [P] Scaffold `RevertResult`/`NodeOutcome` struct shapes (data-model.md) in `internal/app/graph/kernel/revert.go`
-- [ ] T015 [P] Scaffold the six new `port.VCS` methods (T008) as not-implemented stubs on `internal/adapter/git.VCS` (`internal/adapter/git/git.go`) and as configurable fake methods on `internal/app/graph/adapter/mock.VCS` (`internal/app/graph/adapter/mock/mock.go`, research.md D11)
-- [ ] T016 Wire a stub `component.Revert` delegator (`internal/app/graph/component.go`) calling a stub `service.Revert` that returns "not implemented"
+- [X] T013 [P] Register `arc revert` in `cmd/arc/graph/revert.go` with a `RunE` returning a "not implemented" error, wired into the root command tree
+- [X] T014 [P] Scaffold `RevertResult`/`NodeOutcome` struct shapes (data-model.md) in `internal/app/graph/kernel/revert.go`
+- [X] T015 [P] Scaffold the six new `port.VCS` methods (T008) as not-implemented stubs on `internal/adapter/git.VCS` (`internal/adapter/git/git.go`) and as configurable fake methods on `internal/app/graph/adapter/mock.VCS` (`internal/app/graph/adapter/mock/mock.go`, research.md D11)
+- [X] T016 Wire a stub `component.Revert` delegator (`internal/app/graph/component.go`) calling a stub `service.Revert` that returns "not implemented"
 
 **Checkpoint**: Foundation ready — T009-T011's E2E tests now compile and fail semantically (red)
 
@@ -95,13 +95,13 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 
 > E2E tests for this story were already written in Phase 2d (T009) and MUST currently be failing (red). Implementation below MUST turn them green with minimal test changes.
 
-- [ ] T017 [US1] Implement `CommitsMatching`, `ChangedPaths`, `CommitsTouching`, `RevertCommit` on `internal/adapter/git.VCS` in `internal/adapter/git/git.go` (contracts/vcs-port-contract.md's git-command mapping) plus `ErrGitDiffTree`/`ErrGitRevert` error sentinels
-- [ ] T018 [P] [US1] Add `internal/adapter/git/git_test.go` cases for the four new methods (success + failure exit codes)
-- [ ] T019 [US1] Implement `internal/bios.Confirm(prompt string) (bool, error)` in `internal/bios/confirm.go` (research.md D10: TTY-gated, refuses when non-interactive without `--force`) plus `internal/bios/confirm_test.go`
-- [ ] T020 [US1] Implement `service.Revert`'s D1 (locate ingest commit via `CommitsMatching`)/D2 (idempotency via `IsTracked`)/D3 (per-path eligibility loop)/D4 (`RevertCommit` call) logic in `internal/app/graph/service/revert.go`, per contracts/revert-algorithm-contract.md's top-level decision pseudocode
-- [ ] T021 [US1] Implement `cmd/arc/graph/revert.go`'s real `RunE`: mount graph, resolve `--force`/`-f`, call `bios.Confirm` unless `--force`, call `appgraph.Revert`, render via a new `revertRenderers` (`bios.Registry[kernel.RevertResult]`, mirrors `applyRenderers` in `apply.go`)
-- [ ] T022 [US1] Populate `Short`/`Long`/`Example` help text for `arc revert` in `cmd/arc/graph/revert.go` (Principle XII)
-- [ ] T023 [P] [US1] Add unit tests for `service.Revert`'s D1-D4 branches in `internal/app/graph/service/revert_test.go`, using the widened mock `VCS`
+- [X] T017 [US1] Implement `CommitsMatching`, `ChangedPaths`, `CommitsTouching`, `RevertCommit` on `internal/adapter/git.VCS` in `internal/adapter/git/git.go` (contracts/vcs-port-contract.md's git-command mapping) plus `ErrGitDiffTree`/`ErrGitRevert` error sentinels
+- [X] T018 [P] [US1] Add `internal/adapter/git/git_test.go` cases for the four new methods (success + failure exit codes)
+- [X] T019 [US1] Implement `internal/bios.Confirm(prompt string) (bool, error)` in `internal/bios/confirm.go` (research.md D10: TTY-gated, refuses when non-interactive without `--force`) plus `internal/bios/confirm_test.go`
+- [X] T020 [US1] Implement `service.Revert`'s D1 (locate ingest commit via `CommitsMatching`)/D2 (idempotency via `IsTracked`)/D3 (per-path eligibility loop)/D4 (`RevertCommit` call) logic in `internal/app/graph/service/revert.go`, per contracts/revert-algorithm-contract.md's top-level decision pseudocode
+- [X] T021 [US1] Implement `cmd/arc/graph/revert.go`'s real `RunE`: mount graph, resolve `--force`/`-f`, call `bios.Confirm` unless `--force`, call `appgraph.Revert`, render via a new `revertRenderers` (`bios.Registry[kernel.RevertResult]`, mirrors `applyRenderers` in `apply.go`)
+- [X] T022 [US1] Populate `Short`/`Long`/`Example` help text for `arc revert` in `cmd/arc/graph/revert.go` (Principle XII)
+- [X] T023 [P] [US1] Add unit tests for `service.Revert`'s D1-D4 branches in `internal/app/graph/service/revert_test.go`, using the widened mock `VCS`
 
 **Checkpoint**: At this point, User Story 1's E2E tests (T009) pass and `arc revert` works end-to-end for the simple case
 
@@ -117,8 +117,8 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 
 > E2E tests for this story were already written in Phase 2d (T010) and MUST currently be failing (red).
 
-- [ ] T024 [P] [US2] Add table-driven cases to `internal/app/graph/service/revert_test.go` for the "not HEAD but nothing touched since" eligibility branch (D3), asserting the same whole-commit outcome as the literal-HEAD case
-- [ ] T025 [US2] Add an E2E fixture pair (two independent patches) under `cmd/arc/graph/testdata/` and the corresponding assertion in `cmd/arc/graph/revert_test.go` that the unrelated patch's files are byte-for-byte unchanged after the revert
+- [X] T024 [P] [US2] Add table-driven cases to `internal/app/graph/service/revert_test.go` for the "not HEAD but nothing touched since" eligibility branch (D3), asserting the same whole-commit outcome as the literal-HEAD case
+- [X] T025 [US2] Add an E2E fixture pair (two independent patches) under `cmd/arc/graph/testdata/` and the corresponding assertion in `cmd/arc/graph/revert_test.go` that the unrelated patch's files are byte-for-byte unchanged after the revert
 
 **Checkpoint**: User Stories 1 AND 2 both pass their E2E tests independently
 
@@ -134,16 +134,16 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 
 > E2E tests for this story were already written in Phase 2d (T011) and MUST currently be failing (red).
 
-- [ ] T026 [US3] Implement `Blame` and `ShowFile` on `internal/adapter/git.VCS` in `internal/adapter/git/git.go` (contracts/vcs-port-contract.md) plus `ErrGitBlame`/`ErrGitShow` error sentinels
-- [ ] T027 [P] [US3] Add `internal/adapter/git/git_test.go` cases for `Blame`/`ShowFile` (including `ShowFile`'s "path absent at this commit" non-error case)
-- [ ] T028 [US3] Implement the per-node exclusivity test (D5, reusing `CommitsTouching`) and `removeNode` (D6: `store.Remove`, reuse `enumerateNodes`/`buildReverseIndex` from `internal/app/graph/service/subgraph.go`, filter referrers' `Edges`, rewrite via `core.RenderNode`) in `internal/app/graph/service/revert.go`
-- [ ] T029 [US3] Implement `removeTimelineEntry` — a structural sibling to `upsertTimelinePeriod` — in `internal/app/graph/service/apply.go` (reuses `parseTimelineEntries`/`periodGranularity`), wired into T028's referrer-rewrite branch for `@type: timeline` referrers
-- [ ] T030 [US3] Implement `reconcileShared`'s Texts-key/paragraph blame-mapping (D7) in `internal/app/graph/service/revert.go`: walk `renderNodeBody`'s physical order (leading key, other keys alphabetically, trailing key) to build the line→(Texts key, paragraph index) map, intersect with `Blame`'s `ingestHash`-attributed lines, strip matched paragraphs (mirroring `internal/core/merge.go`'s `splitParagraphs`), rewrite via `core.RenderNode` — never touching `Attrs`/`Edges`/`HRefs` (FR-011)
-- [ ] T031 [US3] Implement conflict-marker provenance resolution (D8) in `internal/app/graph/service/revert.go`: marker-shape detection before D7's blame path is attempted; D8(a) plain-text `sourceID` match against the marker's trailing token; D8(b) `CommitsTouching` + `ShowFile` + `core.ParseNode` oldest-first historical walk to find the predicate's true first writer
-- [ ] T032 [US3] Implement the D9 no-attribution no-op case (`NodeOutcome.Kind = "unchanged"`, no write, not an error) in `internal/app/graph/service/revert.go`
-- [ ] T033 [US3] Wire the per-node path into `service.Revert`'s top-level dispatch (branch on D3's eligibility result) and the per-node commit message (`Reverted-Document:` trailer — never `Source-Id:`, data-model.md's collision-avoidance rationale) in `internal/app/graph/service/revert.go`
-- [ ] T034 [P] [US3] Add unit tests for D5-D9 in `internal/app/graph/service/revert_test.go`: exclusive removal, backlink sweep over an ordinary referrer and a timeline-period referrer, paragraph stripping, D8(a) and D8(b) conflict-marker cases, D9 no-op case
-- [ ] T035 [US3] Wire `--verbose` per-node `Reporter.Step` output (`<path>: removed (...)` / `reconciled (...)` / `unchanged (...)`) per contracts/revert-algorithm-contract.md's Reporter events section, in `internal/app/graph/service/revert.go`
+- [X] T026 [US3] Implement `Blame` and `ShowFile` on `internal/adapter/git.VCS` in `internal/adapter/git/git.go` (contracts/vcs-port-contract.md) plus `ErrGitBlame`/`ErrGitShow` error sentinels
+- [X] T027 [P] [US3] Add `internal/adapter/git/git_test.go` cases for `Blame`/`ShowFile` (including `ShowFile`'s "path absent at this commit" non-error case)
+- [X] T028 [US3] Implement the per-node exclusivity test (D5, reusing `CommitsTouching`) and `removeNode` (D6: `store.Remove`, reuse `enumerateNodes`/`buildReverseIndex` from `internal/app/graph/service/subgraph.go`, filter referrers' `Edges`, rewrite via `core.RenderNode`) in `internal/app/graph/service/revert.go`
+- [X] T029 [US3] Implement `removeTimelineEntry` — a structural sibling to `upsertTimelinePeriod` — in `internal/app/graph/service/apply.go` (reuses `parseTimelineEntries`/`periodGranularity`), wired into T028's referrer-rewrite branch for `@type: timeline` referrers
+- [X] T030 [US3] Implement `reconcileShared`'s Texts-key/paragraph blame-mapping (D7) in `internal/app/graph/service/revert.go`: walk `renderNodeBody`'s physical order (leading key, other keys alphabetically, trailing key) to build the line→(Texts key, paragraph index) map, intersect with `Blame`'s `ingestHash`-attributed lines, strip matched paragraphs (mirroring `internal/core/merge.go`'s `splitParagraphs`), rewrite via `core.RenderNode` — never touching `Attrs`/`Edges`/`HRefs` (FR-011)
+- [X] T031 [US3] Implement conflict-marker provenance resolution (D8) in `internal/app/graph/service/revert.go`: marker-shape detection before D7's blame path is attempted; D8(a) plain-text `sourceID` match against the marker's trailing token; D8(b) `CommitsTouching` + `ShowFile` + `core.ParseNode` oldest-first historical walk to find the predicate's true first writer
+- [X] T032 [US3] Implement the D9 no-attribution no-op case (`NodeOutcome.Kind = "unchanged"`, no write, not an error) in `internal/app/graph/service/revert.go`
+- [X] T033 [US3] Wire the per-node path into `service.Revert`'s top-level dispatch (branch on D3's eligibility result) and the per-node commit message (`Reverted-Document:` trailer — never `Source-Id:`, data-model.md's collision-avoidance rationale) in `internal/app/graph/service/revert.go`
+- [X] T034 [P] [US3] Add unit tests for D5-D9 in `internal/app/graph/service/revert_test.go`: exclusive removal, backlink sweep over an ordinary referrer and a timeline-period referrer, paragraph stripping, D8(a) and D8(b) conflict-marker cases, D9 no-op case
+- [X] T035 [US3] Wire `--verbose` per-node `Reporter.Step` output (`<path>: removed (...)` / `reconciled (...)` / `unchanged (...)`) per contracts/revert-algorithm-contract.md's Reporter events section, in `internal/app/graph/service/revert.go`
 
 **Checkpoint**: User Stories 1, 2, AND 3 all pass their E2E tests — full spec.md coverage
 
@@ -153,10 +153,10 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T036 [P] Add E2E coverage for spec.md's remaining Edge Cases in `cmd/arc/graph/revert_test.go`: unknown `source-id` (FR-002), already-retracted no-op (FR-003/D2), target not an initialized graph (FR-004), interrupted/partial-failure leaves no trace (FR-016)
-- [ ] T037 [P] Documentation: regenerate the `cobra/doc` command reference (if produced by this project) and confirm `README.md`'s command list mentions `arc revert`
-- [ ] T038 Run `quickstart.md`'s seven scenarios (A-G) manually against a built `arc` binary
-- [ ] T039 [P] `staticcheck ./...` clean on every new/changed file
+- [X] T036 [P] Add E2E coverage for spec.md's remaining Edge Cases in `cmd/arc/graph/revert_test.go`: unknown `source-id` (FR-002), already-retracted no-op (FR-003/D2), target not an initialized graph (FR-004), interrupted/partial-failure leaves no trace (FR-016)
+- [X] T037 [P] Documentation: regenerate the `cobra/doc` command reference (if produced by this project) and confirm `README.md`'s command list mentions `arc revert`
+- [X] T038 Run `quickstart.md`'s seven scenarios (A-G) manually against a built `arc` binary
+- [X] T039 [P] `staticcheck ./...` clean on every new/changed file
 
 ---
 
@@ -166,24 +166,24 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 
 ### Design Phase Verification
 
-- [ ] TN01 `ARCHITECTURE.md` reflects architectural changes, if any (Principle I) — the new `internal/bios.Confirm` primitive and the widened `internal/app/graph/port.VCS` are documented
-- [ ] TN02 Domain concepts added to the `ARCHITECTURE.md` Glossary (Principle II) — T003
-- [ ] TN03 Command/flag surface matches the Phase 2b design exactly: `arc revert <source-id> [--force|-f]`, help text, exit codes (Principle IX)
+- [X] TN01 `ARCHITECTURE.md` reflects architectural changes, if any (Principle I) — the new `internal/bios.Confirm` primitive and the widened `internal/app/graph/port.VCS` are documented
+- [X] TN02 Domain concepts added to the `ARCHITECTURE.md` Glossary (Principle II) — T003
+- [X] TN03 Command/flag surface matches the Phase 2b design exactly: `arc revert <source-id> [--force|-f]`, help text, exit codes (Principle IX)
 
 ### Implementation Phase Verification (grouped by principle)
 
-- [ ] TN04 Major decisions recorded in `adrs/` with correct numbering, if a new architectural pattern was introduced — assess whether `internal/bios.Confirm` (research.md D10, the first destructive-operation confirmation gate in this codebase) warrants its own ADR entry or is adequately covered by ADR 002's existing, already-binding CLIG checklist item (Principle I)
-- [ ] TN05 Domain logic uses ports (interfaces); Cobra wiring (`cmd/arc/graph/revert.go`) and adapters (`internal/adapter/git`) remain separated from `internal/app/graph/service` (Principle III)
-- [ ] TN06 Unit tests (T023, T024, T034) were written first, compiled, and failed semantically before implementation (Principle VI)
-- [ ] TN07 Unit and E2E tests use `github.com/fogfish/it/v2` exclusively — no `testify` or stdlib-only comparisons mixed in (Principle VI)
-- [ ] TN08 No Bash scripts were used for unit-level code correctness validation — `quickstart.md`'s scenarios (T038) are a manual/smoke validation only, not a substitute for `go test` (Principle VI)
-- [ ] TN09 The five new git primitives extend the existing `internal/adapter/git.VCS` adapter only; no vendor SDK/`exec.Cmd`/`exec.ExitError` type leaks through `port.VCS` (Principle VII)
-- [ ] TN10 Terminal output respects TTY detection, `NO_COLOR`, `--quiet`/`--verbose`; the new confirmation prompt (T019) and any styled revert output use `github.com/charmbracelet/lipgloss`, never raw ANSI (Principle X)
-- [ ] TN11 Configuration precedence and XDG locations respected; no secrets logged or accepted only via plaintext flags — N/A confirmed at T012 (Principle XI)
-- [ ] TN12 Help text (`Short`/`Long`/`Example`) populated for `arc revert` (Principle XII) — T022
-- [ ] TN13 E2E tests from Phase 2d (T009-T011) turned GREEN and changed minimally during implementation (Principle VIII)
-- [ ] TN14 All spec.md scenarios for this feature (US1 x3, US2 x2, US3 x4, plus the Edge Cases in T036) have a passing, colocated E2E test (Principle VIII)
-- [ ] TN15 Release/versioning impact assessed: `arc revert` is a wholly new command and `RevertResult`'s `--json` shape is its first version — no existing `--json`/`--plain` contract is broken, so no major version bump is required (Principle XIV)
+- [X] TN04 Major decisions recorded in `adrs/` with correct numbering, if a new architectural pattern was introduced — assess whether `internal/bios.Confirm` (research.md D10, the first destructive-operation confirmation gate in this codebase) warrants its own ADR entry or is adequately covered by ADR 002's existing, already-binding CLIG checklist item (Principle I)
+- [X] TN05 Domain logic uses ports (interfaces); Cobra wiring (`cmd/arc/graph/revert.go`) and adapters (`internal/adapter/git`) remain separated from `internal/app/graph/service` (Principle III)
+- [X] TN06 Unit tests (T023, T024, T034) were written first, compiled, and failed semantically before implementation (Principle VI)
+- [X] TN07 Unit and E2E tests use `github.com/fogfish/it/v2` exclusively — no `testify` or stdlib-only comparisons mixed in (Principle VI)
+- [X] TN08 No Bash scripts were used for unit-level code correctness validation — `quickstart.md`'s scenarios (T038) are a manual/smoke validation only, not a substitute for `go test` (Principle VI)
+- [X] TN09 The five new git primitives extend the existing `internal/adapter/git.VCS` adapter only; no vendor SDK/`exec.Cmd`/`exec.ExitError` type leaks through `port.VCS` (Principle VII)
+- [X] TN10 Terminal output respects TTY detection, `NO_COLOR`, `--quiet`/`--verbose`; the new confirmation prompt (T019) and any styled revert output use `github.com/charmbracelet/lipgloss`, never raw ANSI (Principle X)
+- [X] TN11 Configuration precedence and XDG locations respected; no secrets logged or accepted only via plaintext flags — N/A confirmed at T012 (Principle XI)
+- [X] TN12 Help text (`Short`/`Long`/`Example`) populated for `arc revert` (Principle XII) — T022
+- [X] TN13 E2E tests from Phase 2d (T009-T011) turned GREEN and changed minimally during implementation (Principle VIII)
+- [X] TN14 All spec.md scenarios for this feature (US1 x3, US2 x2, US3 x4, plus the Edge Cases in T036) have a passing, colocated E2E test (Principle VIII)
+- [X] TN15 Release/versioning impact assessed: `arc revert` is a wholly new command and `RevertResult`'s `--json` shape is its first version — no existing `--json`/`--plain` contract is broken, so no major version bump is required (Principle XIV)
 
 ---
 

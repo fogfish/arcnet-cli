@@ -14,6 +14,10 @@ cmd/arc/                    # sole primary (driving) adapter: Cobra command tree
 ├── graph/                  # Cobra wiring for the graph (graph I/O) domain
 │   ├── apply.go             # `arc apply` command: flag/arg parsing, calls
 │   │                         #   internal/app/schema.Resolve then internal/app/graph.Apply
+│   ├── revert.go            # `arc revert <source-id> [--force|-f]` command:
+│   │                         #   destructive-operation confirmation gate
+│   │                         #   (internal/bios.Confirm, unless --force) then
+│   │                         #   calls internal/app/graph.Revert (specs/016-arc-revert)
 │   ├── grep.go              # `arc grep` command: <pattern> arg, --type/--tag/--attr local
 │   │                         #   flags, calls internal/app/graph.Grep, renders via
 │   │                         #   bios.Registry (highlight/truncate presentation only)
@@ -36,6 +40,10 @@ internal/
 ├── bios/                    # shared kernel (ADR 002 DS-04/05/06) — output modes, color schema,
 │                             #   progress reporter. Reused by every future command; not tied to
 │                             #   any single use-case.
+│                             #   confirm.go adds Confirm(prompt string) (bool, error), a
+│                             #   TTY-gated destructive-operation confirmation gate
+│                             #   (research.md D10, specs/016-arc-revert) — the first command
+│                             #   in this codebase whose default behavior deletes a tracked file.
 ├── core/                    # shared, use-case-independent core domain (ADR 001's "core domain"
 │                             #   evolution phase): the graph AST (ARCNET-AST §4-6) as plain Go
 │                             #   types, a goldmark-backed Markdown↔AST codec, the CORE §10 merge
@@ -112,14 +120,17 @@ internal/
     │                             #   structurally
     │
     ├── graph/                 # third domain use-case: graph mutation / graph I/O
-    │   ├── kernel/              # domain value types (ApplyResult, Match, GrepResult,
+    │   ├── kernel/              # domain value types (ApplyResult, RevertResult, Match, GrepResult,
     │   │                          #   SubgraphResult — specs/007-arc-subgraph)
-    │   ├── port/                 # graph-private secondary ports: VCS, and SchemaRegistry
+    │   ├── port/                 # graph-private secondary ports: VCS (widened by
+    │   │                          #   specs/016-arc-revert with six ingest-commit/blame/revert
+    │   │                          #   primitives, contracts/vcs-port-contract.md), and
+    │   │                          #   SchemaRegistry
     │   │                          #   (RegisterType/RegisterPredicate — satisfied structurally by
     │   │                          #   internal/app/schema's Component, ADR 001 port isolation rule 1)
     │   ├── adapter/
     │   │   └── mock/             # in-memory fake VCS for service unit tests
-    │   ├── service/              # use-case logic (Apply, Grep, Subgraph) — Apply's per-node
+    │   ├── service/              # use-case logic (Apply, Revert, Grep, Subgraph) — Apply's per-node
     │   │                          #   loop's auto-discovery hook registers a previously-unseen
     │   │                          #   type/predicate into _schema/ in the same commit as the
     │   │                          #   triggering patch (spec.md FR-012); Grep enumerates+parses
@@ -130,12 +141,22 @@ internal/
     │   │                          #   two independent, capped BFS passes (direct/backlink) from a
     │   │                          #   seed node and serializes the result via core.RenderPatch
     │   │                          #   (specs/007-arc-subgraph, research.md D3/D4/D5) — no port of
-    │   │                          #   its own, strictly read-only like Grep
+    │   │                          #   its own, strictly read-only like Grep; Revert locates a
+    │   │                          #   source-id's ingest commit and retracts its contribution via
+    │   │                          #   a whole-commit git revert (nothing has touched its files
+    │   │                          #   since) or a per-node reconciliation otherwise — removing an
+    │   │                          #   exclusively-owned node (sweeping every backlink, including
+    │   │                          #   timeline entries) or stripping only a shared node's own
+    │   │                          #   blame-attributed text, resolving a conflict marker's
+    │   │                          #   provenance where blame alone cannot (specs/016-arc-revert,
+    │   │                          #   contracts/revert-algorithm-contract.md)
     │   └── component.go          # primary port: Apply(ctx, mounter, vcs, reporter, index,
     │                              #   schema, dir, patchPath) (kernel.ApplyResult, error) — index is
     │                              #   the core.Index internal/app/schema.Resolve returns
     │                              #   (specs/011-machine-readable-schema, replacing the earlier
     │                              #   (core.MergeRuleSet, map[string]bool) pair);
+    │                              #   Revert(ctx, mounter, vcs, reporter, index, dir, sourceID)
+    │                              #   (kernel.RevertResult, error) (specs/016-arc-revert);
     │                              #   Grep(ctx, mounter, filter, pattern, cfg, dir) (kernel.GrepResult, error);
     │                              #   Subgraph(ctx, mounter, filter, basename, depth, cfg, dir)
     │                              #   (kernel.SubgraphResult, error); NodeGet(ctx, mounter, dir, id)
@@ -201,3 +222,7 @@ This project uses **bare top-level verbs** (`arc init`, `arc apply`, `arc list`,
 | **Bind Address** | The `[host]:port` value `arc serve --http <addr>` parses via `resolveHTTPAddr`: a bare port or `:port` (no host) resolves to `127.0.0.1` (loopback-only); an explicit host binds exactly that host. A syntactically invalid address, or one already in use, refuses to start (spec FR-003/FR-005). `specs/008-arc-serve-mcp`, research.md D5. |
 | **Provenance Timestamp Attributes** | `published`/`indexed`/`updated` — a node's provenance readable directly from its own file. `published` (`internal/core.Node.Published`, a typed field, date-only) is the source document's declared publication date, filled once on creation or first merge and never overwritten thereafter; `indexed`/`updated` (plain `Attrs` strings, RFC 3339) are stamped exclusively by `internal/app/graph/service.Apply` — `indexed` once at node creation, `updated` on any later merge that actually changes the node's rendered content. A stub node or a `_schema/` document carries none of the three. `specs/009-node-timestamp-attrs`. |
 | **Application Timestamp** | One `time.Now().UTC()` captured once near the top of a single `internal/app/graph/service.Apply` invocation, formatted once (RFC 3339) and reused verbatim as the value stamped into every node's `indexed` (on create) or `updated` (on an actually-changed merge) for that invocation — guaranteeing every node touched by one application shares an identical value. `specs/009-node-timestamp-attrs`, research.md D5. |
+| **Exclusively-Owned Node** | A node file path `p` for which `len(CommitsTouching(p)) == 1` — the reverted patch's own ingest commit is the only commit that ever changed it. `arc revert` deletes such a node outright and sweeps every referrer's backlink to it (research.md D5/D6, `specs/016-arc-revert`). |
+| **Shared Node** | A node file path `p` for which `len(CommitsTouching(p)) > 1` and the reverted patch's ingest commit is one of them — at least one other patch has also touched it since. `arc revert` never deletes a shared node; it strips only the reverted patch's own attributable text contribution (`git blame`-mapped paragraphs, or a resolved conflict marker), leaving `Attrs`/`Edges`/`HRefs` untouched (research.md D7-D9, `specs/016-arc-revert`). |
+| **Reconciliation Approach** | `arc revert`'s own `RevertResult.Approach`: `"whole-commit"` when every path the ingest commit touched passes its per-path eligibility test (nothing has touched it since — a plain `git revert` applies), or `"per-node"` otherwise (a node-by-node walk classifying each touched path as an Exclusively-Owned Node or a Shared Node). Computed once per revert (research.md D3/D4, `specs/016-arc-revert`). |
+| **Ingest Commit** (`arc revert`) | The same commit `arc apply` produces (see the earlier **Ingest Commit** entry), located for a given `source-id` via `CommitsMatching(dir, "Source-Id: "+sourceID)` — `arc revert`'s own starting point, reusing the identical `Source-Id:` trailer identity `arc lint`'s `RuleIngestCommit` already relies on rather than a second lookup convention. `internal/app/graph/service.Revert`, research.md D1, `specs/016-arc-revert`. |
