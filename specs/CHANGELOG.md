@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-07-12
+
+/speckit-specify `arc revert <source-id>` remove a patch document's contribution from the graph. Locate the original ingest commit via `git log --grep=Source-Id: <source-id>`. The revert is more than `git revert <commit>` to undo it. The revert uses git's commits history and metadata to trace the historical changes. It behaves as
+- If user reverting the most recent changes (latest commit) the revert uses `git revert <commit>` to undo it;
+- If user reverting changes without merge conflicts (the patch changes are latest to each file and no other patches tocuhed same files, the changes are really revertable) then the the revert uses `git revert <commit>` to undo it;
+- The patch document cannot be reverted from git when nodes created by patch was modified after by other patches. The issue is that the `arc apply` performs a merge operation that does not hold information about what and how it was modified therefore pure git rever would cause a data loss (e.g. node A created by patch D1 then updated by patch D2. The patch D2 just introduced a few predicates, the revert of D1 destroys node's predicates at front matter, at edges becuase nobody know what predicates was skpped from D2 due existence in D1). In this case, the `arc revert` uses the algorithms defined below:
+
+**revert algorithm**    
+1. Detect all nodes introduced by the patch.
+2. Check if node has been exclusively defined by this patch and no other apply operations has modified the node
+  - remove this nodes
+  - remove all links that leads to this node from rest of the graph 
+3. If node has been modified by multiple commits
+  - Leave metadata attributes, edges and links unchanged
+  - Using git history (git blame) detect text blocks added by the patch in the question and remove only the text block 
+ 
+
+/speckit-plan the revert is part of existing domain `internal/app/graph`. Also maintain same hierarchy in `cmd/arc/graph`. UX implementation and usability MUST BE according to ADR 002 UX Design System (002-ux-design-system.md). `arc revert` in the normal verbosity mode shows results similar to `arc apply` - summary of graph changes and used revert approach. `arc revert -v` in the verbose node shows revert status for each node with explanantion on how it was reverted. In the end it shows the overall graph changes. 
+
+The implementation requires the information on node rendering behaviour RenderNode/renderNodeBody (markdown.go:730-808) — front-matter keys, extra Texts keys, and Edges are all rendered in sorted/schema-driven deterministic order. That's the precondition your plan needs, and it holds today. 
+
+git log --follow -- <path> gives the exact commit set. And it's cleaner than it first looks: in service/apply.go:260, writeNode is called unconditionally (even on a no-op merge), but vcs.StageAll/vcs.Commit operate on the working tree's actual bytes — if RenderNode produces byte-identical output (e.g., a duplicate contribution that mergeText's Jaccard dedup or mergeScalarString's first-writer-wins silently drops), git records no change for that path in that commit. So "number of commits touching this path" already equals "number of sources that actually changed its content" — you don't need to separately filter no-op merges out, git's content-addressing does that for you for free. One file, one touching commit (the retracted source's own ingest) ⇒ safe to hard-delete + sweep backlinks.
+
+git blame <path> at the retracted commit's hash is the right primitive: it's line-granular, and because rendering is deterministic, a merge commit's diff contains only the genuinely new lines that source contributed (new paragraph, new edge, newly-filled attr) — nothing else gets rewritten, so blame won't falsely implicate unrelated content. Concretely:
+
+New paragraph appended by mergeText → contiguous new lines, blamed to that commit → map back to a paragraph via the blank-line splitter, safe to strip.
+
+Conflict markers blend two sources into one blame-owned block. conflictMarker (merge.go:256-258) writes <<<<<<< existing / ... / ======= / ... / >>>>>>> <sourceID> as a single field value. Git blame will attribute the whole marker to whichever commit wrote it (the later source). Retracting the later source is fine — strip the marker, the "existing" side text is right there. Retracting the earlier source is not: its original value is only preserved as literal text embedded inside a block that blame credits to someone else. Nothing in git tells you "the existing side belongs to source A" — that provenance has to be reconstructed from the marker text itself (which does self-document, so it's recoverable, just not via blame).
+
+Multiple sources land in the same commit's diff with no way to tell them apart — not actually a risk in this design, since each arc apply is one source and one commit (apply.go:327), so blame-by-commit-hash already partitions by source correctly. Flagging it only because it'd be a real problem if that 1-commit-per-source invariant ever changed (e.g. batch ingestion).
+
+Silently-dropped near-duplicate paragraphs aren't a blame gap so much as a non-issue: if mergeText judged an incoming paragraph a near-dupe (Jaccard > 0.8) and dropped it, that source's text was never written at all — there's nothing to find or remove, so "can't attribute it" and "don't need to remove it" coincide.
+
+"remove all links to that node" requires a reverse-edge scan across the whole graph (which node files declare an Edge/HRef targeting the retracted ID) — that's a corpus grep, not something git log/blame can answer, though this repo already has the machinery for it (service.Grep/core.Index).
+
+
 ## 2026-07-11
 
 /speckit-specify Update every arc command whose output or behavior depends on a graph node's shape (arc apply, arc grep, arc subgraph, arc serve's MCP tools) so they correctly produce and consume the new predicate-first node representation (@id/@type, open texts, array-valued attrs, unified edges) instead of the old kind/id/text-notes/attrs/edges-links shape, and update the corresponding `--json` output schemas.
