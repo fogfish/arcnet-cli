@@ -34,4 +34,11 @@ const (
 	// MCP filter object's attrPatterns value that is not a valid regexp.
 	ErrHTTPAddr             = faults.Safe1[string]("invalid or unavailable --http address %s")
 	ErrInvalidFilterPattern = faults.Safe1[string]("%s is not a valid pattern")
+
+	// ErrNoIngestCommit is arc revert's own sentinel (research.md D1) for
+	// the "no commit at all" case. More than one match is not an error —
+	// see D1's corrected rationale (BUG-001): it is the expected result
+	// of a retract-then-reapply cycle, resolved by acting on the newest
+	// match rather than refusing.
+	ErrNoIngestCommit = faults.Safe1[string]("no ingest commit found for %s")
 )

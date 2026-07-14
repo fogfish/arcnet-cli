@@ -185,8 +185,15 @@ func mergeTexts(existing, incoming map[string]string, index Index, sourceID stri
 		if isListMerge(op) {
 			merged[k] = mergeText(ev, iv)
 			outcome := OutcomeAppended
-			if !existed {
+			switch {
+			case !existed:
 				outcome = OutcomeCreated
+			case merged[k] == ev:
+				// BUG-002: mergeText's own near-duplicate detection
+				// (paragraphAlreadyPresent) can legitimately produce a
+				// merged value identical to the existing one — that is
+				// a no-op, not an append, and must be reported as such.
+				outcome = OutcomeUnchanged
 			}
 			outcomes = append(outcomes, PredicateOutcome{Name: k, Op: op, Outcome: outcome})
 			continue
@@ -404,7 +411,14 @@ func mergeAttrs(existing, incoming map[string][]Predicate, index Index, sourceID
 
 		if isListMerge(op) {
 			merged[k] = unionPredicates(ev, iv)
-			outcomes = append(outcomes, PredicateOutcome{Name: k, Op: op, Outcome: OutcomeAppended})
+			outcome := OutcomeAppended
+			if predicateSliceKey(merged[k]) == predicateSliceKey(ev) {
+				// BUG-002: every incoming value was already present —
+				// unionPredicates' own dedup produced a no-op, not an
+				// append, and must be reported as such.
+				outcome = OutcomeUnchanged
+			}
+			outcomes = append(outcomes, PredicateOutcome{Name: k, Op: op, Outcome: outcome})
 			continue
 		}
 

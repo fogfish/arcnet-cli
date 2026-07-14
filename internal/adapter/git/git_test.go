@@ -157,6 +157,201 @@ func TestVCSCommitsMatchingMoreThanOneMatch(t *testing.T) {
 		Should(it.Equal(2, len(hashes)))
 }
 
+func TestVCSChangedPathsListsFilesTouchedByRootCommit(t *testing.T) {
+	setGitIdentity(t)
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	it.Then(t).Should(it.Nil(vcs.Init(ctx, dir)))
+	writeFile(t, dir, "a.md", "a")
+	writeFile(t, dir, "b.md", "b")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, dir)))
+	hash, err := vcs.Commit(ctx, dir, "root commit")
+	it.Then(t).Should(it.Nil(err))
+
+	paths, err := vcs.ChangedPaths(ctx, dir, hash)
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Seq(paths).Contain("a.md")).
+		Should(it.Seq(paths).Contain("b.md"))
+}
+
+func TestVCSChangedPathsError(t *testing.T) {
+	setGitIdentity(t)
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+	it.Then(t).Should(it.Nil(vcs.Init(ctx, dir)))
+
+	_, err := vcs.ChangedPaths(ctx, dir, "not-a-real-hash")
+	it.Then(t).ShouldNot(it.Nil(err))
+}
+
+func TestVCSCommitsTouchingNewestFirst(t *testing.T) {
+	setGitIdentity(t)
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	it.Then(t).Should(it.Nil(vcs.Init(ctx, dir)))
+	writeFile(t, dir, "f.md", "v1")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, dir)))
+	first, err := vcs.Commit(ctx, dir, "first")
+	it.Then(t).Should(it.Nil(err))
+
+	writeFile(t, dir, "f.md", "v2")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, dir)))
+	second, err := vcs.Commit(ctx, dir, "second")
+	it.Then(t).Should(it.Nil(err))
+
+	commits, err := vcs.CommitsTouching(ctx, dir, "f.md")
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(2, len(commits)))
+	it.Then(t).
+		Should(it.True(strings.HasPrefix(commits[0], second) || strings.HasPrefix(second, commits[0]))).
+		Should(it.True(strings.HasPrefix(commits[1], first) || strings.HasPrefix(first, commits[1])))
+}
+
+func TestVCSCommitsTouchingError(t *testing.T) {
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	_, err := vcs.CommitsTouching(ctx, dir, "whatever.md")
+	it.Then(t).ShouldNot(it.Nil(err))
+}
+
+func TestVCSRevertCommitProducesNewCommit(t *testing.T) {
+	setGitIdentity(t)
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	it.Then(t).Should(it.Nil(vcs.Init(ctx, dir)))
+	writeFile(t, dir, "f.md", "v1")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, dir)))
+	_, err := vcs.Commit(ctx, dir, "base")
+	it.Then(t).Should(it.Nil(err))
+
+	writeFile(t, dir, "f.md", "v2")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, dir)))
+	toRevert, err := vcs.Commit(ctx, dir, "change f.md")
+	it.Then(t).Should(it.Nil(err))
+
+	newHash, err := vcs.RevertCommit(ctx, dir, toRevert)
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.Equal("", newHash))
+
+	content, err := os.ReadFile(filepath.Join(dir, "f.md"))
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.Equal("v1", string(content)))
+}
+
+func TestVCSRevertCommitError(t *testing.T) {
+	setGitIdentity(t)
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+	it.Then(t).Should(it.Nil(vcs.Init(ctx, dir)))
+
+	_, err := vcs.RevertCommit(ctx, dir, "not-a-real-hash")
+	it.Then(t).ShouldNot(it.Nil(err))
+}
+
+func TestVCSBlameAttributesLinesToCommits(t *testing.T) {
+	setGitIdentity(t)
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	it.Then(t).Should(it.Nil(vcs.Init(ctx, dir)))
+	writeFile(t, dir, "f.md", "line one\n")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, dir)))
+	first, err := vcs.Commit(ctx, dir, "first")
+	it.Then(t).Should(it.Nil(err))
+
+	writeFile(t, dir, "f.md", "line one\nline two\n")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, dir)))
+	second, err := vcs.Commit(ctx, dir, "second")
+	it.Then(t).Should(it.Nil(err))
+
+	lines, err := vcs.Blame(ctx, dir, "f.md")
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(2, len(lines)))
+	it.Then(t).
+		Should(it.Equal(1, lines[0].Number)).
+		Should(it.Equal(2, lines[1].Number))
+	it.Then(t).
+		Should(it.True(strings.HasPrefix(lines[0].Commit, first) || strings.HasPrefix(first, lines[0].Commit))).
+		Should(it.True(strings.HasPrefix(lines[1].Commit, second) || strings.HasPrefix(second, lines[1].Commit)))
+}
+
+func TestVCSBlameError(t *testing.T) {
+	setGitIdentity(t)
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+	it.Then(t).Should(it.Nil(vcs.Init(ctx, dir)))
+
+	_, err := vcs.Blame(ctx, dir, "missing.md")
+	it.Then(t).ShouldNot(it.Nil(err))
+}
+
+func TestVCSShowFileReturnsHistoricalContent(t *testing.T) {
+	setGitIdentity(t)
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	it.Then(t).Should(it.Nil(vcs.Init(ctx, dir)))
+	writeFile(t, dir, "f.md", "v1")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, dir)))
+	hash, err := vcs.Commit(ctx, dir, "first")
+	it.Then(t).Should(it.Nil(err))
+
+	writeFile(t, dir, "f.md", "v2")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, dir)))
+	_, err = vcs.Commit(ctx, dir, "second")
+	it.Then(t).Should(it.Nil(err))
+
+	raw, err := vcs.ShowFile(ctx, dir, hash, "f.md")
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.Equal("v1", string(raw)))
+}
+
+// contracts/vcs-port-contract.md: a path absent at hash is a normal,
+// expected non-error case — (nil, nil), never a fatal error.
+func TestVCSShowFileMissingPathIsNotAnError(t *testing.T) {
+	setGitIdentity(t)
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	it.Then(t).Should(it.Nil(vcs.Init(ctx, dir)))
+	writeFile(t, dir, "a.md", "a")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, dir)))
+	hash, err := vcs.Commit(ctx, dir, "first")
+	it.Then(t).Should(it.Nil(err))
+
+	raw, err := vcs.ShowFile(ctx, dir, hash, "b.md")
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.True(raw == nil))
+}
+
+func TestVCSShowFileError(t *testing.T) {
+	dir := t.TempDir()
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	_, err := vcs.ShowFile(ctx, dir, "not-a-real-hash", "f.md")
+	it.Then(t).ShouldNot(it.Nil(err))
+}
+
 func writeFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644)

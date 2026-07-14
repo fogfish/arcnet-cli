@@ -162,6 +162,40 @@ func TestMergeUnionTextDropsNearDuplicateParagraph(t *testing.T) {
 		Should(it.Equal(existing.Texts["abstract"], merged.Texts["abstract"]))
 }
 
+// BUG-002 (spec.md FR-019): a contribution that is a full duplicate of
+// existing prose adds nothing — mergeText correctly drops it, and the
+// reported outcome must say so (unchanged), not appended.
+func TestMergeUnionTextExactDuplicateReportsUnchanged(t *testing.T) {
+	index := indexWith("definition", core.MergeAppend)
+	same := "Large Language Models; technological systems that have fundamentally transformed approaches to ontologies, graph construction, and knowledge management."
+	existing := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"definition": same}}
+	incoming := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"definition": same}}
+
+	merged, _, outcomes, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(same, merged.Texts["definition"]))
+	got := outcomeFor(t, outcomes, "definition")
+	it.Then(t).
+		Should(it.Equal(core.MergeAppend, got.Op)).
+		Should(it.Equal(core.OutcomeUnchanged, got.Outcome))
+}
+
+// BUG-002 (spec.md FR-019): a near-duplicate paragraph (Jaccard >
+// threshold, not byte-identical) is also correctly dropped by mergeText,
+// and must likewise report unchanged rather than appended.
+func TestMergeUnionTextNearDuplicateReportsUnchanged(t *testing.T) {
+	index := indexWith("abstract", core.MergeUnion)
+	existing := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge management"}}
+	incoming := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge organization"}}
+
+	_, _, outcomes, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	got := outcomeFor(t, outcomes, "abstract")
+	it.Then(t).Should(it.Equal(core.OutcomeUnchanged, got.Outcome))
+}
+
 // --- firstWriteWin (flagOnDiverge class) ---
 
 // spec.md US2 Acceptance Scenario 1.
@@ -496,6 +530,23 @@ func TestMergeUnionReapplyingSameEntryDoesNotDuplicate(t *testing.T) {
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equiv(merged.Attrs["tags"], []core.Predicate{{Value: "ai"}}))
+}
+
+// BUG-002 (spec.md FR-019): re-contributing an already-present Attrs
+// value is a no-op for a union/append-declared predicate — the reported
+// outcome must say unchanged, not appended.
+func TestMergeUnionAttrsReapplyingSameEntryReportsUnchanged(t *testing.T) {
+	index := indexWith("tags", core.MergeUnion)
+	existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "ai"}}}}
+	incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "ai"}}}}
+
+	_, _, outcomes, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	got := outcomeFor(t, outcomes, "tags")
+	it.Then(t).
+		Should(it.Equal(core.MergeUnion, got.Op)).
+		Should(it.Equal(core.OutcomeUnchanged, got.Outcome))
 }
 
 // --- Edges/HRefs: unconditional union regardless of declared op (research.md D5d) ---

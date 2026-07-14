@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/015-predicate-node-shape-cli/plan.md`
+`specs/016-arc-revert/plan.md`
 <!-- SPECKIT END -->
 
 ## Go file license header

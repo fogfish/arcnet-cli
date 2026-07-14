@@ -103,3 +103,5 @@ ARCHITECTURE.md                            # Glossary: Merge Behavior / Predicat
 *No entries — no Constitution Check violation requires justification.*
 
 **Bugfix**: 2026-07-08 — BUG-001 Updated from bugfix patch. Reopened the Principle X ("not implicated") determination; `internal/core/merge.go`, `internal/app/graph/service/apply.go`, and `internal/app/schema/kernel/schema.go` (plus their test files) are back in scope to add a per-predicate verbose report (FR-017) and repoint every `role: text` predicate to `MergeAppend` (FR-018).
+
+**Bugfix**: 2026-07-12 — BUG-002 Updated from bugfix patch. No architectural or Constitution Check section changes — the plan's own design (`internal/core.Merge` returning a per-predicate outcome trail, `internal/app/graph/service/apply.go` sourcing `--verbose` from it) was correct; only `mergeTexts`/`mergeAttrs`'s `isListMerge` branch inside `internal/core/merge.go` (already in scope per BUG-001 above) needs a follow-up fix so the outcome it reports reflects the actual merge result (FR-019), not just which dispatch class ran.

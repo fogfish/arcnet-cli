@@ -1212,6 +1212,94 @@ func TestApplyVerboseModeShowsPerNodeProgress(t *testing.T) {
 		Should(it.String(stderr).Contain("Committing"))
 }
 
+const duplicateDefinitionPatchA = `---
+kind: patch
+document: doc-2026-dup-a
+published: 2026-06-01
+title: "Document A"
+---
+# Source
+
+## doc-2026-dup-a
+` + "```yaml" + `
+"@id": "doc-2026-dup-a"
+"@type": source
+title: "Document A"
+published: "2026-06-01"
+` + "```" + `
+
+First document.
+
+# Entity
+
+## Widget Dup
+` + "```yaml" + `
+"@id": "Widget Dup"
+"@type": entity
+category: [independent]
+` + "```" + `
+
+A duplicate-tested widget definition.
+`
+
+const duplicateDefinitionPatchB = `---
+kind: patch
+document: doc-2026-dup-b
+published: 2026-06-02
+title: "Document B"
+---
+# Source
+
+## doc-2026-dup-b
+` + "```yaml" + `
+"@id": "doc-2026-dup-b"
+"@type": source
+title: "Document B"
+published: "2026-06-02"
+` + "```" + `
+
+Second document.
+
+# Entity
+
+## Widget Dup
+` + "```yaml" + `
+"@id": "Widget Dup"
+"@type": entity
+category: [independent]
+` + "```" + `
+
+A duplicate-tested widget definition.
+`
+
+// arc apply docDupA.patch.md; arc apply --verbose docDupB.patch.md
+// BUG-002 (spec.md FR-019): a second patch contributing a byte-identical
+// definition to an entity another patch already created is a genuine
+// no-op for that union/append predicate — --verbose must report
+// "unchanged", never "appended", when nothing actually changed.
+func TestApplyVerboseReportsUnchangedNotAppendedForDuplicateContribution(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patchA := writePatchFile(t, dir, "docDupA.patch.md", duplicateDefinitionPatchA)
+	_, err := sut(NewApplyCmd(), []string{patchA})
+	it.Then(t).Should(it.Nil(err))
+
+	patchB := writePatchFile(t, dir, "docDupB.patch.md", duplicateDefinitionPatchB)
+	bios.Verbose = true
+	t.Cleanup(func() { bios.Verbose = false })
+
+	stdout, stderr, err := sutCaptureStderr(t, NewApplyCmd(), []string{patchB})
+
+	it.Then(t).ShouldNot(it.Error(stdout, err))
+	it.Then(t).
+		Should(it.String(stderr).Contain("definition: append -> unchanged")).
+		ShouldNot(it.String(stderr).Contain("definition: append -> appended"))
+
+	content := readFile(t, filepath.Join(dir, "entities", "Widget Dup.md"))
+	it.Then(t).Should(it.Equal(1, strings.Count(content, "A duplicate-tested widget definition.")))
+}
+
 // arc apply tls13.patch.md (default mode)
 // Confirms BUG-001's fix did not regress default-mode conciseness.
 func TestApplyDefaultModeShowsNoPerNodeProgress(t *testing.T) {

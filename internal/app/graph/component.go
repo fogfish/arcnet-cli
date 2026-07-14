@@ -28,6 +28,12 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 	return service.Apply(ctx, mounter, vcs, reporter, index, schema, dir, patchPath)
 }
 
+// Revert retracts sourceID's patch contribution from the graph rooted at
+// dir. It is a thin delegator into service.Revert.
+func Revert(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, index core.Index, dir, sourceID string) (kernel.RevertResult, error) {
+	return service.Revert(ctx, mounter, vcs, reporter, index, dir, sourceID)
+}
+
 // Grep searches node file content across the graph rooted at dir for lines
 // matching pattern, narrowed by filter. It is a thin delegator into
 // service.Grep.
