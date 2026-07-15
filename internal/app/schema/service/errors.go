@@ -50,4 +50,19 @@ const (
 	// naming the type and the unresolved base-type reference (spec 017
 	// FR-011).
 	ErrSchemaUnresolvedBase = faults.Safe2[string, string]("type %s declares rdfs:subClassOf an unresolved base type %s")
+
+	// ErrDisallowedNodeType is returned by ApplyPatch when a patch node's
+	// "@id"/"@type" is not Property/Class; names both. The entire operation
+	// fails with zero writes (spec FR-005/FR-006).
+	ErrDisallowedNodeType = faults.Safe2[string, string]("patch node %q has type %q — arc apply schema only accepts Property and Class nodes")
+
+	// ErrPatchRead is returned by ApplyPatch when the patch source (local
+	// path, URL, or resolved arcnet: reference) could not be read/fetched
+	// or failed to parse; names the source.
+	ErrPatchRead = faults.Safe1[string]("failed to read patch %s")
+
+	// ErrEmptyArcnetReference is returned when the input is the bare prefix
+	// "arcnet:" with nothing after it (spec FR-002a edge case) — rejected
+	// before any fetch attempt.
+	ErrEmptyArcnetReference = faults.Type(`"arcnet:" must be followed by a catalog path, e.g. arcnet:media.schema.md`)
 )

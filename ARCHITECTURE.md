@@ -9,8 +9,12 @@ cmd/arc/                    # sole primary (driving) adapter: Cobra command tree
 ├── main.go                 # entrypoint, calls newRootCmd().Execute()
 ├── root.go                 # root command, DS-03 persistent flags, PersistentPreRun schema selection
 ├── ctrl/                   # Cobra wiring for the ctrl (graph management) domain
-│   └── init.go              # `arc init` command: flag/arg parsing, calls internal/app/ctrl.Init,
-│                             #   seeded by internal/app/schema.Seed() — pure, no network access
+│   ├── init.go              # `arc init` command: flag/arg parsing, calls internal/app/ctrl.Init,
+│   │                         #   seeded by internal/app/schema.Seed() — pure, no network access
+│   └── apply_schema.go      # `arc apply schema <patch.md>|<url>|arcnet:<name>` command: attached as
+│                             #   a child of graph.NewApplyCmd() in cmd/arc/root.go (borrows the
+│                             #   `apply` verb for naming consistency, per user direction); calls
+│                             #   internal/app/schema.ApplyPatch (specs/018-apply-schema-patch)
 ├── graph/                  # Cobra wiring for the graph (graph I/O) domain
 │   ├── apply.go             # `arc apply` command: flag/arg parsing, calls
 │   │                         #   internal/app/schema.Resolve then internal/app/graph.Apply
@@ -72,13 +76,20 @@ internal/
 │   │                         #   functions (constitution Principle VII, Mandatory Libraries &
 │   │                         #   Tooling: "Filesystem Abstraction"). Built on stdlib io/fs/io.Writer
 │   │                         #   only — no third-party filesystem library.
-│   └── git/                 # shared, cross-use-case git adapter (ADR 001 "phase 2" adapter tier,
-│                             #   promoted from internal/app/ctrl/adapter/git once a second use-case
-│                             #   needed git access, research.md D4 in specs/003-apply-patch/). The
-│                             #   one concrete Git type satisfies ctrl.port.VCS, graph.port.VCS, AND
-│                             #   lint.port.VCS structurally (ADR 001 port isolation rule 1) — its
-│                             #   CommitsMatching method (specs/004-arc-lint/research.md D12) is the
-│                             #   one addition lint needed, read-only (git log, never a write).
+│   ├── git/                 # shared, cross-use-case git adapter (ADR 001 "phase 2" adapter tier,
+│   │                         #   promoted from internal/app/ctrl/adapter/git once a second use-case
+│   │                         #   needed git access, research.md D4 in specs/003-apply-patch/). The
+│   │                         #   one concrete Git type satisfies ctrl.port.VCS, graph.port.VCS,
+│   │                         #   lint.port.VCS, AND schema.port.VCS structurally (ADR 001 port
+│   │                         #   isolation rule 1) — its CommitsMatching method
+│   │                         #   (specs/004-arc-lint/research.md D12) is the one addition lint
+│   │                         #   needed, read-only (git log, never a write).
+│   └── http/                # shared, cross-use-case HTTP-fetch adapter (ADR 001 "phase 2" adapter
+│                             #   tier): Client.Fetch(ctx, url) (io.ReadCloser, error), backed by
+│                             #   net/http.Client with a default, overridable timeout — this
+│                             #   codebase's first genuinely network-calling capability
+│                             #   (specs/018-apply-schema-patch, research.md D2). Satisfies
+│                             #   internal/app/schema/port.Fetcher structurally.
 └── app/
     ├── ctrl/                 # first domain use-case: graph management / control plane
     │   ├── kernel/            # domain value types (GraphRoot, ArcNetCoreLayout, InitResult)
@@ -98,26 +109,43 @@ internal/
     │   ├── service/             # use-case logic (Load, Save)
     │   └── component.go         # primary port: Load(store), Save(store, cfg)
     │
-    ├── schema/                # fifth domain use-case, no cmd/ package or port/adapter subdirectory:
+    ├── schema/                # fifth domain use-case, no cmd/ package of its own (its Cobra command,
+    │   │                       #   `arc apply schema`, lives in cmd/arc/ctrl instead — see below):
     │   │                       #   isolates ARCNET-CORE's declared vocabulary of predicates and
     │   │                       #   types as machine-readable _schema/predicates/*.md (Property
     │   │                       #   nodes) and _schema/types/*.md (Class nodes) documents, each
     │   │                       #   declaring its own role/merge/label/aligned (predicates) or
     │   │                       #   merge/required/optional (types), per CORE §9.1/§9.2
-    │   │                       #   (specs/011-machine-readable-schema). Its only I/O is the
-    │   │                       #   already-shared internal/adapter/fsys, consumed directly (no
-    │   │                       #   use-case-private external dependency to abstract). Consumed only
-    │   │                       #   by arc init/arc apply (and read-only by arc lint), never invoked
-    │   │                       #   directly of its own.
+    │   │                       #   (specs/011-machine-readable-schema). Consumed by arc init/arc
+    │   │                       #   apply/arc apply schema (and read-only by arc lint), never invoked
+    │   │                       #   directly of its own. Gained its first port/adapter subdirectory
+    │   │                       #   (specs/018-apply-schema-patch) for ApplyPatch's own URL-fetch/git-
+    │   │                       #   commit needs; Seed/Resolve/RegisterType/RegisterPredicate's I/O
+    │   │                       #   remains the already-shared internal/adapter/fsys, consumed
+    │   │                       #   directly.
     │   ├── kernel/             # CorePredicateDefs, CoreTypeDefs (ARCNET-CORE §10/§11's full
-    │   │                        #   built-in vocabulary), TypesDir/PredicatesDir path constants
-    │   ├── service/             # use-case logic (Seed, Resolve, RegisterType, RegisterPredicate) —
-    │   │                        #   Resolve fails fast (core.Index, error) on a missing schema
-    │   │                        #   folder or any malformed document, never skips one
+    │   │                        #   built-in vocabulary), TypesDir/PredicatesDir path constants;
+    │   │                        #   ApplySchemaResult and ArcnetCatalogBaseURL (a var, not a const,
+    │   │                        #   purely for one E2E test's httptest.Server seam,
+    │   │                        #   specs/018-apply-schema-patch)
+    │   ├── port/                # schema-private secondary ports (specs/018-apply-schema-patch):
+    │   │                         #   VCS{StageAll,Commit} — narrower than graph.port.VCS, satisfied
+    │   │                         #   structurally by internal/adapter/git.VCS — and
+    │   │                         #   Fetcher{Fetch(ctx,url) (io.ReadCloser,error)}, satisfied by
+    │   │                         #   internal/adapter/http.Client
+    │   ├── adapter/
+    │   │   └── mock/             # in-memory fake VCS/Fetcher for service unit tests
+    │   ├── service/             # use-case logic (Seed, Resolve, RegisterType, RegisterPredicate,
+    │   │                        #   ApplyPatch) — Resolve fails fast (core.Index, error) on a missing
+    │   │                        #   schema folder or any malformed document, never skips one;
+    │   │                        #   ApplyPatch validates every patch-carried node is Property/Class
+    │   │                        #   and every node decodes/renders cleanly before any _schema/ write
+    │   │                        #   begins (no rollback bookkeeping needed, unlike graph.Apply)
     │   └── component.go         # primary port: Seed(), Resolve(store) (core.Index, error),
-    │                             #   RegisterType(store, typ), RegisterPredicate(store, predicate);
-    │                             #   Component{} additionally satisfies graph.port.SchemaRegistry
-    │                             #   structurally
+    │                             #   RegisterType(store, typ), RegisterPredicate(store, predicate),
+    │                             #   ApplyPatch(ctx, mounter, vcs, fetcher, reporter, dir, source)
+    │                             #   (kernel.ApplySchemaResult, error); Component{} additionally
+    │                             #   satisfies graph.port.SchemaRegistry structurally
     │
     ├── graph/                 # third domain use-case: graph mutation / graph I/O
     │   ├── kernel/              # domain value types (ApplyResult, RevertResult, Match, GrepResult,
@@ -183,7 +211,7 @@ internal/
 
 ## Command Grammar (Principle IX)
 
-This project uses **bare top-level verbs** (`arc init`, `arc apply`, `arc list`, ...), not noun-verb nesting — permitted by ADR 002 DS-01 because the entire tool operates on exactly one kind of subject, a knowledge graph. Every subcommand follows this convention without exception.
+This project uses **bare top-level verbs** (`arc init`, `arc apply`, `arc list`, ...), not noun-verb nesting — permitted by ADR 002 DS-01 because the entire tool operates on exactly one kind of subject, a knowledge graph. Every subcommand follows this convention without exception. The sole exception to "bare" is `arc apply schema`, a child of `arc apply` attached for naming consistency with `arc apply <patch.md>` even though its business logic and conceptual home (schema/config management) lives in `cmd/arc/ctrl`, not `cmd/arc/graph` (specs/018-apply-schema-patch, per explicit user direction).
 
 ## Glossary
 
@@ -229,3 +257,5 @@ This project uses **bare top-level verbs** (`arc init`, `arc apply`, `arc list`,
 | **Shared Node** | A node file path `p` for which `len(CommitsTouching(p)) > 1` and the reverted patch's ingest commit is one of them — at least one other patch has also touched it since. `arc revert` never deletes a shared node; it strips only the reverted patch's own attributable text contribution (`git blame`-mapped paragraphs, or a resolved conflict marker), leaving `Attrs`/`Edges`/`HRefs` untouched (research.md D7-D9, `specs/016-arc-revert`). |
 | **Reconciliation Approach** | `arc revert`'s own `RevertResult.Approach`: `"whole-commit"` when every path the ingest commit touched passes its per-path eligibility test (nothing has touched it since — a plain `git revert` applies), or `"per-node"` otherwise (a node-by-node walk classifying each touched path as an Exclusively-Owned Node or a Shared Node). Computed once per revert (research.md D3/D4, `specs/016-arc-revert`). |
 | **Ingest Commit** (`arc revert`) | The same commit `arc apply` produces (see the earlier **Ingest Commit** entry), located for a given `source-id` via `CommitsMatching(dir, "Source-Id: "+sourceID)` — `arc revert`'s own starting point, reusing the identical `Source-Id:` trailer identity `arc lint`'s `RuleIngestCommit` already relies on rather than a second lookup convention. `internal/app/graph/service.Revert`, research.md D1, `specs/016-arc-revert`. |
+| **`arcnet:` Catalog Reference** | A single positional input to `arc apply schema` beginning with the literal prefix `arcnet:` — the remainder is a path within the official arcnet extensions catalog, resolved against the fixed base `kernel.ArcnetCatalogBaseURL` (`https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/schema/`) and fetched exactly like a directly supplied `http(s)://` URL. A bare `arcnet:` with nothing after the prefix is rejected before any fetch attempt. `internal/app/schema/service.classifySource`, research.md D1/D1a, `specs/018-apply-schema-patch`. |
+| **`kernel.ApplySchemaResult`** | The value `internal/app/schema/service.ApplyPatch` returns: `Source` (the resolved local path or URL the patch was read from), `Created`/`Merged` (counts keyed `"predicate"`/`"type"`), and `CommitHash` (empty on a no-op re-apply — no `Skipped` boolean, unlike `graph.kernel.ApplyResult`, since a schema patch carries no source-tracking idempotency concept). `internal/app/schema/kernel.ApplySchemaResult`, `specs/018-apply-schema-patch`. |

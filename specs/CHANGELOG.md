@@ -2,6 +2,12 @@
 
 ## 2026-07-14
 
+/speckit-specify `arc apply schema <patch.md> | <url>` sub-command applies a patch document into the schema. Essentially, the patch document has same format as the graph based pathc document but carries only definition for the schema. The command is defined to import schemas specification for arcnet extensions. It only accepts `Property` and `Class` types from the patch document. If the patch contains other types, entire process fails.  
+
+/speckit-plan implement the apply scheme feature within `internal/app/schema`. Implement the cli command within `cmd/arc/ctrl` becuase it is a "controller" feature (we used apply only due to verb requirements).
+
+## 2026-07-14
+
 /speckit-specify define `rdfs:subClassOf` predicate for types (classes). The purpose of predicate to specify `C1 rdfs:subClassOf C2` implications. The class C1 inherits all properties and predicates from the class C2. The predicate is used to simplify schema definitions. It allows schema to define a multiple base types to be in-use by other types. The `rdfs:subClassOf` important for linting and all schema management operations.
 
 /speckit-plan The `rdfs:subClassOf` predicate can be defined as required or optional, it does not matter. The referenced class defines actual relations of attributes. The referenced class can also have `rdfs:subClassOf` predicate which is resolved recursively. No cycles are allow. Any type might have many `rdfs:subClassOf` predicates. Resolve `rdfs:subClassOf` relation during the schema indexing to keep the flat structure in the memory but it might require multiple passes to build an index. This approach impacts only `internal/app/schema` keeping the most compatibility with existing implementations.

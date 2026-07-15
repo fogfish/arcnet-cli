@@ -16,6 +16,7 @@ go build -o arc ./cmd/arc
 ./arc --version
 ./arc init
 ./arc apply rescorla-2026-tls13.patch.md
+./arc apply schema arcnet:media.schema.md
 ./arc revert rescorla-2026-tls13
 ./arc lint
 ./arc grep TLS
@@ -26,6 +27,8 @@ go build -o arc ./cmd/arc
 `arc init` bootstraps a new, empty knowledge graph in the current directory (or an optional target directory): the canonical folder layout, a first-class, versioned `_schema/` seeded with every ARCNET-CORE node kind and predicate, the `.arc/` local state directory, a `.gitignore`, and a single initial git commit. Initialization is fully offline — no network access required.
 
 `arc apply` ingests a document patch into an already-initialized graph: it creates or merges every node the patch carries, derives and appends timeline entries, auto-registers any previously-unseen node kind or predicate into `_schema/` in the same commit, and produces exactly one commit. Re-applying an already-tracked document is a safe no-op.
+
+`arc apply schema <patch.md> | <url> | arcnet:<name>` imports Property/Class schema definitions from a patch document — a local file, a URL, or a short `arcnet:<name>` reference into the official arcnet extensions catalog — creating or merging each one into `_schema/`. Any non-Property/Class node anywhere in the patch fails the whole operation before any write happens.
 
 `arc revert <source-id>` retracts a patch document's contribution from the graph: a whole-commit `git revert` when nothing has since touched any file it changed, or a per-node reconciliation otherwise — removing a node outright when the reverted patch was its sole author, or stripping only the reverted patch's own text contribution from a node another patch has since enriched. Removing graph content is destructive, so `arc revert` asks for confirmation unless `--force`/`-f` is given. Re-reverting an already-retracted document is a safe no-op.
 
