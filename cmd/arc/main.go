@@ -49,7 +49,12 @@ func main() {
 		// internal/bios/reporter.go: a styled multi-line string gets every
 		// line padded to equal width instead of preserving line breaks.
 		message := bios.SCHEMA.StatusFail.Render(bios.SCHEMA.IconFail + humanize(err))
-		fmt.Fprintf(os.Stderr, "\n %s\n   Run `arc help %s` for guidance.\n\n", message, cmd.Name())
+		// cmd.Name() is only the leaf command's own Use word ("schema" for
+		// "arc apply schema") — CommandPath() minus the root's own name
+		// gives the full subcommand path a nested command needs for its
+		// "arc help <path>" hint to actually resolve.
+		helpPath := strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()+" ")
+		fmt.Fprintf(os.Stderr, "\n %s\n   Run `arc help %s` for guidance.\n\n", message, helpPath)
 		os.Exit(1)
 	}
 }

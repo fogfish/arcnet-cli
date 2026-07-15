@@ -15,8 +15,13 @@
 package schema
 
 import (
+	"context"
+
 	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
+	"github.com/fogfish/arcnet-cli/internal/app/schema/kernel"
+	"github.com/fogfish/arcnet-cli/internal/app/schema/port"
 	"github.com/fogfish/arcnet-cli/internal/app/schema/service"
+	"github.com/fogfish/arcnet-cli/internal/bios"
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
@@ -42,6 +47,13 @@ func RegisterType(store fsys.Store, typ string) (created bool, err error) {
 // not already present. Thin delegator into service.RegisterPredicate.
 func RegisterPredicate(store fsys.Store, predicate string) (created bool, err error) {
 	return service.RegisterPredicate(store, predicate)
+}
+
+// ApplyPatch reads the patch document at source (a local path, URL, or
+// arcnet: catalog reference) and creates/merges every Property/Class node
+// it carries into _schema/. Thin delegator into service.ApplyPatch.
+func ApplyPatch(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, fetcher port.Fetcher, reporter bios.Reporter, dir, source string) (kernel.ApplySchemaResult, error) {
+	return service.ApplyPatch(ctx, mounter, vcs, fetcher, reporter, dir, source)
 }
 
 // Component is schema's concrete, zero-value primary port, satisfying
