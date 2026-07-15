@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"errors"
 	"io/fs"
+	"strings"
 	"testing"
 	"time"
 
@@ -169,6 +170,24 @@ func TestSeedEntriesRoundTripThroughParseNode(t *testing.T) {
 	}
 }
 
+// spec 017 US1: every seeded content type's document carries an explicit
+// subClassOf:: [[Node]] edge (data-model.md's reshaped-types table, aligned
+// to rdfs:subClassOf via the predicate's own Aligned field), and Node.md
+// itself carries none.
+func TestSeedContentTypesCarrySubClassOfNodeEdge(t *testing.T) {
+	seed := service.Seed()
+
+	for _, name := range []string{"source", "entity", "resource", "timeline"} {
+		raw, ok := seed[kernel.TypesDir+"/"+name+".md"]
+		it.Then(t).Should(it.True(ok))
+		it.Then(t).Should(it.String(string(raw)).Contain("subClassOf:: [[Node]]"))
+	}
+
+	nodeRaw, ok := seed[kernel.TypesDir+"/Node.md"]
+	it.Then(t).Should(it.True(ok))
+	it.Then(t).ShouldNot(it.String(string(nodeRaw)).Contain("- subClassOf::"))
+}
+
 func TestResolveRoundTripsSeedOutput(t *testing.T) {
 	store := newSeededStore()
 
@@ -183,7 +202,7 @@ func TestResolveRoundTripsSeedOutput(t *testing.T) {
 	it.Then(t).Should(it.True(ok))
 	it.Then(t).
 		Should(it.Equal(core.MergeUnion, entity.Merge)).
-		Should(it.Seq(entity.Required).Equal("category", "definition", "mentionedIn")).
+		Should(it.Seq(entity.Required).Equal("category", "definition", "mentionedIn", "published", "created")).
 		ShouldNot(it.Equal("", entity.Description))
 
 	isPartOf, ok := index.Predicates["isPartOf"]
@@ -310,4 +329,218 @@ func TestResolveReflectsHandEditedRoleValue(t *testing.T) {
 	index, err = service.Resolve(store)
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal("link", index.Predicates["isPartOf"].Role))
+}
+
+// --- subClassOf (rdfs:subClassOf-aligned) resolution (spec 017) -----------
+
+// nodeStub is a no-op Node type document: every custom type below implicitly
+// inherits it (research.md D5's universal-base rule applies to any type
+// named anything other than Node/Property/Class), and since it contributes
+// no Required/Optional of its own, these tests observe only the explicit
+// hierarchy under exercise, not the real seeded Node contract (already
+// covered by TestSeedContentTypesCarrySubClassOfNodeEdge and the E2E tests).
+const nodeStub = "---\n\"@id\": Node\n\"@type\": Class\nmerge: union\n---\n# Node\n\nStub base for resolver unit tests.\n"
+
+// typeDoc renders a minimal Class-typed type schema document for resolver
+// unit tests: a description paragraph, flat subClassOf bullets (no heading —
+// Role \"edge\", per research.md D1), then headed Requires/Optional sections.
+func typeDoc(id string, required, optional, subClassOf []string) string {
+	var body strings.Builder
+	body.WriteString("---\n\"@id\": " + id + "\n\"@type\": Class\nmerge: union\n---\n# " + id + "\n\n" + id + " under test.\n")
+	for _, base := range subClassOf {
+		body.WriteString("\n- subClassOf:: [[" + base + "]]\n")
+	}
+	if len(required) > 0 {
+		body.WriteString("\n## Requires\n")
+		for _, r := range required {
+			body.WriteString("- required:: [[" + r + "]]\n")
+		}
+	}
+	if len(optional) > 0 {
+		body.WriteString("\n## Optional\n")
+		for _, o := range optional {
+			body.WriteString("- optional:: [[" + o + "]]\n")
+		}
+	}
+	return body.String()
+}
+
+// newTypesStore builds a fake graph root whose _schema/types/ carries
+// exactly the given documents, plus a no-op Node.md (unless the caller
+// supplies its own), and an empty _schema/predicates/ dir — Resolve never
+// cross-checks a type's Required/Optional/subClassOf targets against
+// registered predicates.
+func newTypesStore(types map[string]string) *fakeStore {
+	store := newFakeStore(nil)
+	store.dirs[kernel.PredicatesDir] = true
+	store.dirs[kernel.TypesDir] = true
+	if _, ok := types["Node"]; !ok {
+		store.files[kernel.TypesDir+"/Node.md"] = nodeStub
+	}
+	for name, raw := range types {
+		store.files[kernel.TypesDir+"/"+name+".md"] = raw
+	}
+	return store
+}
+
+func TestResolveSingleInheritanceNoOwnPredicates(t *testing.T) {
+	store := newTypesStore(map[string]string{
+		"C2": typeDoc("C2", []string{"p"}, []string{"q"}, nil),
+		"C1": typeDoc("C1", nil, nil, []string{"C2"}),
+	})
+
+	index, err := service.Resolve(store)
+	it.Then(t).Should(it.Nil(err))
+
+	c1 := index.Types["C1"]
+	it.Then(t).
+		Should(it.Seq(c1.Required).Equal("p")).
+		Should(it.Seq(c1.Optional).Equal("q"))
+}
+
+func TestResolveOwnPlusInheritedCombine(t *testing.T) {
+	store := newTypesStore(map[string]string{
+		"C2": typeDoc("C2", []string{"p"}, nil, nil),
+		"C1": typeDoc("C1", []string{"r"}, nil, []string{"C2"}),
+	})
+
+	index, err := service.Resolve(store)
+	it.Then(t).Should(it.Nil(err))
+
+	c1 := index.Types["C1"]
+	it.Then(t).Should(it.Seq(c1.Required).Equal("r", "p"))
+}
+
+func TestResolveMultipleBasesWithOverlappingPredicatesDedup(t *testing.T) {
+	store := newTypesStore(map[string]string{
+		"C2": typeDoc("C2", []string{"p"}, nil, nil),
+		"C3": typeDoc("C3", []string{"p", "s"}, nil, nil),
+		"C1": typeDoc("C1", nil, nil, []string{"C2", "C3"}),
+	})
+
+	index, err := service.Resolve(store)
+	it.Then(t).Should(it.Nil(err))
+
+	c1 := index.Types["C1"]
+	it.Then(t).Should(it.Seq(c1.Required).Equal("p", "s"))
+}
+
+func TestResolveDuplicateBaseDeclarationCoalesces(t *testing.T) {
+	store := newTypesStore(map[string]string{
+		"C2": typeDoc("C2", []string{"p"}, nil, nil),
+		"C1": typeDoc("C1", nil, nil, []string{"C2", "C2"}),
+	})
+
+	index, err := service.Resolve(store)
+	it.Then(t).Should(it.Nil(err))
+
+	c1 := index.Types["C1"]
+	it.Then(t).Should(it.Seq(c1.Required).Equal("p"))
+}
+
+func TestResolveThreeLevelChainResolvesTransitively(t *testing.T) {
+	store := newTypesStore(map[string]string{
+		"C3": typeDoc("C3", []string{"t"}, nil, nil),
+		"C2": typeDoc("C2", nil, nil, []string{"C3"}),
+		"C1": typeDoc("C1", nil, nil, []string{"C2"}),
+	})
+
+	index, err := service.Resolve(store)
+	it.Then(t).Should(it.Nil(err))
+
+	c1 := index.Types["C1"]
+	it.Then(t).Should(it.Seq(c1.Required).Equal("t"))
+}
+
+// Diamond hierarchy: A -> B -> D and A -> C -> D, D's own predicate must
+// appear exactly once in A's effective contract (spec US3.2).
+func TestResolveDiamondHierarchyDedupsCommonAncestor(t *testing.T) {
+	store := newTypesStore(map[string]string{
+		"D": typeDoc("D", []string{"d"}, nil, nil),
+		"B": typeDoc("B", nil, nil, []string{"D"}),
+		"C": typeDoc("C", nil, nil, []string{"D"}),
+		"A": typeDoc("A", nil, nil, []string{"B", "C"}),
+	})
+
+	index, err := service.Resolve(store)
+	it.Then(t).Should(it.Nil(err))
+
+	a := index.Types["A"]
+	it.Then(t).Should(it.Seq(a.Required).Equal("d"))
+}
+
+func TestResolveDirectSelfReferenceCycleFails(t *testing.T) {
+	store := newTypesStore(map[string]string{
+		"X": typeDoc("X", nil, nil, []string{"X"}),
+	})
+
+	_, err := service.Resolve(store)
+	it.Then(t).Should(it.True(errors.Is(err, service.ErrSchemaCycle)))
+}
+
+func TestResolveLongerCycleFails(t *testing.T) {
+	store := newTypesStore(map[string]string{
+		"Cyc1": typeDoc("Cyc1", nil, nil, []string{"Cyc2"}),
+		"Cyc2": typeDoc("Cyc2", nil, nil, []string{"Cyc1"}),
+	})
+
+	_, err := service.Resolve(store)
+	it.Then(t).Should(it.True(errors.Is(err, service.ErrSchemaCycle)))
+}
+
+func TestResolveUnresolvedBaseTypeReferenceFails(t *testing.T) {
+	store := newTypesStore(map[string]string{
+		"W": typeDoc("W", nil, nil, []string{"NoSuchType"}),
+	})
+
+	_, err := service.Resolve(store)
+	it.Then(t).Should(it.True(errors.Is(err, service.ErrSchemaUnresolvedBase)))
+}
+
+// A type whose _schema/types/ carries no Node.md of its own also fails
+// unresolved-base — the implicit Node reference (research.md D5) is exactly
+// as much a schema reference as an explicit one (data-model.md's Errors
+// section, contracts/type-schema-document.md).
+func TestResolveMissingImplicitNodeBaseFails(t *testing.T) {
+	store := newFakeStore(nil)
+	store.dirs[kernel.PredicatesDir] = true
+	store.dirs[kernel.TypesDir] = true
+	store.files[kernel.TypesDir+"/W.md"] = typeDoc("W", nil, nil, nil)
+
+	_, err := service.Resolve(store)
+	it.Then(t).Should(it.True(errors.Is(err, service.ErrSchemaUnresolvedBase)))
+}
+
+// A predicate required by an ancestor stays required in the descendant's
+// effective contract even though the descendant's own declaration would
+// otherwise leave it merely optional (spec FR-007).
+func TestResolveRequiredWinsOverOptional(t *testing.T) {
+	store := newTypesStore(map[string]string{
+		"Base": typeDoc("Base", []string{"m"}, nil, nil),
+		"Sub":  typeDoc("Sub", nil, []string{"m"}, []string{"Base"}),
+	})
+
+	index, err := service.Resolve(store)
+	it.Then(t).Should(it.Nil(err))
+
+	sub := index.Types["Sub"]
+	it.Then(t).
+		Should(it.Seq(sub.Required).Equal("m")).
+		Should(it.Seq(sub.Optional).BeEmpty())
+}
+
+// A type declaring no rdfs:subClassOf relationship of its own still
+// implicitly inherits Node (research.md D5) — its effective contract is not
+// merely its own direct declaration.
+func TestResolveNoExplicitBaseStillGetsImplicitNode(t *testing.T) {
+	store := newTypesStore(map[string]string{
+		"Node": typeDoc("Node", []string{"n"}, nil, nil),
+		"Solo": typeDoc("Solo", []string{"r"}, nil, nil),
+	})
+
+	index, err := service.Resolve(store)
+	it.Then(t).Should(it.Nil(err))
+
+	solo := index.Types["Solo"]
+	it.Then(t).Should(it.Seq(solo.Required).Equal("r", "n"))
 }

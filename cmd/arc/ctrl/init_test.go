@@ -237,6 +237,38 @@ func TestInitSeedsAllCoreKindsAndPredicates(t *testing.T) {
 }
 
 // arc init
+// spec 017 US1 Acceptance Scenario 1: a freshly initialized graph seeds
+// _schema/types/Node.md (Required: published/created; Optional:
+// tags/text/updated/scoreZ/scoreC), and source/entity/resource/timeline's
+// own seeded documents each carry an explicit subClassOf:: [[Node]] edge
+// (aligned to rdfs:subClassOf).
+func TestInitSeedsNodeTypeAndWiresContentTypesToIt(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	nodePath := filepath.Join(dir, "_schema", "types", "Node.md")
+	assertIsFile(t, nodePath)
+
+	nodeContent, rerr := os.ReadFile(nodePath)
+	it.Then(t).Should(it.Nil(rerr))
+	for _, required := range []string{"published", "created"} {
+		it.Then(t).Should(it.String(string(nodeContent)).Contain("required:: [[" + required + "]]"))
+	}
+	for _, optional := range []string{"tags", "text", "updated", "scoreZ", "scoreC"} {
+		it.Then(t).Should(it.String(string(nodeContent)).Contain("optional:: [[" + optional + "]]"))
+	}
+
+	for _, name := range []string{"source", "entity", "resource", "timeline"} {
+		content, rerr := os.ReadFile(filepath.Join(dir, "_schema", "types", name+".md"))
+		it.Then(t).Should(it.Nil(rerr))
+		it.Then(t).Should(it.String(string(content)).Contain("subClassOf:: [[Node]]"))
+	}
+}
+
+// arc init
 // spec.md US1 Acceptance Scenario 3: no _schema/nodes/ folder exists.
 func TestInitNoSchemaNodesFolderExists(t *testing.T) {
 	dir := t.TempDir()

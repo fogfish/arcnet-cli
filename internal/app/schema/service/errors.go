@@ -39,4 +39,15 @@ const (
 	// fails to parse, or is missing/has an invalid value for a mandatory
 	// field (spec FR-014) — naming the offending file and field.
 	ErrSchemaInvalid = faults.Safe2[string, string]("schema document %s has a missing or invalid %s")
+
+	// ErrSchemaCycle is returned when a type's rdfs:subClassOf declarations
+	// form a cycle, of any length including direct self-reference — naming
+	// the type where the cycle was detected (spec 017 FR-010).
+	ErrSchemaCycle = faults.Safe1[string]("type %s participates in an rdfs:subClassOf cycle")
+
+	// ErrSchemaUnresolvedBase is returned when a type's rdfs:subClassOf
+	// declaration names a base type with no corresponding registered type —
+	// naming the type and the unresolved base-type reference (spec 017
+	// FR-011).
+	ErrSchemaUnresolvedBase = faults.Safe2[string, string]("type %s declares rdfs:subClassOf an unresolved base type %s")
 )

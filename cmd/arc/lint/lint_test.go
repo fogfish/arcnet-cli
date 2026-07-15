@@ -122,6 +122,7 @@ const conformantSource = `---
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
+created: "2026-04-12"
 ---
 # foo-2026-x
 
@@ -135,6 +136,8 @@ const conformantEntity = `---
 "@id": Widget
 "@type": entity
 category: [independent, abstract, occurrent, script]
+published: "2026-04-12"
+created: "2026-04-12"
 ---
 # Widget
 
@@ -196,7 +199,7 @@ func TestLintSchemaBasenameDoesNotCollideWithContentNode(t *testing.T) {
 	dir := t.TempDir()
 	buildConformantGraph(t, dir)
 	writeNode(t, dir, "_schema/types/hypothesis.md", "---\n\"@id\": hypothesis\n\"@type\": Class\nmerge: union\n---\n# hypothesis\n\nA domain type registered by this test fixture.\n")
-	writeNode(t, dir, "entities/hypothesis.md", "---\n\"@id\": hypothesis\n\"@type\": entity\ncategory: [independent, abstract, occurrent, script]\n---\n# hypothesis\n\nA namesake entity, unrelated to the schema kind of the same name.\n\n## MentionedIn\n- mentionedIn:: [[foo-2026-x]]\n")
+	writeNode(t, dir, "entities/hypothesis.md", "---\n\"@id\": hypothesis\n\"@type\": entity\ncategory: [independent, abstract, occurrent, script]\npublished: \"2026-04-12\"\ncreated: \"2026-04-12\"\n---\n# hypothesis\n\nA namesake entity, unrelated to the schema kind of the same name.\n\n## MentionedIn\n- mentionedIn:: [[foo-2026-x]]\n")
 	commitAll(t, dir, "seed: hypothesis entity and schema doc")
 	chdir(t, dir)
 
@@ -999,6 +1002,8 @@ func TestLintEntitySemanticPredicateAndNotesNoTypeOptionalViolation(t *testing.T
 "@id": Widget
 "@type": entity
 category: [independent, abstract, occurrent, script]
+published: "2026-04-12"
+created: "2026-04-12"
 ---
 # Widget
 
@@ -1033,6 +1038,8 @@ func TestLintResourceSemanticPredicateNoTypeOptionalViolation(t *testing.T) {
 "@id": RFC 8446
 "@type": resource
 ref: standard
+published: "2026-04-12"
+created: "2026-04-12"
 ---
 # RFC 8446
 
@@ -1048,4 +1055,249 @@ A normative specification.
 	it.Then(t).
 		Should(it.Nil(err)).
 		ShouldNot(it.String(out).Contain("typeOptional"))
+}
+
+// arc lint
+// spec 017 US1 Acceptance Scenarios 1.2/1.3: a source node missing
+// "published" — required only via the implicit Node base, not declared
+// directly on "source" (data-model.md's reshaped-types table) — is flagged
+// under [typeRequires] exactly as a directly-required predicate would be,
+// and the violation clears once the node carries it.
+func TestLintInheritedRequiredPredicateEnforcedLikeDirect(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	missingPublished := `---
+"@id": foo-2026-x
+"@type": source
+title: "A Test Document"
+authors: [Test Author]
+created: "2026-04-12"
+---
+# foo-2026-x
+
+A test document.
+
+## Mentions
+- mentions:: [[Widget]]
+`
+	writeNode(t, dir, "sources/foo-2026-x.md", missingPublished)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("sources/foo-2026-x.md")).
+		Should(it.String(out).Contain("[typeRequires]")).
+		Should(it.String(out).Contain(`type "source" requires predicate "published", but this node does not carry it`))
+
+	restored := strings.Replace(missingPublished, "created: \"2026-04-12\"", "published: \"2026-04-12\"\ncreated: \"2026-04-12\"", 1)
+	writeNode(t, dir, "sources/foo-2026-x.md", restored)
+
+	out, err = sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("typeRequires"))
+}
+
+// registerType writes a minimal custom type schema document, optionally
+// declaring one or more subClassOf base types. Every registered type
+// permits "mentions" so a fixture node of this type can link back to a
+// source node without tripping [derivedProvenance] (research.md D8) or
+// [typeOptional].
+func registerType(t *testing.T, dir, name string, required []string, subClassOf []string) {
+	t.Helper()
+	var body strings.Builder
+	body.WriteString("---\n\"@id\": " + name + "\n\"@type\": Class\nmerge: union\n---\n# " + name + "\n\n" + name + " test type.\n")
+	for _, base := range subClassOf {
+		body.WriteString("\n- subClassOf:: [[" + base + "]]\n")
+	}
+	if len(required) > 0 {
+		body.WriteString("\n## Requires\n")
+		for _, r := range required {
+			body.WriteString("- required:: [[" + r + "]]\n")
+		}
+	}
+	body.WriteString("\n## Optional\n- optional:: [[mentions]]\n")
+	writeNode(t, dir, "_schema/types/"+name+".md", body.String())
+}
+
+// arc lint
+// spec 017 US2 Acceptance Scenarios 2.1-2.3: two independent custom base
+// types, each requiring a distinct predicate, combined via multiple
+// subClassOf declarations on a third type — arc lint enforces both
+// inherited predicates, with no duplicate violation when both bases also
+// separately contribute the shared implicit Node base.
+func TestLintComposedTypeEnforcesBothBasePredicates(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	registerType(t, dir, "citable", []string{"doi"}, nil)
+	registerType(t, dir, "timestamped", []string{"updated"}, nil)
+	registerType(t, dir, "dataset", nil, []string{"citable", "timestamped"})
+	commitAll(t, dir, "seed: citable/timestamped/dataset types")
+
+	missingBoth := `---
+"@id": widget-dataset
+"@type": dataset
+published: "2026-04-12"
+created: "2026-04-12"
+---
+# widget-dataset
+
+A dataset missing both inherited predicates.
+
+- mentions:: [[foo-2026-x]]
+`
+	writeNode(t, dir, "resources/widget-dataset.md", missingBoth)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain(`type "dataset" requires predicate "doi", but this node does not carry it`)).
+		Should(it.String(out).Contain(`type "dataset" requires predicate "updated", but this node does not carry it`))
+
+	complete := `---
+"@id": widget-dataset
+"@type": dataset
+published: "2026-04-12"
+created: "2026-04-12"
+doi: "10.1000/example"
+updated: "2026-04-12"
+---
+# widget-dataset
+
+A dataset carrying every inherited predicate from both bases.
+
+- mentions:: [[foo-2026-x]]
+`
+	writeNode(t, dir, "resources/widget-dataset.md", complete)
+
+	out, err = sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("typeRequires"))
+}
+
+// arc lint
+// spec 017 US3 Acceptance Scenario 3.1: a three-level subClassOf chain
+// (Level1 -> Level2 -> Level3) resolves transitively — Level1's effective
+// contract requires Level3's own predicate even though Level1 has no direct
+// subClassOf relationship to Level3.
+func TestLintThreeLevelChainResolvesTransitively(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	registerType(t, dir, "Level3", []string{"year"}, nil)
+	registerType(t, dir, "Level2", nil, []string{"Level3"})
+	registerType(t, dir, "Level1", nil, []string{"Level2"})
+	commitAll(t, dir, "seed: three-level chain types")
+
+	missingYear := `---
+"@id": bottom-of-chain
+"@type": Level1
+published: "2026-04-12"
+created: "2026-04-12"
+---
+# bottom-of-chain
+
+Missing the ancestor-required predicate.
+
+- mentions:: [[foo-2026-x]]
+`
+	writeNode(t, dir, "resources/bottom-of-chain.md", missingYear)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain(`type "Level1" requires predicate "year", but this node does not carry it`))
+}
+
+// arc lint
+// spec 017 US3 Acceptance Scenario 3.2: a diamond-shaped hierarchy (two
+// branches converging on one common ancestor) counts the ancestor's
+// predicate exactly once — one violation, not two, when it's missing.
+func TestLintDiamondHierarchyCountsCommonAncestorOnce(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	registerType(t, dir, "Apex", []string{"status"}, nil)
+	registerType(t, dir, "BranchA", nil, []string{"Apex"})
+	registerType(t, dir, "BranchB", nil, []string{"Apex"})
+	registerType(t, dir, "Bottom", nil, []string{"BranchA", "BranchB"})
+	commitAll(t, dir, "seed: diamond hierarchy types")
+
+	missingStatus := `---
+"@id": diamond-bottom
+"@type": Bottom
+published: "2026-04-12"
+created: "2026-04-12"
+---
+# diamond-bottom
+
+Missing the common ancestor's required predicate.
+
+- mentions:: [[foo-2026-x]]
+`
+	writeNode(t, dir, "resources/diamond-bottom.md", missingStatus)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).ShouldNot(it.Nil(err))
+	message := `type "Bottom" requires predicate "status", but this node does not carry it`
+	it.Then(t).Should(it.Equal(1, strings.Count(out, message)))
+}
+
+// arc lint
+// spec 017 US4 Acceptance Scenario 4.1: a type declaring subClassOf toward
+// an unregistered type name fails schema loading clearly, naming the
+// offending type and the unresolved reference — not a silent pass.
+func TestLintUnresolvedSubClassOfBaseFailsClearly(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	registerType(t, dir, "Orphan", nil, []string{"NoSuchType"})
+	commitAll(t, dir, "seed: type with unresolved base")
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).Should(it.Error(out, err).Contain("Orphan"))
+}
+
+// arc lint
+// spec 017 US4 Acceptance Scenario 4.2: a direct self-reference cycle fails
+// schema loading clearly, without hanging or crashing.
+func TestLintDirectSelfReferenceCycleFailsClearly(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	registerType(t, dir, "SelfRef", nil, []string{"SelfRef"})
+	commitAll(t, dir, "seed: self-referencing type")
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).Should(it.Error(out, err).Contain("SelfRef"))
+}
+
+// arc lint
+// spec 017 US4 Acceptance Scenario 4.2: a longer cycle (two types each
+// subClassOf the other) fails schema loading clearly, without hanging or
+// crashing while computing either type's effective contract.
+func TestLintTwoTypeCycleFailsClearly(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	registerType(t, dir, "CycleA", nil, []string{"CycleB"})
+	registerType(t, dir, "CycleB", nil, []string{"CycleA"})
+	commitAll(t, dir, "seed: two mutually cyclic types")
+	chdir(t, dir)
+
+	_, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).ShouldNot(it.Nil(err))
+	it.Then(t).Should(it.True(strings.Contains(err.Error(), "CycleA") || strings.Contains(err.Error(), "CycleB")))
 }

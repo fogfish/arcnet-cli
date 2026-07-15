@@ -32,6 +32,7 @@ func TestCorePredicateDefsContainsFullCoreVocabulary(t *testing.T) {
 		"cites", "citesAsEvidence", "citesAsAuthority", "supports", "confirms", "extends", "critiques", "disputes", "refutes", "isCitedBy",
 		"title", "abstract", "authors", "url", "doi", "category", "aliases", "definition", "notes", "ref", "year", "status", "relevance", "granularity", "period", "heading",
 		"role", "merge", "label", "aligned", "description", "required", "optional",
+		"subClassOf",
 	}
 
 	it.Then(t).Should(it.Equal(len(names), len(kernel.CorePredicateDefs)))
@@ -53,18 +54,21 @@ func TestCorePredicateDefNamesAreCamelCase(t *testing.T) {
 }
 
 func TestCoreTypeDefsContainsCoreTypesAndSchemaTypesThemselves(t *testing.T) {
-	it.Then(t).Should(it.Equal(6, len(kernel.CoreTypeDefs)))
+	it.Then(t).Should(it.Equal(7, len(kernel.CoreTypeDefs)))
 
-	for _, name := range []string{"source", "entity", "resource", "timeline", "Property", "Class"} {
+	for _, name := range []string{"source", "entity", "resource", "timeline", "Node", "Property", "Class"} {
 		def, ok := kernel.CoreTypeDefs[name]
 		it.Then(t).Should(it.True(ok))
 		it.Then(t).ShouldNot(it.Equal("", def.Description))
 	}
 }
 
+// source/entity/resource/timeline's own directly declared Required lists
+// (spec 017, data-model.md's reshaped-types table) — published/created now
+// arrive only via the implicit Node base, never listed directly here.
 func TestCoreTypeDefsRequiredListsMatchCoreSection11(t *testing.T) {
 	source := kernel.CoreTypeDefs["source"]
-	it.Then(t).Should(it.Seq(source.Required).Equal("title", "published", "abstract", "mentions"))
+	it.Then(t).Should(it.Seq(source.Required).Equal("title", "abstract", "mentions"))
 
 	entity := kernel.CoreTypeDefs["entity"]
 	it.Then(t).Should(it.Seq(entity.Required).Equal("category", "definition", "mentionedIn"))
@@ -79,16 +83,22 @@ func TestCoreTypeDefsRequiredListsMatchCoreSection11(t *testing.T) {
 	// documents (spec 003 BUG-007).
 	timeline := kernel.CoreTypeDefs["timeline"]
 	it.Then(t).Should(it.Seq(timeline.Required).Equal("granularity", "cites", "period"))
+
+	node := kernel.CoreTypeDefs["Node"]
+	it.Then(t).Should(it.Seq(node.Required).Equal("published", "created"))
 }
 
-// BUG-001 / spec.md FR-014-FR-020, research.md D8: cross-cutting Content
-// (tags, text), Metadata/Control (created, updated, indexed, scoreZ,
-// scoreC), Structural (mentions, mentionedIn), and — for entity/resource —
-// Semantic (§10.5) predicates MUST be listed under every relevant core
-// type's Optional list, not just Required, so a real node using one of them
-// is never falsely reported as not-permitted by checkTypeOptional. This is
-// the closed test gap: TestCoreTypeDefsRequiredListsMatchCoreSection11 only
-// ever asserted Required, never Optional.
+// BUG-001 / spec.md FR-014-FR-020, research.md D8: cross-cutting Structural
+// (mentions, mentionedIn) and — for entity/resource — Semantic (§10.5)
+// predicates MUST be listed under every relevant core type's Optional list,
+// not just Required, so a real node using one of them is never falsely
+// reported as not-permitted by checkTypeOptional. This is the closed test
+// gap: TestCoreTypeDefsRequiredListsMatchCoreSection11 only ever asserted
+// Required, never Optional. Content (tags, text) and Metadata/Control
+// (published, created, updated, scoreZ, scoreC) predicates are no longer
+// listed directly here (spec 017) — they arrive via the implicit Node base
+// (TestCoreTypeDefsRequiredListsMatchCoreSection11's Node case, and
+// internal/app/schema/service's resolver tests for the effective contract).
 func TestCoreTypeDefsOptionalListsIncludeCrossCuttingPredicates(t *testing.T) {
 	semantic := []string{"broader", "narrower", "isPartOf", "hasPart", "requires", "replaces", "isReplacedBy", "conformsTo", "related", "referencedBy"}
 
@@ -96,16 +106,38 @@ func TestCoreTypeDefsOptionalListsIncludeCrossCuttingPredicates(t *testing.T) {
 		typ  string
 		want []string
 	}{
-		{"source", []string{"authors", "url", "cites", "tags", "doi", "created", "updated", "indexed", "scoreZ", "scoreC"}},
-		{"entity", append([]string{"aliases", "tags", "notes", "published", "created", "updated", "indexed", "scoreZ", "scoreC", "mentions"}, semantic...)},
-		{"resource", append([]string{"url", "isCitedBy", "authors", "year", "doi", "status", "notes", "tags", "text", "published", "created", "updated", "indexed", "scoreZ", "scoreC", "mentions", "mentionedIn"}, semantic...)},
-		{"timeline", []string{"heading", "tags", "text", "created", "updated", "indexed", "scoreZ", "scoreC", "mentions", "mentionedIn"}},
+		{"source", []string{"authors", "url", "cites", "doi", "indexed"}},
+		{"entity", append([]string{"aliases", "notes", "indexed", "mentions"}, semantic...)},
+		{"resource", append([]string{"url", "isCitedBy", "authors", "year", "doi", "status", "notes", "indexed", "mentions", "mentionedIn"}, semantic...)},
+		{"timeline", []string{"heading", "indexed", "mentions", "mentionedIn"}},
 	}
 
 	for _, tc := range tests {
 		def := kernel.CoreTypeDefs[tc.typ]
 		it.Then(t).Should(it.Seq(def.Optional).Equal(tc.want...))
 	}
+}
+
+// Node's own Optional list (spec 017, data-model.md).
+func TestCoreTypeDefsNodeOptionalList(t *testing.T) {
+	node := kernel.CoreTypeDefs["Node"]
+	it.Then(t).Should(it.Seq(node.Optional).Equal("tags", "text", "updated", "scoreZ", "scoreC"))
+}
+
+// Every content type declares an explicit rdfs:subClassOf base pointing at
+// Node (spec 017, data-model.md) — redundant with the implicit rule but
+// written for the seeded document's own self-description.
+func TestCoreTypeBasesWireContentTypesToNode(t *testing.T) {
+	for _, name := range []string{"source", "entity", "resource", "timeline"} {
+		it.Then(t).Should(it.Seq(kernel.CoreTypeBases[name]).Equal("Node"))
+	}
+	_, hasNode := kernel.CoreTypeBases["Node"]
+	_, hasProperty := kernel.CoreTypeBases["Property"]
+	_, hasClass := kernel.CoreTypeBases["Class"]
+	it.Then(t).
+		Should(it.True(!hasNode)).
+		Should(it.True(!hasProperty)).
+		Should(it.True(!hasClass))
 }
 
 // BUG-001 / spec.md FR-014-FR-020: every registered instance of the seed

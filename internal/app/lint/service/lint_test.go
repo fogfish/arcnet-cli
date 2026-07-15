@@ -143,6 +143,7 @@ const conformantSourceFixture = `---
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
+created: "2026-04-12"
 ---
 # foo-2026-x
 
@@ -154,6 +155,8 @@ const conformantEntityFixture = `---
 "@id": "Widget"
 "@type": entity
 category: [independent, abstract, occurrent, script]
+published: "2026-04-12"
+created: "2026-04-12"
 ---
 # Widget
 
@@ -161,12 +164,40 @@ A test entity.
 - mentionedIn:: [[foo-2026-x]]
 `
 
+// withNodeContract returns def with Node's own Required/Optional unioned in
+// (required-wins-over-optional), matching what internal/app/schema/service's
+// real rdfs:subClassOf resolver (spec 017) computes for every content type —
+// this fixture builds core.Index by hand, bypassing Resolve's flattening
+// entirely, so it must reproduce the effective contract itself.
+func withNodeContract(def core.TypeDef) core.TypeDef {
+	node := schemakernel.CoreTypeDefs["Node"]
+
+	required := append(append([]string{}, def.Required...), node.Required...)
+	optional := append(append([]string{}, def.Optional...), node.Optional...)
+
+	isRequired := map[string]bool{}
+	for _, r := range required {
+		isRequired[r] = true
+	}
+	filtered := optional[:0]
+	for _, o := range optional {
+		if !isRequired[o] {
+			filtered = append(filtered, o)
+		}
+	}
+
+	def.Required = required
+	def.Optional = filtered
+	return def
+}
+
 var coreIndexFixtureLint = core.Index{
 	Types: map[string]core.TypeDef{
-		"source":   schemakernel.CoreTypeDefs["source"],
-		"entity":   schemakernel.CoreTypeDefs["entity"],
-		"resource": schemakernel.CoreTypeDefs["resource"],
-		"timeline": schemakernel.CoreTypeDefs["timeline"],
+		"source":   withNodeContract(schemakernel.CoreTypeDefs["source"]),
+		"entity":   withNodeContract(schemakernel.CoreTypeDefs["entity"]),
+		"resource": withNodeContract(schemakernel.CoreTypeDefs["resource"]),
+		"timeline": withNodeContract(schemakernel.CoreTypeDefs["timeline"]),
+		"Node":     schemakernel.CoreTypeDefs["Node"],
 	},
 	Predicates: schemakernel.CorePredicateDefs,
 }
