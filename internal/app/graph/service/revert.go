@@ -772,12 +772,15 @@ func removeTimelineEntry(store fsys.Store, node core.Node, removedIDs map[string
 	}
 
 	period := node.ID
+	created := attrString(node, "created")
 	var buf strings.Builder
 	buf.WriteString("---\n")
 	buf.WriteString("\"@id\": \"" + period + "\"\n")
 	buf.WriteString("\"@type\": timeline\n")
 	buf.WriteString("period: \"" + period + "\"\n")
 	buf.WriteString("granularity: " + granularity + "\n")
+	buf.WriteString("published: \"" + created + "\"\n")
+	buf.WriteString("created: \"" + created + "\"\n")
 	buf.WriteString("---\n")
 	buf.WriteString("# " + heading + "\n\n")
 	for _, e := range kept {

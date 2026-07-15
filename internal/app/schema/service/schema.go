@@ -96,12 +96,16 @@ func predicateNode(name string, def core.PredicateDef) core.Node {
 }
 
 func typeNode(name string, def core.TypeDef) core.Node {
-	edges := make([]core.Link, 0, len(def.Required)+len(def.Optional))
+	bases := kernel.CoreTypeBases[name]
+	edges := make([]core.Link, 0, len(def.Required)+len(def.Optional)+len(bases))
 	for _, predicate := range def.Required {
 		edges = append(edges, core.Link{Predicate: "required", Target: predicate})
 	}
 	for _, predicate := range def.Optional {
 		edges = append(edges, core.Link{Predicate: "optional", Target: predicate})
+	}
+	for _, base := range bases {
+		edges = append(edges, core.Link{Predicate: "subClassOf", Target: base})
 	}
 	return core.Node{
 		ID:   name,
@@ -167,7 +171,7 @@ func resolveTypes(store fsys.Store) (map[string]core.TypeDef, error) {
 		return nil, err
 	}
 
-	defs := make(map[string]core.TypeDef, len(names))
+	raw := make(map[string]rawType, len(names))
 	for _, name := range names {
 		path := kernel.TypesDir + "/" + name
 		node, perr := parseNode(store, path)
@@ -179,9 +183,128 @@ func resolveTypes(store fsys.Store) (map[string]core.TypeDef, error) {
 		if invalid != "" {
 			return nil, ErrSchemaInvalid.With(errNoCause, path, invalid)
 		}
-		defs[node.ID] = def
+		raw[node.ID] = def
 	}
-	return defs, nil
+	return resolveEffectiveTypes(raw)
+}
+
+// rawType is the package-private, pre-inheritance-resolution decoding of a
+// type schema document — never exported through core.TypeDef/core.Index
+// (data-model.md "Raw type record").
+type rawType struct {
+	merge       core.MergeOp
+	required    []string
+	optional    []string
+	subClassOf  []string
+	description string
+}
+
+// implicitBaseExempt is excluded from Node's implicit universal-base rule
+// (research.md D5): Node itself (nothing to inherit from itself), and the
+// Property/Class schema meta-types, which describe predicate/type schema
+// documents rather than content.
+var implicitBaseExempt = map[string]bool{"Node": true, propertyType: true, classType: true}
+
+// resolveEffectiveTypes flattens every rawType's own plus every
+// (transitively resolved) rdfs:subClassOf base's Required/Optional into the
+// effective core.TypeDef every consumer of core.Index.Types sees
+// (data-model.md "Effective (inherited) contract"). Memoized recursive
+// descent; an active-recursion-stack check detects a cycle of any length
+// (including direct self-reference) the moment a type is revisited before
+// its own resolution completes; a base name absent from raw is reported as
+// an unresolved reference — including the implicit Node base, when a
+// graph's _schema/types/ carries no Node.md of its own.
+func resolveEffectiveTypes(raw map[string]rawType) (map[string]core.TypeDef, error) {
+	resolved := make(map[string]core.TypeDef, len(raw))
+	onStack := make(map[string]bool, len(raw))
+
+	var resolve func(name string) (core.TypeDef, error)
+	resolve = func(name string) (core.TypeDef, error) {
+		if def, ok := resolved[name]; ok {
+			return def, nil
+		}
+		if onStack[name] {
+			return core.TypeDef{}, ErrSchemaCycle.With(errNoCause, name)
+		}
+		onStack[name] = true
+		defer delete(onStack, name)
+
+		rt := raw[name]
+		bases := rt.subClassOf
+		if !implicitBaseExempt[name] {
+			bases = append(append([]string(nil), bases...), "Node")
+		}
+
+		required := appendMissing(nil, rt.required...)
+		optional := appendMissing(nil, rt.optional...)
+
+		seenBase := make(map[string]bool, len(bases))
+		for _, base := range bases {
+			if seenBase[base] {
+				continue
+			}
+			seenBase[base] = true
+
+			if _, ok := raw[base]; !ok {
+				return core.TypeDef{}, ErrSchemaUnresolvedBase.With(errNoCause, name, base)
+			}
+			baseDef, err := resolve(base)
+			if err != nil {
+				return core.TypeDef{}, err
+			}
+			required = appendMissing(required, baseDef.Required...)
+			optional = appendMissing(optional, baseDef.Optional...)
+		}
+		optional = removeAny(optional, required)
+
+		def := core.TypeDef{Merge: rt.merge, Required: required, Optional: optional, Description: rt.description}
+		resolved[name] = def
+		return def, nil
+	}
+
+	for name := range raw {
+		if _, err := resolve(name); err != nil {
+			return nil, err
+		}
+	}
+	return resolved, nil
+}
+
+// appendMissing appends each of values not already present in list,
+// preserving list's existing order and values' own relative order.
+func appendMissing(list []string, values ...string) []string {
+	for _, v := range values {
+		present := false
+		for _, existing := range list {
+			if existing == v {
+				present = true
+				break
+			}
+		}
+		if !present {
+			list = append(list, v)
+		}
+	}
+	return list
+}
+
+// removeAny returns list with every element also present in exclude
+// dropped, preserving list's own order.
+func removeAny(list, exclude []string) []string {
+	out := make([]string, 0, len(list))
+	for _, v := range list {
+		excluded := false
+		for _, e := range exclude {
+			if v == e {
+				excluded = true
+				break
+			}
+		}
+		if !excluded {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func decodePredicateDef(node core.Node) (core.PredicateDef, string) {
@@ -209,31 +332,34 @@ func decodePredicateDef(node core.Node) (core.PredicateDef, string) {
 	}, ""
 }
 
-func decodeTypeDef(node core.Node) (core.TypeDef, string) {
+func decodeTypeDef(node core.Node) (rawType, string) {
 	merge, ok := attrString(node, "merge")
 	if !ok || !validMergeOps[core.MergeOp(merge)] {
-		return core.TypeDef{}, "merge"
+		return rawType{}, "merge"
 	}
 	description := node.Texts[descriptionKey]
 	if description == "" {
-		return core.TypeDef{}, "description"
+		return rawType{}, "description"
 	}
 
-	var required, optional []string
+	var required, optional, subClassOf []string
 	for _, edge := range node.Edges {
 		switch edge.Predicate {
 		case "required":
 			required = append(required, edge.Target)
 		case "optional":
 			optional = append(optional, edge.Target)
+		case "subClassOf":
+			subClassOf = append(subClassOf, edge.Target)
 		}
 	}
 
-	return core.TypeDef{
-		Merge:       core.MergeOp(merge),
-		Required:    required,
-		Optional:    optional,
-		Description: description,
+	return rawType{
+		merge:       core.MergeOp(merge),
+		required:    required,
+		optional:    optional,
+		subClassOf:  subClassOf,
+		description: description,
 	}, ""
 }
 

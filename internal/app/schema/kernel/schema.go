@@ -89,6 +89,8 @@ var CorePredicateDefs = map[string]core.PredicateDef{
 	"description": {Role: "text", Merge: core.MergeAppend, Description: "Prose describing the predicate's or type's meaning — the body text of a Property/Class node."},
 	"required":    {Role: "link", Merge: core.MergeUnion, Label: "Requires", Description: "Asserts that the class requires the target predicate on every conforming instance."},
 	"optional":    {Role: "link", Merge: core.MergeUnion, Description: "Asserts that the class permits the target predicate."},
+
+	"subClassOf": {Role: "edge", Merge: core.MergeUnion, Aligned: "rdfs:subClassOf", Description: "Declares that the subject type inherits every predicate the target type requires or permits (spec 017)."},
 }
 
 // CoreTypeDefs is ARCNET-CORE's four fixed node types (CORE §11, seeded for
@@ -100,15 +102,15 @@ var CorePredicateDefs = map[string]core.PredicateDef{
 var CoreTypeDefs = map[string]core.TypeDef{
 	"source": {
 		Merge:       core.MergeImmutable,
-		Required:    []string{"title", "published", "abstract", "mentions"},
-		Optional:    []string{"authors", "url", "cites", "tags", "doi", "created", "updated", "indexed", "scoreZ", "scoreC"},
+		Required:    []string{"title", "abstract", "mentions"},
+		Optional:    []string{"authors", "url", "cites", "doi", "indexed"},
 		Description: "A node for one ingested document — the provenance origin other nodes derive from.",
 	},
 	"entity": {
 		Merge:    core.MergeUnion,
 		Required: []string{"category", "definition", "mentionedIn"},
 		Optional: []string{
-			"aliases", "tags", "notes", "published", "created", "updated", "indexed", "scoreZ", "scoreC", "mentions",
+			"aliases", "notes", "indexed", "mentions",
 			"broader", "narrower", "isPartOf", "hasPart", "requires", "replaces", "isReplacedBy", "conformsTo", "related", "referencedBy",
 		},
 		Description: "A node for a subject occurring in sources, typed by Sowa category.",
@@ -118,7 +120,7 @@ var CoreTypeDefs = map[string]core.TypeDef{
 		Required: []string{"ref", "relevance"},
 		Optional: []string{
 			"url", "isCitedBy", "authors", "year", "doi", "status", "notes",
-			"tags", "text", "published", "created", "updated", "indexed", "scoreZ", "scoreC", "mentions", "mentionedIn",
+			"indexed", "mentions", "mentionedIn",
 			"broader", "narrower", "isPartOf", "hasPart", "requires", "replaces", "isReplacedBy", "conformsTo", "related", "referencedBy",
 		},
 		Description: "A node for an external work the graph points to but has not ingested, or a topic/area tracked for reading or research.",
@@ -126,8 +128,14 @@ var CoreTypeDefs = map[string]core.TypeDef{
 	"timeline": {
 		Merge:       core.MergeAppend,
 		Required:    []string{"granularity", "cites", "period"},
-		Optional:    []string{"heading", "tags", "text", "created", "updated", "indexed", "scoreZ", "scoreC", "mentions", "mentionedIn"},
+		Optional:    []string{"heading", "indexed", "mentions", "mentionedIn"},
 		Description: "A production-date index of ingested documents.",
+	},
+	"Node": {
+		Merge:       core.MergeUnion,
+		Required:    []string{"published", "created"},
+		Optional:    []string{"tags", "text", "updated", "scoreZ", "scoreC"},
+		Description: "The graph's implicit universal base type: every content type (source, entity, resource, timeline) inherits its Required/Optional contract via rdfs:subClassOf, whether declared explicitly or not. Never itself a node's own @type — it exists only to be inherited from (spec 017).",
 	},
 	"Property": {
 		Merge:       core.MergeUnion,
@@ -141,4 +149,16 @@ var CoreTypeDefs = map[string]core.TypeDef{
 		Optional:    []string{"required", "optional"},
 		Description: "A type schema node: the mechanism CORE uses to register a @type value's own vocabulary as an ordinary graph node.",
 	},
+}
+
+// CoreTypeBases declares each seeded content type's explicit rdfs:subClassOf
+// base(s) — written to Seed's rendered output for self-description (spec
+// 017, data-model.md), redundant with the implicit Node base every type
+// except Node/Property/Class already receives at resolve time regardless of
+// what this map says.
+var CoreTypeBases = map[string][]string{
+	"source":   {"Node"},
+	"entity":   {"Node"},
+	"resource": {"Node"},
+	"timeline": {"Node"},
 }

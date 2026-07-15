@@ -308,7 +308,7 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 	reporter.Done(labelApplyingNodes, time.Since(start))
 
 	start = time.Now()
-	timeline, err := applyTimeline(store, patch, sourceNode, timelinePeriodsFromPatch)
+	timeline, err := applyTimeline(store, patch, sourceNode, timelinePeriodsFromPatch, stamp)
 	if err != nil {
 		reporter.Error(labelUpdatingTL, err)
 		rollback(store, createdPaths)
@@ -582,7 +582,7 @@ func periodGranularity(period string) (path, granularity, heading string, ok boo
 // already-present document id is a no-op (CORE §10 "append" — keyed for
 // uniqueness), so declaring a period that coincides with the one already
 // derived from patch.Published is harmless.
-func applyTimeline(store fsys.Store, patch core.Patch, source core.Node, extraPeriods []string) ([]string, error) {
+func applyTimeline(store fsys.Store, patch core.Patch, source core.Node, extraPeriods []string, stamp string) ([]string, error) {
 	yearly, monthly := core.TimelinePeriods(patch.Published)
 
 	title := patch.Title
@@ -624,7 +624,7 @@ func applyTimeline(store fsys.Store, patch core.Patch, source core.Node, extraPe
 		if !ok {
 			continue
 		}
-		if err := upsertTimelinePeriod(store, path, period, granularity, heading, entry); err != nil {
+		if err := upsertTimelinePeriod(store, path, period, granularity, heading, entry, stamp); err != nil {
 			return nil, err
 		}
 	}
@@ -632,7 +632,7 @@ func applyTimeline(store fsys.Store, patch core.Patch, source core.Node, extraPe
 	return touched, nil
 }
 
-func upsertTimelinePeriod(store fsys.Store, path, period, granularity, heading string, newEntry timelineEntry) error {
+func upsertTimelinePeriod(store fsys.Store, path, period, granularity, heading string, newEntry timelineEntry, stamp string) error {
 	existing, err := readFileIfExists(store, path)
 	if err != nil {
 		return err
@@ -656,6 +656,20 @@ func upsertTimelinePeriod(store fsys.Store, path, period, granularity, heading s
 	copy(entries[insertAt+1:], entries[insertAt:])
 	entries[insertAt] = newEntry
 
+	// published/created (spec 017 — timeline now implicitly inherits Node's
+	// contract, which requires both) are stamped once, at this period
+	// file's own first creation, and preserved verbatim on every later
+	// entry insertion — mirroring the Merge:Immutable behavior their own
+	// predicate registration declares, since this file is rewritten
+	// wholesale on each upsert rather than going through internal/core's
+	// per-predicate merge dispatch (research.md D5's flagged consequence).
+	created := stamp
+	if node, perr := core.ParseNode(strings.NewReader(existing)); perr == nil {
+		if v := attrString(node, "created"); v != "" {
+			created = v
+		}
+	}
+
 	var buf strings.Builder
 	buf.WriteString("---\n")
 	// "@id"/"@type" (not the old "kind" field) so this file satisfies
@@ -670,6 +684,8 @@ func upsertTimelinePeriod(store fsys.Store, path, period, granularity, heading s
 	buf.WriteString("\"@type\": timeline\n")
 	buf.WriteString("period: \"" + period + "\"\n")
 	buf.WriteString("granularity: " + granularity + "\n")
+	buf.WriteString("published: \"" + created + "\"\n")
+	buf.WriteString("created: \"" + created + "\"\n")
 	buf.WriteString("---\n")
 	buf.WriteString("# " + heading + "\n\n")
 	for _, e := range entries {
