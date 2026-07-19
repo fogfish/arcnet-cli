@@ -2,6 +2,14 @@
 
 ## 2026-07-14
 
+/speckit-specify The app uses mixture of upper and lower cases for node classes. In the patch parser the type names are converted into the lower case. The lower-case names for type contradicts with RDFS and other type systems. The app MUST always treat types as CamelCase.
+
+The build-in schema, `arc init`, `arc lint` MUST define and treat class names as Came Case. The `arc apply` MUST reject any document if the H1 does not follow CamelCase and H1 name starts with lower case.  
+
+/speckit-plan Modify built in schema and `arc init` to create the empty graph with all classes/types as CamelCase with first capital letter. Modify `arc apply` to accept only the patch document where H1 is CamelCase with first capital letter. Modify `arc lint` and other elements to work with CamelCase for types. 
+
+## 2026-07-14
+
 /speckit-specify `arc apply schema <patch.md> | <url>` sub-command applies a patch document into the schema. Essentially, the patch document has same format as the graph based pathc document but carries only definition for the schema. The command is defined to import schemas specification for arcnet extensions. It only accepts `Property` and `Class` types from the patch document. If the patch contains other types, entire process fails.  
 
 /speckit-plan implement the apply scheme feature within `internal/app/schema`. Implement the cli command within `cmd/arc/ctrl` becuase it is a "controller" feature (we used apply only due to verb requirements).
