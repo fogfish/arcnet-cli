@@ -59,7 +59,7 @@ func textOf(t *testing.T, result *mcp.CallToolResult) string {
 
 const serveEntityTLS = `---
 "@id": Transport Layer Security
-"@type": entity
+"@type": Entity
 category: form structure attribute process
 ---
 # Transport Layer Security
@@ -71,7 +71,7 @@ TLS is the successor to SSL.
 
 const serveSourceTLS13 = `---
 "@id": rescorla-2026-tls13
-"@type": source
+"@type": Source
 title: TLS 1.3
 ---
 # rescorla-2026-tls13
@@ -193,7 +193,7 @@ func TestServeNodeGrepReturnsOneRowPerMatch(t *testing.T) {
 		Should(it.String(text).Contain("rescorla-2026-tls13"))
 }
 
-// { "name": "node_grep", "arguments": { "pattern": "TLS", "filter": { "type": ["source"] } } }
+// { "name": "node_grep", "arguments": { "pattern": "TLS", "filter": { "type": ["Source"] } } }
 // Scenario 2 from spec.md US2: a filter object narrows the matched nodes.
 func TestServeNodeGrepFilterNarrowsMatchedNodes(t *testing.T) {
 	dir := t.TempDir()
@@ -208,7 +208,7 @@ func TestServeNodeGrepFilterNarrowsMatchedNodes(t *testing.T) {
 		Name: "node_grep",
 		Arguments: map[string]any{
 			"pattern": "TLS",
-			"filter":  map[string]any{"type": []string{"source"}},
+			"filter":  map[string]any{"type": []string{"Source"}},
 		},
 	})
 
@@ -220,7 +220,7 @@ func TestServeNodeGrepFilterNarrowsMatchedNodes(t *testing.T) {
 		ShouldNot(it.String(text).Contain("Transport Layer Security |"))
 }
 
-// { "name": "node_grep", "arguments": { "pattern": "TLS", "filter": { "kind": ["source"] } } }
+// { "name": "node_grep", "arguments": { "pattern": "TLS", "filter": { "kind": ["Source"] } } }
 // Edge case from spec.md: a filter payload still keyed "kind" (the retired
 // wire field name) is rejected with a clear tool error identifying "kind" as
 // an unrecognized filter property — node_grep's argument schema disallows
@@ -241,7 +241,7 @@ func TestServeNodeGrepOldKindFieldRejectedAsUnrecognizedProperty(t *testing.T) {
 		Name: "node_grep",
 		Arguments: map[string]any{
 			"pattern": "TLS",
-			"filter":  map[string]any{"kind": []string{"source"}},
+			"filter":  map[string]any{"kind": []string{"Source"}},
 		},
 	})
 
@@ -319,7 +319,7 @@ func TestServeSubgraphGetDefaultDepthReturnsSeedAndNeighbors(t *testing.T) {
 
 const serveChainA = `---
 "@id": ChainA
-"@type": entity
+"@type": Entity
 ---
 # ChainA
 
@@ -327,7 +327,7 @@ const serveChainA = `---
 `
 const serveChainB = `---
 "@id": ChainB
-"@type": entity
+"@type": Entity
 ---
 # ChainB
 
@@ -335,7 +335,7 @@ const serveChainB = `---
 `
 const serveChainC = `---
 "@id": ChainC
-"@type": entity
+"@type": Entity
 ---
 # ChainC
 `
@@ -375,7 +375,7 @@ func TestServeSubgraphGetExplicitDepthWidensSet(t *testing.T) {
 
 const serveDiamondA = `---
 "@id": DiamondA
-"@type": entity
+"@type": Entity
 ---
 # DiamondA
 
@@ -384,7 +384,7 @@ const serveDiamondA = `---
 `
 const serveDiamondB = `---
 "@id": DiamondB
-"@type": entity
+"@type": Entity
 ---
 # DiamondB
 
@@ -392,7 +392,7 @@ const serveDiamondB = `---
 `
 const serveDiamondC = `---
 "@id": DiamondC
-"@type": entity
+"@type": Entity
 ---
 # DiamondC
 
@@ -400,7 +400,7 @@ const serveDiamondC = `---
 `
 const serveDiamondD = `---
 "@id": DiamondD
-"@type": entity
+"@type": Entity
 ---
 # DiamondD
 `
@@ -583,12 +583,12 @@ func TestRenderMatchTableZeroMatchesHeaderOnly(t *testing.T) {
 
 func TestRenderMatchTableMultipleMatchesOneRowEachInOrder(t *testing.T) {
 	out := renderMatchTable([]kernel.Match{
-		{ID: "a", Type: "source", Line: 1, Text: "first"},
-		{ID: "b", Type: "entity", Line: 2, Text: "second"},
+		{ID: "a", Type: "Source", Line: 1, Text: "first"},
+		{ID: "b", Type: "Entity", Line: 2, Text: "second"},
 	})
 
-	firstIdx := strings.Index(out, "| a | source | 1 | first |")
-	secondIdx := strings.Index(out, "| b | entity | 2 | second |")
+	firstIdx := strings.Index(out, "| a | Source | 1 | first |")
+	secondIdx := strings.Index(out, "| b | Entity | 2 | second |")
 	it.Then(t).
 		Should(it.True(firstIdx >= 0)).
 		Should(it.True(secondIdx >= 0)).

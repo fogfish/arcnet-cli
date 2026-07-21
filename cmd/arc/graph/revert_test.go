@@ -126,7 +126,7 @@ title: "A Working Note"
 ## kolesnikov-2020-note
 ` + "```yaml" + `
 "@id": "kolesnikov-2020-note"
-"@type": source
+"@type": Source
 title: "A Working Note"
 authors: [Test Author]
 published: "2020-05-01"
@@ -137,7 +137,7 @@ A short note.
 # Hypothesis
 
 ## Forward Secrecy Requires Ephemeral Keys
-` + "```yaml\n\"@id\": \"Forward Secrecy Requires Ephemeral Keys\"\n\"@type\": hypothesis\n```" + `
+` + "```yaml\n\"@id\": \"Forward Secrecy Requires Ephemeral Keys\"\n\"@type\": Hypothesis\n```" + `
 
 A conclusion distilled from sources.
 `
@@ -166,7 +166,7 @@ func TestRevertOlderNonOverlappingPatchStillTakesWholeCommitPath(t *testing.T) {
 	_, err = sut(NewApplyCmd(), []string{patch2})
 	it.Then(t).Should(it.Nil(err))
 
-	before := readFile(t, filepath.Join(dir, "hypothesis", "Forward Secrecy Requires Ephemeral Keys.md"))
+	before := readFile(t, filepath.Join(dir, "Hypothesis", "Forward Secrecy Requires Ephemeral Keys.md"))
 
 	out, err := sut(forcedRevertCmd(t), []string{"rescorla-2026-tls13"})
 	it.Then(t).ShouldNot(it.Error(out, err))
@@ -175,7 +175,7 @@ func TestRevertOlderNonOverlappingPatchStillTakesWholeCommitPath(t *testing.T) {
 	_, statErr := os.Stat(filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 
-	after := readFile(t, filepath.Join(dir, "hypothesis", "Forward Secrecy Requires Ephemeral Keys.md"))
+	after := readFile(t, filepath.Join(dir, "Hypothesis", "Forward Secrecy Requires Ephemeral Keys.md"))
 	it.Then(t).Should(it.Equal(before, after))
 }
 
@@ -190,7 +190,7 @@ title: "Document A"
 ## doc-2026-a
 ` + "```yaml" + `
 "@id": "doc-2026-a"
-"@type": source
+"@type": Source
 title: "Document A"
 authors: [Author A]
 published: "2026-04-01"
@@ -206,7 +206,7 @@ First document.
 ## TLS 1.3
 ` + "```yaml" + `
 "@id": "TLS 1.3"
-"@type": entity
+"@type": Entity
 category: [independent, abstract, occurrent, script]
 ` + "```" + `
 
@@ -224,7 +224,7 @@ title: "Document B"
 ## doc-2026-b
 ` + "```yaml" + `
 "@id": "doc-2026-b"
-"@type": source
+"@type": Source
 title: "Document B"
 authors: [Author B]
 published: "2026-04-02"
@@ -240,7 +240,7 @@ Second document.
 ## TLS 1.3
 ` + "```yaml" + `
 "@id": "TLS 1.3"
-"@type": entity
+"@type": Entity
 category: [independent, abstract, occurrent, script]
 tags: [deployed]
 ` + "```" + `
@@ -324,7 +324,7 @@ title: "Resource Document"
 ## doc-2026-r
 ` + "```yaml" + `
 "@id": "doc-2026-r"
-"@type": source
+"@type": Source
 title: "Resource Document"
 authors: [Author R]
 published: "2026-05-01"
@@ -338,7 +338,7 @@ A resource-contributing document.
 # Resource
 
 ## RFC 9999
-` + "```yaml\n\"@id\": \"RFC 9999\"\n\"@type\": resource\nref: standard\n```" + `
+` + "```yaml\n\"@id\": \"RFC 9999\"\n\"@type\": Resource\nref: standard\n```" + `
 
 An exclusively-owned resource.
 `
@@ -354,7 +354,7 @@ title: "Referrer Document"
 ## doc-2026-s
 ` + "```yaml" + `
 "@id": "doc-2026-s"
-"@type": source
+"@type": Source
 title: "Referrer Document"
 authors: [Author S]
 published: "2026-05-02"
@@ -368,7 +368,7 @@ A document whose entity references the other patch's resource.
 # Entity
 
 ## Widget X
-` + "```yaml\n\"@id\": \"Widget X\"\n\"@type\": entity\ncategory: [independent]\n```" + `
+` + "```yaml\n\"@id\": \"Widget X\"\n\"@type\": Entity\ncategory: [independent]\n```" + `
 
 A widget.
 - relatesTo:: [[RFC 9999]]

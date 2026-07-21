@@ -118,7 +118,7 @@ func commitAll(t *testing.T, dir, message string) {
 
 const conformantSource = `---
 "@id": foo-2026-x
-"@type": source
+"@type": Source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -134,7 +134,7 @@ A test document.
 
 const conformantEntity = `---
 "@id": Widget
-"@type": entity
+"@type": Entity
 category: [independent, abstract, occurrent, script]
 published: "2026-04-12"
 created: "2026-04-12"
@@ -198,8 +198,8 @@ func TestLintExcludesSchemaDocumentsFromCheckedCount(t *testing.T) {
 func TestLintSchemaBasenameDoesNotCollideWithContentNode(t *testing.T) {
 	dir := t.TempDir()
 	buildConformantGraph(t, dir)
-	writeNode(t, dir, "_schema/types/hypothesis.md", "---\n\"@id\": hypothesis\n\"@type\": Class\nmerge: union\n---\n# hypothesis\n\nA domain type registered by this test fixture.\n")
-	writeNode(t, dir, "entities/hypothesis.md", "---\n\"@id\": hypothesis\n\"@type\": entity\ncategory: [independent, abstract, occurrent, script]\npublished: \"2026-04-12\"\ncreated: \"2026-04-12\"\n---\n# hypothesis\n\nA namesake entity, unrelated to the schema kind of the same name.\n\n## MentionedIn\n- mentionedIn:: [[foo-2026-x]]\n")
+	writeNode(t, dir, "_schema/types/Hypothesis.md", "---\n\"@id\": Hypothesis\n\"@type\": Class\nmerge: union\n---\n# Hypothesis\n\nA domain type registered by this test fixture.\n")
+	writeNode(t, dir, "entities/Hypothesis.md", "---\n\"@id\": Hypothesis\n\"@type\": Entity\ncategory: [independent, abstract, occurrent, script]\npublished: \"2026-04-12\"\ncreated: \"2026-04-12\"\n---\n# Hypothesis\n\nA namesake entity, unrelated to the schema kind of the same name.\n\n## MentionedIn\n- mentionedIn:: [[foo-2026-x]]\n")
 	commitAll(t, dir, "seed: hypothesis entity and schema doc")
 	chdir(t, dir)
 
@@ -220,7 +220,7 @@ func TestLintReportsEveryViolationAcrossRulesInSameFile(t *testing.T) {
 
 	broken := `---
 "@id": Widget
-"@type": entity
+"@type": Entity
 title: Widget
 category: [independent, abstract, occurrent]
 ---
@@ -255,7 +255,7 @@ func TestLintUnresolvedLinkReportedPrecisely(t *testing.T) {
 
 	broken := `---
 "@id": Widget
-"@type": entity
+"@type": Entity
 title: Widget
 category: [independent, abstract, occurrent, script]
 ---
@@ -391,7 +391,7 @@ func TestLintMissingIdReportsFrontMatterViolation(t *testing.T) {
 	dir := t.TempDir()
 	buildConformantGraph(t, dir)
 
-	missingID := "---\n\"@type\": entity\ntitle: Legacy\ncategory: [independent]\n---\n# Legacy\n\nAn entity missing its mandatory \"@id\" field.\n"
+	missingID := "---\n\"@type\": Entity\ntitle: Legacy\ncategory: [independent]\n---\n# Legacy\n\nAn entity missing its mandatory \"@id\" field.\n"
 	writeNode(t, dir, "entities/Legacy.md", missingID)
 	chdir(t, dir)
 
@@ -411,7 +411,7 @@ func TestLintMissingIdReportsFrontMatterViolation(t *testing.T) {
 // (it has no filename parameter — see internal/core/markdown.go's ParseNode
 // doc comment); arc lint enforces it universally, for every node type, via
 // a frontMatter violation in internal/app/lint/service.Lint itself (not
-// just for "source" nodes via the narrower, pre-existing sourceCitekey
+// just for "Source" nodes via the narrower, pre-existing sourceCitekey
 // rule) — any node type demonstrates the behavior.
 func TestLintIdMismatchedBasenameReportsFrontMatterViolation(t *testing.T) {
 	dir := t.TempDir()
@@ -419,7 +419,7 @@ func TestLintIdMismatchedBasenameReportsFrontMatterViolation(t *testing.T) {
 
 	mismatched := `---
 "@id": wrong-id
-"@type": source
+"@type": Source
 title: "A Mismatched Source"
 published: "2026-04-12"
 ---
@@ -448,7 +448,7 @@ func TestLintVerboseListsEveryNodeDefaultListsOnlyFailing(t *testing.T) {
 
 	broken := `---
 "@id": Widget
-"@type": entity
+"@type": Entity
 title: Widget
 category: [independent, abstract, occurrent, script]
 ---
@@ -498,13 +498,17 @@ func TestLintTargetNotAGraphRefuses(t *testing.T) {
 func TestLintMalformedSchemaDocumentRefuses(t *testing.T) {
 	dir := t.TempDir()
 	buildConformantGraph(t, dir)
-	entityDoc := readFile(t, filepath.Join(dir, "_schema", "types", "entity.md"))
-	writeNode(t, dir, "_schema/types/entity.md", strings.ReplaceAll(entityDoc, "merge: union", "merge: bogus"))
+	// spec 012 FR-020 (Bugfix 018/BUG-001): a Class document's own "merge"
+	// field is no longer validated as mandatory, so corrupting it (as this
+	// test previously did via "merge: bogus") no longer makes the document
+	// malformed — its mandatory descriptive body is corrupted instead.
+	entityDoc := readFile(t, filepath.Join(dir, "_schema", "types", "Entity.md"))
+	writeNode(t, dir, "_schema/types/Entity.md", strings.ReplaceAll(entityDoc, "A node for a subject occurring in sources, typed by Sowa category.", ""))
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
 
-	it.Then(t).Should(it.Error(out, err).Contain("_schema/types/entity.md"))
+	it.Then(t).Should(it.Error(out, err).Contain("_schema/types/Entity.md"))
 }
 
 // arc lint --json
@@ -542,7 +546,7 @@ func TestLintTypeRequiresMissingPredicateReported(t *testing.T) {
 
 	missingMentions := `---
 "@id": foo-2026-x
-"@type": source
+"@type": Source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -560,7 +564,7 @@ A test document.
 		ShouldNot(it.Nil(err)).
 		Should(it.String(out).Contain("sources/foo-2026-x.md")).
 		Should(it.String(out).Contain("[typeRequires]")).
-		Should(it.String(out).Contain(`type "source" requires predicate "mentions", but this node does not carry it`))
+		Should(it.String(out).Contain(`type "Source" requires predicate "mentions", but this node does not carry it`))
 }
 
 // arc lint
@@ -608,7 +612,7 @@ func TestLintTypeOptionalUnlistedPredicateReported(t *testing.T) {
 
 	extraPredicate := `---
 "@id": foo-2026-x
-"@type": source
+"@type": Source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -629,7 +633,7 @@ A test document.
 	it.Then(t).
 		ShouldNot(it.Nil(err)).
 		Should(it.String(out).Contain("[typeOptional]")).
-		Should(it.String(out).Contain(`predicate "status" is not permitted by type "source" (not listed under its Requires or Optional)`))
+		Should(it.String(out).Contain(`predicate "status" is not permitted by type "Source" (not listed under its Requires or Optional)`))
 }
 
 // arc lint
@@ -702,7 +706,7 @@ func TestLintUnquotedIdKeyReportsIdentityQuotingViolation(t *testing.T) {
 
 	unquotedID := `---
 @id: foo-2026-x
-"@type": source
+"@type": Source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -772,7 +776,7 @@ func TestLintDomainRegisteredCitoPredicateAcceptedAsCitation(t *testing.T) {
 
 	citing := `---
 "@id": foo-2026-x
-"@type": source
+"@type": Source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -803,7 +807,7 @@ func TestLintUnregisteredCitationPredicateStillReported(t *testing.T) {
 
 	citing := `---
 "@id": foo-2026-x
-"@type": source
+"@type": Source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -848,7 +852,7 @@ func TestLintZeroCitoAlignedPredicatesRejectsEveryCitation(t *testing.T) {
 
 	citing := `---
 "@id": foo-2026-x
-"@type": source
+"@type": Source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -886,12 +890,12 @@ role: text
 
 A short highlighted note about the entity, always written as prose.
 `)
-	writeNode(t, dir, "_schema/types/entity.md", `---
-"@id": entity
+	writeNode(t, dir, "_schema/types/Entity.md", `---
+"@id": Entity
 "@type": Class
 merge: union
 ---
-# entity
+# Entity
 
 A node for a subject occurring in sources, typed by Sowa category.
 
@@ -919,7 +923,7 @@ func TestLintTextRolePredicateAsEdgeReportsPredicateRoleViolation(t *testing.T) 
 
 	misplaced := `---
 "@id": Widget
-"@type": entity
+"@type": Entity
 category: [independent, abstract, occurrent, script]
 ---
 # Widget
@@ -967,7 +971,7 @@ func TestLintUnregisteredPredicateNoPredicateRoleViolation(t *testing.T) {
 
 	unregistered := `---
 "@id": Widget
-"@type": entity
+"@type": Entity
 category: [independent, abstract, occurrent, script]
 ---
 # Widget
@@ -1000,7 +1004,7 @@ func TestLintEntitySemanticPredicateAndNotesNoTypeOptionalViolation(t *testing.T
 
 	widget := `---
 "@id": Widget
-"@type": entity
+"@type": Entity
 category: [independent, abstract, occurrent, script]
 published: "2026-04-12"
 created: "2026-04-12"
@@ -1036,7 +1040,7 @@ func TestLintResourceSemanticPredicateNoTypeOptionalViolation(t *testing.T) {
 
 	resource := `---
 "@id": RFC 8446
-"@type": resource
+"@type": Resource
 ref: standard
 published: "2026-04-12"
 created: "2026-04-12"
@@ -1060,7 +1064,7 @@ A normative specification.
 // arc lint
 // spec 017 US1 Acceptance Scenarios 1.2/1.3: a source node missing
 // "published" — required only via the implicit Node base, not declared
-// directly on "source" (data-model.md's reshaped-types table) — is flagged
+// directly on "Source" (data-model.md's reshaped-types table) — is flagged
 // under [typeRequires] exactly as a directly-required predicate would be,
 // and the violation clears once the node carries it.
 func TestLintInheritedRequiredPredicateEnforcedLikeDirect(t *testing.T) {
@@ -1069,7 +1073,7 @@ func TestLintInheritedRequiredPredicateEnforcedLikeDirect(t *testing.T) {
 
 	missingPublished := `---
 "@id": foo-2026-x
-"@type": source
+"@type": Source
 title: "A Test Document"
 authors: [Test Author]
 created: "2026-04-12"
@@ -1090,7 +1094,7 @@ A test document.
 		ShouldNot(it.Nil(err)).
 		Should(it.String(out).Contain("sources/foo-2026-x.md")).
 		Should(it.String(out).Contain("[typeRequires]")).
-		Should(it.String(out).Contain(`type "source" requires predicate "published", but this node does not carry it`))
+		Should(it.String(out).Contain(`type "Source" requires predicate "published", but this node does not carry it`))
 
 	restored := strings.Replace(missingPublished, "created: \"2026-04-12\"", "published: \"2026-04-12\"\ncreated: \"2026-04-12\"", 1)
 	writeNode(t, dir, "sources/foo-2026-x.md", restored)
@@ -1133,14 +1137,14 @@ func registerType(t *testing.T, dir, name string, required []string, subClassOf 
 func TestLintComposedTypeEnforcesBothBasePredicates(t *testing.T) {
 	dir := t.TempDir()
 	buildConformantGraph(t, dir)
-	registerType(t, dir, "citable", []string{"doi"}, nil)
-	registerType(t, dir, "timestamped", []string{"updated"}, nil)
-	registerType(t, dir, "dataset", nil, []string{"citable", "timestamped"})
-	commitAll(t, dir, "seed: citable/timestamped/dataset types")
+	registerType(t, dir, "Citable", []string{"doi"}, nil)
+	registerType(t, dir, "Timestamped", []string{"updated"}, nil)
+	registerType(t, dir, "Dataset", nil, []string{"Citable", "Timestamped"})
+	commitAll(t, dir, "seed: Citable/Timestamped/Dataset types")
 
 	missingBoth := `---
 "@id": widget-dataset
-"@type": dataset
+"@type": Dataset
 published: "2026-04-12"
 created: "2026-04-12"
 ---
@@ -1157,12 +1161,12 @@ A dataset missing both inherited predicates.
 
 	it.Then(t).
 		ShouldNot(it.Nil(err)).
-		Should(it.String(out).Contain(`type "dataset" requires predicate "doi", but this node does not carry it`)).
-		Should(it.String(out).Contain(`type "dataset" requires predicate "updated", but this node does not carry it`))
+		Should(it.String(out).Contain(`type "Dataset" requires predicate "doi", but this node does not carry it`)).
+		Should(it.String(out).Contain(`type "Dataset" requires predicate "updated", but this node does not carry it`))
 
 	complete := `---
 "@id": widget-dataset
-"@type": dataset
+"@type": Dataset
 published: "2026-04-12"
 created: "2026-04-12"
 doi: "10.1000/example"
@@ -1300,4 +1304,65 @@ func TestLintTwoTypeCycleFailsClearly(t *testing.T) {
 
 	it.Then(t).ShouldNot(it.Nil(err))
 	it.Then(t).Should(it.True(strings.Contains(err.Error(), "CycleA") || strings.Contains(err.Error(), "CycleB")))
+}
+
+// arc lint
+// spec.md US3 Acceptance Scenario 1: a schema type definition whose own
+// name begins with a lowercase letter produces a typeCase violation.
+func TestLintLowercaseSchemaTypeDefinitionProducesTypeCaseViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	registerType(t, dir, "widget", nil, nil)
+	commitAll(t, dir, "seed: lowercase widget type")
+	chdir(t, dir)
+
+	out, _ := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.String(out).Contain("typeCase")).
+		Should(it.String(out).Contain("widget"))
+}
+
+const lowercaseTypedNode = `---
+"@id": Thing
+"@type": widget
+published: "2026-04-12"
+created: "2026-04-12"
+---
+# Thing
+
+A node whose own class reference is not CamelCase.
+`
+
+// arc lint
+// spec.md US3 Acceptance Scenario 2: a node whose own "@type" reference
+// begins with a lowercase letter produces a typeCase violation.
+func TestLintLowercaseNodeTypeReferenceProducesTypeCaseViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	registerType(t, dir, "widget", nil, nil)
+	writeNode(t, dir, "widget/Thing.md", lowercaseTypedNode)
+	commitAll(t, dir, "seed: lowercase-typed node")
+	chdir(t, dir)
+
+	out, _ := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.String(out).Contain("typeCase")).
+		Should(it.String(out).Contain("Thing"))
+}
+
+// arc lint
+// spec.md US3 Acceptance Scenario 3: a schema and graph where every class
+// name begins with an uppercase letter reports no typeCase violation.
+func TestLintAllCamelCaseGraphReportsNoTypeCaseViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("typeCase"))
 }

@@ -35,6 +35,7 @@ const (
 	RuleTypeOptional        Rule = "typeOptional"
 	RuleIdentityQuoting     Rule = "identityQuoting"
 	RulePredicateRole       Rule = "predicateRole"
+	RuleTypeCase            Rule = "typeCase"
 )
 
 // Violation is the domain value one failed check produces.

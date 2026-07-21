@@ -180,7 +180,7 @@ title: "TLS 1.3: Design and Rationale"
 ## rescorla-2026-tls13
 ` + "```yaml" + `
 "@id": "rescorla-2026-tls13"
-"@type": source
+"@type": Source
 title: "TLS 1.3: Design and Rationale"
 authors: [Eric Rescorla]
 published: "2026-04-12"
@@ -197,7 +197,7 @@ A design retrospective on the TLS 1.3 handshake.
 ## Transport Layer Security
 ` + "```yaml" + `
 "@id": "Transport Layer Security"
-"@type": entity
+"@type": Entity
 category: [independent, abstract, occurrent, script]
 ` + "```" + `
 
@@ -250,7 +250,7 @@ func TestApplyCreatesTimelineEntriesChronologically(t *testing.T) {
 	// chronological: rescorla (04-12) must appear before chen (04-28)
 	it.Then(t).Should(it.True(strings.Index(monthly, "rescorla-2026-tls13") < strings.Index(monthly, "chen-2026-pqkex")))
 
-	// spec.md User Story 2 (T022): timeline's entries list is the one
+	// spec.md User Story 2 (T022): Timeline's entries list is the one
 	// production type this feature's single-link-role-predicate-body
 	// omission rule governs today — a period file's entries list must
 	// never carry a "## " heading anywhere.
@@ -318,14 +318,14 @@ func TestApplyReportsCreatedCounts(t *testing.T) {
 
 	it.Then(t).ShouldNot(it.Error(out, err))
 	it.Then(t).
-		Should(it.String(out).Contain("+1 source")).
-		Should(it.String(out).Contain("+1 entity")).
+		Should(it.String(out).Contain("+1 Source")).
+		Should(it.String(out).Contain("+1 Entity")).
 		Should(it.String(out).Contain("rescorla-2026-tls13"))
 }
 
 const tlsEntitySeed = `---
 "@id": "Transport Layer Security"
-"@type": entity
+"@type": Entity
 title: Transport Layer Security
 category: [independent, abstract, occurrent, script]
 ---
@@ -347,7 +347,7 @@ title: "Post-Quantum Key Exchange in Practice"
 ## chen-2026-pqkex
 ` + "```yaml" + `
 "@id": "chen-2026-pqkex"
-"@type": source
+"@type": Source
 title: "Post-Quantum Key Exchange in Practice"
 authors: [Lin Chen]
 published: "2026-04-28"
@@ -360,7 +360,7 @@ Surveys post-quantum key exchange deployment.
 ## Transport Layer Security
 ` + "```yaml" + `
 "@id": "Transport Layer Security"
-"@type": entity
+"@type": Entity
 category: [independent, abstract, occurrent, script]
 ` + "```" + `
 
@@ -393,7 +393,7 @@ func TestApplyMergesExistingEntityUnion(t *testing.T) {
 
 const rfcResourceSeedEmptyStatus = `---
 "@id": "RFC 8446"
-"@type": resource
+"@type": Resource
 title: RFC 8446
 ref: standard
 status: ""
@@ -414,7 +414,7 @@ title: "Post-Quantum Key Exchange in Practice"
 ## chen-2026-pqkex
 ` + "```yaml" + `
 "@id": "chen-2026-pqkex"
-"@type": source
+"@type": Source
 title: "Post-Quantum Key Exchange in Practice"
 authors: [Lin Chen]
 published: "2026-04-28"
@@ -427,7 +427,7 @@ Surveys post-quantum key exchange deployment.
 ## RFC 8446
 ` + "```yaml" + `
 "@id": "RFC 8446"
-"@type": resource
+"@type": Resource
 ref: standard
 status: read
 ` + "```" + `
@@ -453,7 +453,7 @@ func TestApplyMergeFillsEmptyResourceField(t *testing.T) {
 
 const rfcResourceSeedSetStatus = `---
 "@id": "RFC 8446"
-"@type": resource
+"@type": Resource
 title: RFC 8446
 ref: standard
 status: read
@@ -475,7 +475,7 @@ title: "Post-Quantum Key Exchange in Practice"
 ## chen-2026-pqkex
 ` + "```yaml" + `
 "@id": "chen-2026-pqkex"
-"@type": source
+"@type": Source
 title: "Post-Quantum Key Exchange in Practice"
 authors: [Lin Chen]
 published: "2026-04-28"
@@ -488,7 +488,7 @@ Surveys post-quantum key exchange deployment.
 ## RFC 8446
 ` + "```yaml" + `
 "@id": "RFC 8446"
-"@type": resource
+"@type": Resource
 ref: standard
 status: backlog
 category: informative
@@ -499,7 +499,7 @@ A survey of TLS 1.3 adoption patterns.
 
 const llmEntitySeed = `---
 "@id": "LLM"
-"@type": entity
+"@type": Entity
 title: LLM
 score-c: 0.13432835820895522
 score-z: 2.2522964920476682
@@ -524,7 +524,7 @@ title: "Agentic Coding Workflows"
 ## karpathy-2026-agentic
 ` + "```yaml" + `
 "@id": "karpathy-2026-agentic"
-"@type": source
+"@type": Source
 title: "Agentic Coding Workflows"
 authors: [Andrej Karpathy]
 published: "2026-05-01"
@@ -540,7 +540,7 @@ Discusses agentic coding workflows and their effect on software development.
 ## LLM
 ` + "```yaml" + `
 "@id": "LLM"
-"@type": entity
+"@type": Entity
 score-c: 0.28125
 score-z: 2.8783652519773235
 ` + "```" + `
@@ -555,7 +555,7 @@ Andrej Karpathy has publicly argued that agentic coding workflows will reshape h
 // they fall back to union and genuinely list-accumulate on every re-ingest
 // (research.md D5c/D6, a documented, intentional behavior change from the
 // old arity-based dispatch, which silently kept only the existing value).
-// "definition" (LLM's own leading prose, an "entity"'s own predicate,
+// "definition" (LLM's own leading prose, an "Entity"'s own predicate,
 // role: text) is now seeded append (FR-018) rather than firstWriteWin, so
 // a near-duplicate paraphrase from a re-ingest pipeline is recognized and
 // dropped (never flagged), while a genuinely new paragraph is appended —
@@ -634,7 +634,7 @@ func TestApplyCommitStatsDistinguishMergedFromCreated(t *testing.T) {
 
 	it.Then(t).ShouldNot(it.Error(out, err))
 	it.Then(t).
-		Should(it.String(out).Contain("+1 source")).
+		Should(it.String(out).Contain("+1 Source")).
 		Should(it.String(out).Contain("+0 entities")).
 		Should(it.String(out).Contain("1 merged"))
 }
@@ -650,7 +650,7 @@ title: "A Working Note"
 ## kolesnikov-2026-note
 ` + "```yaml" + `
 "@id": "kolesnikov-2026-note"
-"@type": source
+"@type": Source
 title: "A Working Note"
 authors: [Test Author]
 published: "2026-05-01"
@@ -661,7 +661,7 @@ A short note.
 # Hypothesis
 
 ## Forward Secrecy Requires Ephemeral Keys
-` + "```yaml\n\"@id\": \"Forward Secrecy Requires Ephemeral Keys\"\n\"@type\": hypothesis\n```" + `
+` + "```yaml\n\"@id\": \"Forward Secrecy Requires Ephemeral Keys\"\n\"@type\": Hypothesis\n```" + `
 
 A conclusion distilled from sources.
 `
@@ -672,7 +672,7 @@ A conclusion distilled from sources.
 func TestApplyRegisteredKindUsesRegisteredBehaviorNoWarning(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedSchemaNode(t, dir, "hypothesis", "validatedOverwrite")
+	seedSchemaNode(t, dir, "Hypothesis", "validatedOverwrite")
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "note.patch.md", notePatchWithHypothesis)
 
@@ -680,7 +680,7 @@ func TestApplyRegisteredKindUsesRegisteredBehaviorNoWarning(t *testing.T) {
 
 	it.Then(t).ShouldNot(it.Error(stdout, err))
 	it.Then(t).ShouldNot(it.String(stderr).Contain("not a recognized node type"))
-	assertIsFile(t, filepath.Join(dir, "hypothesis", "Forward Secrecy Requires Ephemeral Keys.md"))
+	assertIsFile(t, filepath.Join(dir, "Hypothesis", "Forward Secrecy Requires Ephemeral Keys.md"))
 }
 
 // arc apply note.patch.md
@@ -695,8 +695,8 @@ func TestApplyUnregisteredKindWarnsAndDefaultsUnion(t *testing.T) {
 	stdout, stderr, err := sutCaptureStderr(t, NewApplyCmd(), []string{patch})
 
 	it.Then(t).ShouldNot(it.Error(stdout, err))
-	it.Then(t).Should(it.String(stderr).Contain("hypothesis"))
-	assertIsFile(t, filepath.Join(dir, "hypothesis", "Forward Secrecy Requires Ephemeral Keys.md"))
+	it.Then(t).Should(it.String(stderr).Contain("Hypothesis"))
+	assertIsFile(t, filepath.Join(dir, "Hypothesis", "Forward Secrecy Requires Ephemeral Keys.md"))
 }
 
 // arc apply note.patch.md
@@ -713,13 +713,13 @@ func TestApplyUnregisteredKindCreatesSchemaDocumentInSameCommit(t *testing.T) {
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	assertIsFile(t, filepath.Join(dir, "_schema", "types", "hypothesis.md"))
-	content := readFile(t, filepath.Join(dir, "_schema", "types", "hypothesis.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "types", "Hypothesis.md"))
+	content := readFile(t, filepath.Join(dir, "_schema", "types", "Hypothesis.md"))
 	it.Then(t).Should(it.String(content).Contain("merge: union"))
 
 	stat := runGit(t, dir, "show", "--stat", "HEAD")
 	it.Then(t).
-		Should(it.String(stat).Contain("_schema/types/hypothesis.md")).
+		Should(it.String(stat).Contain("_schema/types/Hypothesis.md")).
 		Should(it.String(stat).Contain("Forward Secrecy Requires Ephemeral Keys.md"))
 }
 
@@ -747,6 +747,135 @@ func TestApplyUnregisteredPredicateCreatesSchemaDocumentInSameCommit(t *testing.
 		Should(it.String(stat).Contain("sources/rescorla-2026-tls13.md"))
 }
 
+const hypothesisWithLabeledBlocksPatch = `---
+kind: patch
+document: dmitry-2026-article
+published: 2026-01-01
+title: "A Test Article"
+---
+# Hypothesis
+
+## Ontology-Driven Multi-Purpose Knowledge Representation
+` + "```yaml\n\"@id\": \"Ontology-Driven Multi-Purpose Knowledge Representation\"\n\"@type\": Hypothesis\n```" + `
+
+A hypothesis about ontology-driven representation.
+
+**Assumptions**
+- Ontologies are static once published
+- Users prefer YAML front matter over JSON
+
+**References**
+- [RFC 8259](https://tools.ietf.org/html/rfc8259) - JSON specification
+- [CommonMark](https://commonmark.org/) - Markdown specification
+
+**Related Aporias**
+- [[Some Aporia]]
+`
+
+// BUG-002 (spec 010 FR-019): end-to-end reproduction of the reported bug —
+// applying a patch whose Hypothesis node carries "**Assumptions**" (plain
+// prose) and "**References**" (standard markdown links, not wikilinks)
+// blocks must no longer silently drop that content. Both survive in the
+// written node file, and each label auto-registers a schema predicate with
+// the role matching its actually-observed content shape.
+func TestApplyLabeledBlockNonWikilinkContentSurvives(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "article.patch.md", hypothesisWithLabeledBlocksPatch)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	nodePath := filepath.Join(dir, "Hypothesis", "Ontology-Driven Multi-Purpose Knowledge Representation.md")
+	assertIsFile(t, nodePath)
+	content := readFile(t, nodePath)
+	it.Then(t).
+		Should(it.String(content).Contain("Ontologies are static once published")).
+		Should(it.String(content).Contain("Users prefer YAML front matter over JSON")).
+		Should(it.String(content).Contain("RFC 8259")).
+		Should(it.String(content).Contain("CommonMark")).
+		Should(it.String(content).Contain("[[Some Aporia]]"))
+
+	assumptionsSchema := readFile(t, filepath.Join(dir, "_schema", "predicates", "assumptions.md"))
+	it.Then(t).
+		Should(it.String(assumptionsSchema).Contain("role: text")).
+		Should(it.String(assumptionsSchema).Contain("merge: append"))
+
+	referencesSchema := readFile(t, filepath.Join(dir, "_schema", "predicates", "references.md"))
+	it.Then(t).
+		Should(it.String(referencesSchema).Contain("role: text")).
+		Should(it.String(referencesSchema).Contain("merge: append"))
+}
+
+const hypothesisWithFullShapePatch = `---
+kind: patch
+document: dmitry-2026-article2
+published: 2026-01-01
+title: "A Second Test Article"
+---
+# Hypothesis
+
+## Ontology-Driven Multi-Purpose Knowledge Representation 2
+` + "```yaml\n\"@id\": \"Ontology-Driven Multi-Purpose Knowledge Representation 2\"\n\"@type\": Hypothesis\n```" + `
+
+A hypothesis about ontology-driven representation.
+
+**Assumptions**
+- Core graph structure can be meaningfully separated from domain-specific semantics
+- [[LLM]]s can be effectively trained on regulated node structures to maintain semantic consistency
+
+**Related Aporias**
+- [[Domain Overspecialization Limits Generalization]]
+
+**Assumes**
+- assumes:: [[LLM]]
+
+**Derived From**
+- derivedFrom:: [[dmitry-2026-article2]]
+`
+
+// BUG-003 (spec 010 FR-020/FR-021/FR-022): end-to-end reproduction of the
+// full formatting regression report — applying a patch whose Hypothesis
+// node carries a text-role "**Assumptions**" list (with a wikilink
+// immediately followed by an inflectional suffix, "[[LLM]]s") and three
+// distinctly labeled edge blocks ("**Related Aporias**", "**Assumes**",
+// "**Derived From**") must survive with its *shape* intact on write: list
+// markers and literal wikilink brackets preserved verbatim, each block's
+// own heading recovered, and the three edge blocks staying separate
+// distinct groups rather than collapsing into one flat list.
+func TestApplyLabeledBlockShapeSurvivesWikilinksListMarkersHeadingsAndGrouping(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "article2.patch.md", hypothesisWithFullShapePatch)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	nodePath := filepath.Join(dir, "Hypothesis", "Ontology-Driven Multi-Purpose Knowledge Representation 2.md")
+	assertIsFile(t, nodePath)
+	content := readFile(t, nodePath)
+	it.Then(t).
+		Should(it.String(content).Contain("## Assumptions")).
+		Should(it.String(content).Contain("- Core graph structure can be meaningfully separated from domain-specific semantics")).
+		Should(it.String(content).Contain("- [[LLM]]s can be effectively trained on regulated node structures to maintain semantic consistency")).
+		Should(it.String(content).Contain("## Related Aporias")).
+		Should(it.String(content).Contain("[[Domain Overspecialization Limits Generalization]]")).
+		Should(it.String(content).Contain("## Assumes")).
+		Should(it.String(content).Contain("assumes:: [[LLM]]")).
+		Should(it.String(content).Contain("## Derived From")).
+		Should(it.String(content).Contain("derivedFrom:: [[dmitry-2026-article2]]"))
+
+	assumptionsSchema := readFile(t, filepath.Join(dir, "_schema", "predicates", "assumptions.md"))
+	it.Then(t).Should(it.String(assumptionsSchema).Contain("role: text"))
+
+	relatedAporiasSchema := readFile(t, filepath.Join(dir, "_schema", "predicates", "relatedAporias.md"))
+	it.Then(t).
+		Should(it.String(relatedAporiasSchema).Contain("role: link")).
+		Should(it.String(relatedAporiasSchema).Contain("label: Related Aporias"))
+}
+
 // arc apply note.patch.md, then note2.patch.md
 // Scenario 3 from spec.md US2: an already-registered kind is left
 // unchanged, not duplicated, on a second apply that reuses it.
@@ -758,7 +887,7 @@ func TestApplyRegisteredKindContentNotDuplicated(t *testing.T) {
 	_, err := sut(NewApplyCmd(), []string{patch1})
 	it.Then(t).Should(it.Nil(err))
 
-	before := readFile(t, filepath.Join(dir, "_schema", "types", "hypothesis.md"))
+	before := readFile(t, filepath.Join(dir, "_schema", "types", "Hypothesis.md"))
 
 	secondPatch := strings.ReplaceAll(strings.ReplaceAll(notePatchWithHypothesis,
 		"kolesnikov-2026-note", "kolesnikov-2026-note2"),
@@ -767,7 +896,7 @@ func TestApplyRegisteredKindContentNotDuplicated(t *testing.T) {
 	_, err = sut(NewApplyCmd(), []string{patch2})
 	it.Then(t).Should(it.Nil(err))
 
-	after := readFile(t, filepath.Join(dir, "_schema", "types", "hypothesis.md"))
+	after := readFile(t, filepath.Join(dir, "_schema", "types", "Hypothesis.md"))
 	it.Then(t).Should(it.Equal(before, after))
 }
 
@@ -783,9 +912,9 @@ func TestApplyRegisteringKindRemovesWarningOnNextApply(t *testing.T) {
 
 	_, stderr1, err := sutCaptureStderr(t, NewApplyCmd(), []string{patch1})
 	it.Then(t).Should(it.Nil(err))
-	it.Then(t).Should(it.String(stderr1).Contain("hypothesis"))
+	it.Then(t).Should(it.String(stderr1).Contain("Hypothesis"))
 
-	seedSchemaNode(t, dir, "hypothesis", "validatedOverwrite")
+	seedSchemaNode(t, dir, "Hypothesis", "validatedOverwrite")
 	secondPatch := strings.ReplaceAll(strings.ReplaceAll(notePatchWithHypothesis,
 		"kolesnikov-2026-note", "kolesnikov-2026-note2"),
 		"Forward Secrecy Requires Ephemeral Keys", "Handshake Latency Bound By RTT")
@@ -798,7 +927,7 @@ func TestApplyRegisteringKindRemovesWarningOnNextApply(t *testing.T) {
 
 const hypothesisSeedConfirmed = `---
 "@id": "A Test Hypothesis"
-"@type": hypothesis
+"@type": Hypothesis
 title: A Test Hypothesis
 status: confirmed
 ---
@@ -818,7 +947,7 @@ title: "%s"
 ## %s
 ` + "```yaml" + `
 "@id": "%s"
-"@type": source
+"@type": Source
 title: "%s"
 published: "2026-05-02"
 ` + "```" + `
@@ -828,7 +957,7 @@ A short note.
 # Hypothesis
 
 ## A Test Hypothesis
-` + "```yaml\n\"@id\": \"A Test Hypothesis\"\n\"@type\": hypothesis\nstatus: draft\n```" + `
+` + "```yaml\n\"@id\": \"A Test Hypothesis\"\n\"@type\": Hypothesis\nstatus: draft\n```" + `
 
 A conclusion distilled from sources.
 `
@@ -845,8 +974,8 @@ A conclusion distilled from sources.
 func TestApplyHandEditedMergeValueChangesLaterApplyBehavior(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedSchemaNode(t, dir, "hypothesis", "union")
-	seedNode(t, dir, "hypothesis/A Test Hypothesis.md", hypothesisSeedConfirmed)
+	seedSchemaNode(t, dir, "Hypothesis", "union")
+	seedNode(t, dir, "Hypothesis/A Test Hypothesis.md", hypothesisSeedConfirmed)
 	chdir(t, dir)
 
 	lastWriteWinPatch := fmt.Sprintf(patchDivergesHypothesisStatusTemplate, "kolesnikov-2026-first", "First Note", "kolesnikov-2026-first", "kolesnikov-2026-first", "First Note")
@@ -855,7 +984,7 @@ func TestApplyHandEditedMergeValueChangesLaterApplyBehavior(t *testing.T) {
 	out1, err := sut(NewApplyCmd(), []string{patch1})
 	it.Then(t).ShouldNot(it.Error(out1, err))
 
-	content := readFile(t, filepath.Join(dir, "hypothesis", "A Test Hypothesis.md"))
+	content := readFile(t, filepath.Join(dir, "Hypothesis", "A Test Hypothesis.md"))
 	it.Then(t).
 		ShouldNot(it.String(content).Contain("<<<<<<<")).
 		Should(it.String(content).Contain("status: draft"))
@@ -872,7 +1001,7 @@ func TestApplyHandEditedMergeValueChangesLaterApplyBehavior(t *testing.T) {
 	out2, err := sut(NewApplyCmd(), []string{patch2})
 	it.Then(t).ShouldNot(it.Error(out2, err))
 
-	content = readFile(t, filepath.Join(dir, "hypothesis", "A Test Hypothesis.md"))
+	content = readFile(t, filepath.Join(dir, "Hypothesis", "A Test Hypothesis.md"))
 	it.Then(t).
 		Should(it.String(content).Contain("<<<<<<< existing")).
 		Should(it.String(content).Contain("draft")).
@@ -1000,7 +1129,7 @@ func TestApplyOldFormatKindFieldRefuses(t *testing.T) {
 func TestApplyMissingIdRefuses(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	legacyNode := "---\n\"@type\": entity\ntitle: No Id\n---\n# No Id\n\nMissing @id.\n"
+	legacyNode := "---\n\"@type\": Entity\ntitle: No Id\n---\n# No Id\n\nMissing @id.\n"
 	seedNode(t, dir, "entities/No Id.md", legacyNode)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
@@ -1015,7 +1144,7 @@ func TestApplyMissingIdRefuses(t *testing.T) {
 func TestApplyIdMismatchedBasenameRefuses(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	mismatched := "---\n\"@id\": Something Else\n\"@type\": entity\n---\n# Mismatched\n\nWrong id.\n"
+	mismatched := "---\n\"@id\": Something Else\n\"@type\": Entity\n---\n# Mismatched\n\nWrong id.\n"
 	seedNode(t, dir, "entities/Mismatched.md", mismatched)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
@@ -1035,7 +1164,7 @@ title: "A Test Document"
 ## foo-2026-x
 ` + "```yaml" + `
 "@id": "foo-2026-x"
-"@type": source
+"@type": Source
 title: "A Test Document"
 published: "2026-07-12"
 ` + "```" + `
@@ -1045,7 +1174,7 @@ A test document.
 # Timeline
 
 ## 2026-07
-` + "```yaml\n\"@id\": \"2026-07\"\n\"@type\": timeline\ngranularity: monthly\n```" + `
+` + "```yaml\n\"@id\": \"2026-07\"\n\"@type\": Timeline\ngranularity: monthly\n```" + `
 - [[foo-2026-x]]
 `
 
@@ -1119,17 +1248,21 @@ func TestApplyTargetNotAGraphRefuses(t *testing.T) {
 func TestApplyMalformedSchemaDocumentAbortsWithZeroWrites(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	entityDoc := readFile(t, filepath.Join(dir, "_schema", "types", "entity.md"))
+	// spec 012 FR-020 (Bugfix 018/BUG-001): a Class document's own "merge"
+	// field is no longer validated as mandatory, so corrupting it (as this
+	// test previously did via "merge: bogus") no longer makes the document
+	// malformed — its mandatory descriptive body is corrupted instead.
+	entityDoc := readFile(t, filepath.Join(dir, "_schema", "types", "Entity.md"))
 	it.Then(t).Should(it.Nil(os.WriteFile(
-		filepath.Join(dir, "_schema", "types", "entity.md"),
-		[]byte(strings.ReplaceAll(entityDoc, "merge: union", "merge: bogus")), 0o644)))
+		filepath.Join(dir, "_schema", "types", "Entity.md"),
+		[]byte(strings.ReplaceAll(entityDoc, "A node for a subject occurring in sources, typed by Sowa category.", "")), 0o644)))
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
 
 	before := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
 
 	out, err := sut(NewApplyCmd(), []string{patch})
-	it.Then(t).Should(it.Error(out, err).Contain("_schema/types/entity.md"))
+	it.Then(t).Should(it.Error(out, err).Contain("_schema/types/Entity.md"))
 
 	after := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
 	it.Then(t).Should(it.Equal(before, after))
@@ -1223,7 +1356,7 @@ title: "Document A"
 ## doc-2026-dup-a
 ` + "```yaml" + `
 "@id": "doc-2026-dup-a"
-"@type": source
+"@type": Source
 title: "Document A"
 published: "2026-06-01"
 ` + "```" + `
@@ -1235,7 +1368,7 @@ First document.
 ## Widget Dup
 ` + "```yaml" + `
 "@id": "Widget Dup"
-"@type": entity
+"@type": Entity
 category: [independent]
 ` + "```" + `
 
@@ -1253,7 +1386,7 @@ title: "Document B"
 ## doc-2026-dup-b
 ` + "```yaml" + `
 "@id": "doc-2026-dup-b"
-"@type": source
+"@type": Source
 title: "Document B"
 published: "2026-06-02"
 ` + "```" + `
@@ -1265,7 +1398,7 @@ Second document.
 ## Widget Dup
 ` + "```yaml" + `
 "@id": "Widget Dup"
-"@type": entity
+"@type": Entity
 category: [independent]
 ` + "```" + `
 
@@ -1329,7 +1462,7 @@ title: "First Deploy"
 ## acme-2026-deploy1
 ` + "```yaml" + `
 "@id": "acme-2026-deploy1"
-"@type": source
+"@type": Source
 title: "First Deploy"
 published: "2026-06-01"
 ` + "```" + `
@@ -1339,7 +1472,7 @@ A deployment record.
 # LogEntry
 
 ## Deploy Event
-` + "```yaml\n\"@id\": \"Deploy Event\"\n\"@type\": logentry\n```" + `
+` + "```yaml\n\"@id\": \"Deploy Event\"\n\"@type\": LogEntry\n```" + `
 
 An event log.
 - relatesTo:: [[Service A]]
@@ -1356,7 +1489,7 @@ title: "Second Deploy"
 ## acme-2026-deploy2
 ` + "```yaml" + `
 "@id": "acme-2026-deploy2"
-"@type": source
+"@type": Source
 title: "Second Deploy"
 published: "2026-06-02"
 ` + "```" + `
@@ -1366,7 +1499,7 @@ Another deployment record.
 # LogEntry
 
 ## Deploy Event
-` + "```yaml\n\"@id\": \"Deploy Event\"\n\"@type\": logentry\n```" + `
+` + "```yaml\n\"@id\": \"Deploy Event\"\n\"@type\": LogEntry\n```" + `
 
 An event log.
 - relatesTo:: [[Service B]]
@@ -1379,7 +1512,7 @@ An event log.
 func TestApplyAppendRegisteredKindUnionsAcrossPatches(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedSchemaNode(t, dir, "logentry", "append")
+	seedSchemaNode(t, dir, "LogEntry", "append")
 	chdir(t, dir)
 	patch1 := writePatchFile(t, dir, "deploy1.patch.md", deployEvent1Patch)
 	patch2 := writePatchFile(t, dir, "deploy2.patch.md", deployEvent2Patch)
@@ -1390,15 +1523,15 @@ func TestApplyAppendRegisteredKindUnionsAcrossPatches(t *testing.T) {
 	out2, err := sut(NewApplyCmd(), []string{patch2})
 	it.Then(t).ShouldNot(it.Error(out2, err))
 	it.Then(t).
-		Should(it.String(out2).Contain("+0 logentrys")).
+		Should(it.String(out2).Contain("+0 LogEntrys")).
 		Should(it.String(out2).Contain("1 merged"))
 
-	entries, rerr := os.ReadDir(filepath.Join(dir, "logentrys"))
+	entries, rerr := os.ReadDir(filepath.Join(dir, "LogEntrys"))
 	it.Then(t).
 		Should(it.Nil(rerr)).
 		Should(it.Equal(1, len(entries)))
 
-	content := readFile(t, filepath.Join(dir, "logentrys", "Deploy Event.md"))
+	content := readFile(t, filepath.Join(dir, "LogEntrys", "Deploy Event.md"))
 	it.Then(t).
 		Should(it.String(content).Contain("relatesTo:: [[Service A]]")).
 		Should(it.String(content).Contain("relatesTo:: [[Service B]]")).
@@ -1420,7 +1553,7 @@ title: "TLS 1.3: Design and Rationale"
 ## rescorla-2026-tls13
 ` + "```yaml" + `
 "@id": "rescorla-2026-tls13"
-"@type": source
+"@type": Source
 title: "TLS 1.3: Design and Rationale"
 authors: [Eric Rescorla]
 published: "2026-04-12"
@@ -1439,7 +1572,7 @@ A design retrospective on the TLS 1.3 handshake.
 ## Transport Layer Security
 ` + "```yaml" + `
 "@id": "Transport Layer Security"
-"@type": entity
+"@type": Entity
 category: [independent, abstract, occurrent, script]
 ` + "```" + `
 
@@ -1516,7 +1649,7 @@ title: "Stub Test Document"
 ## foo-2026-stub
 ` + "```yaml" + `
 "@id": "foo-2026-stub"
-"@type": source
+"@type": Source
 title: "Stub Test Document"
 published: "2026-04-12"
 ` + "```" + `
@@ -1526,7 +1659,7 @@ A stub test document.
 # Entity
 
 ## StubEntity
-` + "```yaml\n\"@id\": \"StubEntity\"\n\"@type\": entity\n```" + `
+` + "```yaml\n\"@id\": \"StubEntity\"\n\"@type\": Entity\n```" + `
 `
 
 // arc apply stub.patch.md
@@ -1559,7 +1692,7 @@ func TestApplyAutoRegisteredSchemaDocumentCarriesNoTimestamps(t *testing.T) {
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	schemaDoc := readFile(t, filepath.Join(dir, "_schema", "types", "hypothesis.md"))
+	schemaDoc := readFile(t, filepath.Join(dir, "_schema", "types", "Hypothesis.md"))
 	it.Then(t).
 		ShouldNot(it.String(schemaDoc).Contain("published:")).
 		ShouldNot(it.String(schemaDoc).Contain("indexed:"))
@@ -1590,7 +1723,7 @@ func TestApplyRealMergeStampsUpdatedIdenticalToIndexed(t *testing.T) {
 
 const memoNoneSeed = `---
 "@id": Widget
-"@type": memo
+"@type": Memo
 title: Widget
 ---
 # Widget
@@ -1609,7 +1742,7 @@ title: "Memo Patch"
 ## foo-2026-memo
 ` + "```yaml" + `
 "@id": "foo-2026-memo"
-"@type": source
+"@type": Source
 title: "Memo Patch"
 published: "2026-05-01"
 ` + "```" + `
@@ -1619,7 +1752,7 @@ A memo patch.
 # Memo
 
 ## Widget
-` + "```yaml\n\"@id\": \"Widget\"\n\"@type\": memo\n```" + `
+` + "```yaml\n\"@id\": \"Widget\"\n\"@type\": Memo\n```" + `
 
 Changed text.
 `
@@ -1635,15 +1768,15 @@ Changed text.
 func TestApplyTypeLevelMergeValueNoLongerGovernsReconciliation(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedSchemaNode(t, dir, "memo", "immutable")
-	seedNode(t, dir, "memos/Widget.md", memoNoneSeed)
+	seedSchemaNode(t, dir, "Memo", "immutable")
+	seedNode(t, dir, "Memos/Widget.md", memoNoneSeed)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "memo.patch.md", memoNonePatch)
 
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	content := readFile(t, filepath.Join(dir, "memos", "Widget.md"))
+	content := readFile(t, filepath.Join(dir, "Memos", "Widget.md"))
 	it.Then(t).
 		Should(it.String(content).Contain("Original text.")).
 		Should(it.String(content).Contain("Changed text.")).
@@ -1652,7 +1785,7 @@ func TestApplyTypeLevelMergeValueNoLongerGovernsReconciliation(t *testing.T) {
 
 const stubbedThingSeed = `---
 "@id": "StubbedThing"
-"@type": entity
+"@type": Entity
 ---
 # StubbedThing
 `
@@ -1668,7 +1801,7 @@ title: "Fill Patch"
 ## foo-2026-fill
 ` + "```yaml" + `
 "@id": "foo-2026-fill"
-"@type": source
+"@type": Source
 title: "Fill Patch"
 published: "2026-06-01"
 ` + "```" + `
@@ -1678,7 +1811,7 @@ A fill patch.
 # Entity
 
 ## StubbedThing
-` + "```yaml\n\"@id\": \"StubbedThing\"\n\"@type\": entity\npublished: \"2026-05-02\"\n```" + `
+` + "```yaml\n\"@id\": \"StubbedThing\"\n\"@type\": Entity\npublished: \"2026-05-02\"\n```" + `
 
 Now has real content.
 `
@@ -1710,7 +1843,7 @@ func TestApplyStubMergedWithRealContentFillsPublishedAndUpdatedNeverIndexed(t *t
 
 const noOpUnionEntitySeed = `---
 "@id": "Widget"
-"@type": entity
+"@type": Entity
 title: Widget
 category: [independent, abstract, occurrent, script]
 ---
@@ -1731,7 +1864,7 @@ title: "No-op Patch"
 ## foo-2026-noop
 ` + "```yaml" + `
 "@id": "foo-2026-noop"
-"@type": source
+"@type": Source
 title: "No-op Patch"
 published: "2026-05-03"
 ` + "```" + `
@@ -1743,7 +1876,7 @@ A no-op patch.
 ## Widget
 ` + "```yaml" + `
 "@id": "Widget"
-"@type": entity
+"@type": Entity
 category: [independent, abstract, occurrent, script]
 ` + "```" + `
 
@@ -1849,7 +1982,7 @@ func TestApplyHeadingOnlyCanonicalPatchAcceptedEndToEnd(t *testing.T) {
 	entity := readFile(t, filepath.Join(dir, "entities", "LLM.md"))
 	it.Then(t).
 		Should(it.String(entity).Contain(`"@id": LLM`)).
-		Should(it.String(entity).Contain(`"@type": entity`))
+		Should(it.String(entity).Contain(`"@type": Entity`))
 }
 
 // --- spec 012: Per-Predicate Merge Reconciliation for arc apply ---
@@ -1874,7 +2007,7 @@ title: "Doc A"
 ## doc-2026-a
 ` + "```yaml" + `
 "@id": "doc-2026-a"
-"@type": source
+"@type": Source
 title: "Doc A"
 published: "2026-07-01"
 ` + "```" + `
@@ -1886,7 +2019,7 @@ A source document.
 ## example-book
 ` + "```yaml" + `
 "@id": "example-book"
-"@type": resource
+"@type": Resource
 ref: book
 status: backlog
 tags: [ai]
@@ -1907,7 +2040,7 @@ title: "Doc B"
 ## doc-2026-b
 ` + "```yaml" + `
 "@id": "doc-2026-b"
-"@type": source
+"@type": Source
 title: "Doc B"
 published: "2026-07-02"
 ` + "```" + `
@@ -1919,7 +2052,7 @@ Another source document.
 ## example-book
 ` + "```yaml" + `
 "@id": "example-book"
-"@type": resource
+"@type": Resource
 ref: article
 status: read
 tags: [ml]
@@ -2013,7 +2146,7 @@ func TestApply012US2ConflictFlaggingScopedToFirstWriteWin(t *testing.T) {
 
 const resourceFillIfEmptySeed = `---
 "@id": "RFC 9999"
-"@type": resource
+"@type": Resource
 title: RFC 9999
 ref: standard
 url: ""
@@ -2034,7 +2167,7 @@ title: "Doc C"
 ## doc-2026-c
 ` + "```yaml" + `
 "@id": "doc-2026-c"
-"@type": source
+"@type": Source
 title: "Doc C"
 published: "2026-07-03"
 ` + "```" + `
@@ -2046,7 +2179,7 @@ A source document.
 ## RFC 9999
 ` + "```yaml" + `
 "@id": "RFC 9999"
-"@type": resource
+"@type": Resource
 ref: standard
 url: https://example.org/rfc9999-v1
 ` + "```" + `
@@ -2065,7 +2198,7 @@ title: "Doc D"
 ## doc-2026-d
 ` + "```yaml" + `
 "@id": "doc-2026-d"
-"@type": source
+"@type": Source
 title: "Doc D"
 published: "2026-07-04"
 ` + "```" + `
@@ -2077,7 +2210,7 @@ Another source document.
 ## RFC 9999
 ` + "```yaml" + `
 "@id": "RFC 9999"
-"@type": resource
+"@type": Resource
 ref: standard
 url: https://example.org/rfc9999-v2
 ` + "```" + `
@@ -2116,7 +2249,7 @@ func TestApply012US2FillIfEmptyFlagsOnlyAfterFirstWrite(t *testing.T) {
 
 const resourceIndependentPredicatesSeed = `---
 "@id": "example-topic"
-"@type": resource
+"@type": Resource
 title: example-topic
 ref: topic
 ---
@@ -2136,7 +2269,7 @@ title: "Doc E"
 ## doc-2026-e
 ` + "```yaml" + `
 "@id": "doc-2026-e"
-"@type": source
+"@type": Source
 title: "Doc E"
 published: "2026-07-05"
 ` + "```" + `
@@ -2148,7 +2281,7 @@ A source document.
 ## example-topic
 ` + "```yaml" + `
 "@id": "example-topic"
-"@type": resource
+"@type": Resource
 ref: topic
 tags: [ai]
 ` + "```" + `
@@ -2167,7 +2300,7 @@ title: "Doc F"
 ## doc-2026-f
 ` + "```yaml" + `
 "@id": "doc-2026-f"
-"@type": source
+"@type": Source
 title: "Doc F"
 published: "2026-07-06"
 ` + "```" + `
@@ -2179,7 +2312,7 @@ Another source document.
 ## example-topic
 ` + "```yaml" + `
 "@id": "example-topic"
-"@type": resource
+"@type": Resource
 ref: topic
 status: read
 ` + "```" + `
@@ -2237,7 +2370,7 @@ func TestApply012US3LastWriteWinIsOrderSensitive(t *testing.T) {
 	initGraph(t, forward)
 	seedNode(t, forward, "resources/example-book.md", `---
 "@id": "example-book"
-"@type": resource
+"@type": Resource
 title: example-book
 ref: book
 ---
@@ -2250,7 +2383,7 @@ A tracked reading item.
 	initGraph(t, reverse)
 	seedNode(t, reverse, "resources/example-book.md", `---
 "@id": "example-book"
-"@type": resource
+"@type": Resource
 title: example-book
 ref: book
 ---
@@ -2270,7 +2403,7 @@ title: "Doc Read"
 ## doc-2026-read
 ` + "```yaml" + `
 "@id": "doc-2026-read"
-"@type": source
+"@type": Source
 title: "Doc Read"
 published: "2026-07-07"
 ` + "```" + `
@@ -2282,7 +2415,7 @@ A source document.
 ## example-book
 ` + "```yaml" + `
 "@id": "example-book"
-"@type": resource
+"@type": Resource
 ref: book
 status: read
 ` + "```" + `
@@ -2300,7 +2433,7 @@ title: "Doc Archived"
 ## doc-2026-archived
 ` + "```yaml" + `
 "@id": "doc-2026-archived"
-"@type": source
+"@type": Source
 title: "Doc Archived"
 published: "2026-07-08"
 ` + "```" + `
@@ -2312,7 +2445,7 @@ Another source document.
 ## example-book
 ` + "```yaml" + `
 "@id": "example-book"
-"@type": resource
+"@type": Resource
 ref: book
 status: archived
 ` + "```" + `
@@ -2375,4 +2508,131 @@ func TestApply012US3ReplayDoesNotRewrapConflictMarker(t *testing.T) {
 	it.Then(t).
 		Should(it.Equal(1, strings.Count(secondConflict, "<<<<<<<"))).
 		Should(it.Equal(firstConflict, secondConflict))
+}
+
+const lowercaseH1Patch = `---
+kind: patch
+document: rescorla-2026-tls13
+published: 2026-04-12
+title: "TLS 1.3: Design and Rationale"
+---
+# entity
+
+## Transport Layer Security
+` + "```yaml" + `
+"@id": "Transport Layer Security"
+"@type": entity
+category: [independent, abstract, occurrent, script]
+` + "```" + `
+
+A cryptographic protocol.
+`
+
+// arc apply entity.patch.md
+// spec.md US1 Acceptance Scenario 1: a patch whose class-defining H1
+// heading begins with a lowercase letter is rejected — non-zero exit, the
+// graph left unmodified (no node file written, no new commit).
+func TestApplyLowercaseH1HeadingRejected(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, t.TempDir(), "entity.patch.md", lowercaseH1Patch)
+
+	before := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Error(out, err).Contain("entity")).Should(it.Error(out, err).Contain("CamelCase"))
+
+	after := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
+	it.Then(t).Should(it.Equal(before, after))
+
+	_, statErr := os.Stat(filepath.Join(dir, "entities", "Transport Layer Security.md"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+}
+
+const uppercaseH1Patch = `---
+kind: patch
+document: rescorla-2026-tls13
+published: 2026-04-12
+title: "TLS 1.3: Design and Rationale"
+---
+# Entity
+
+## Transport Layer Security
+` + "```yaml" + `
+"@id": "Transport Layer Security"
+category: [independent, abstract, occurrent, script]
+` + "```" + `
+
+A cryptographic protocol.
+`
+
+// arc apply entity.patch.md
+// spec.md US1 Acceptance Scenario 2: a patch whose class-defining H1
+// heading begins with an uppercase letter succeeds, and the node's class
+// is stored using the heading's exact casing, with no lowercasing.
+func TestApplyUppercaseH1HeadingStoresExactCasing(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "entity.patch.md", uppercaseH1Patch)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	content := readFile(t, filepath.Join(dir, "entities", "Transport Layer Security.md"))
+	it.Then(t).Should(it.String(content).Contain(`"@type": Entity`))
+}
+
+const multiH1OneNonCompliantPatch = `---
+kind: patch
+document: rescorla-2026-tls13
+published: 2026-04-12
+title: "TLS 1.3: Design and Rationale"
+---
+# Source
+
+## rescorla-2026-tls13
+` + "```yaml" + `
+"@id": "rescorla-2026-tls13"
+title: "TLS 1.3: Design and Rationale"
+authors: [Eric Rescorla]
+published: "2026-04-12"
+` + "```" + `
+
+A design retrospective on the TLS 1.3 handshake.
+
+# entity
+
+## Transport Layer Security
+` + "```yaml" + `
+"@id": "Transport Layer Security"
+category: [independent, abstract, occurrent, script]
+` + "```" + `
+
+A cryptographic protocol.
+`
+
+// arc apply tls13.patch.md
+// spec.md US1 Acceptance Scenario 3: a patch with multiple H1 sections
+// where at least one begins with a lowercase letter rejects the entire
+// document — no partial apply, not even for the well-formed section.
+func TestApplyMultiH1OneNonCompliantRejectsWholeDocument(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, t.TempDir(), "tls13.patch.md", multiH1OneNonCompliantPatch)
+
+	before := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Error(out, err).Contain("entity"))
+
+	after := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
+	it.Then(t).Should(it.Equal(before, after))
+
+	_, sourceStatErr := os.Stat(filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	it.Then(t).Should(it.True(os.IsNotExist(sourceStatErr)))
+	_, entityStatErr := os.Stat(filepath.Join(dir, "entities", "Transport Layer Security.md"))
+	it.Then(t).Should(it.True(os.IsNotExist(entityStatErr)))
 }

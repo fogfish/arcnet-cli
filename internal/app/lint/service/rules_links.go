@@ -54,7 +54,7 @@ func checkLinksResolve(node core.Node, path string, raw []byte, basenames map[st
 // tool's own chronological index over many documents, never content
 // distilled from one document, the same way source itself is exempt.
 func checkDerivedProvenance(node core.Node, path string, kindIndex map[string]string) []kernel.Violation {
-	if node.Type == "source" || node.Type == "timeline" {
+	if node.Type == "Source" || node.Type == "Timeline" {
 		return nil
 	}
 
@@ -62,7 +62,7 @@ func checkDerivedProvenance(node core.Node, path string, kindIndex map[string]st
 		if l.Target == "" {
 			continue
 		}
-		if kind, ok := kindIndex[l.Target]; ok && kind == "source" {
+		if kind, ok := kindIndex[l.Target]; ok && kind == "Source" {
 			return nil
 		}
 	}

@@ -139,7 +139,7 @@ A physical item tracked by the Acme extension.
 ## Acme Corp
 ` + "```yaml" + `
 "@id": "Acme Corp"
-"@type": entity
+"@type": Entity
 category: [independent, social, continuant, collection]
 ` + "```" + `
 
@@ -157,7 +157,7 @@ title: Acme Corp
 ## Acme Corp
 ` + "```yaml" + `
 "@id": "Acme Corp"
-"@type": entity
+"@type": Entity
 category: [independent, social, continuant, collection]
 ` + "```" + `
 
@@ -218,6 +218,129 @@ func TestApplyPatchReappliedWithChangedFieldMergesPredicate(t *testing.T) {
 		Should(it.String(store.written[kernel.PredicatesDir+"/acmeWeight.md"]).Contain("Measured in kilograms (SI)."))
 }
 
+const sourceOptionalOnlyPatch = `---
+kind: patch
+document: acme-extension-schema
+published: 2026-07-15
+title: Acme extension vocabulary
+---
+# Class
+
+## Source
+` + "```yaml" + `
+"@id": "Source"
+"@type": Class
+` + "```" + `
+
+**Optional**
+- optional:: [[proposes]]
+- optional:: [[raises]]
+`
+
+// spec 018 US3 Acceptance Scenario 3 (Bugfix BUG-002): re-declaring the
+// already-registered built-in Source type with only a new Optional
+// predicate, and no description/merge in the section, merges successfully
+// and preserves Source's existing description — the section is a delta
+// against the merged result, not required to independently restate every
+// mandatory field.
+func TestApplyPatchMergesOptionalPredicateIntoExistingTypeOmittingDescription(t *testing.T) {
+	store := newSeededStore()
+	store.files["patch.md"] = sourceOptionalOnlyPatch
+	mounter := fakeMounter{store: store}
+	vcs := &schemamock.VCS{CommitHash: "abc123"}
+	fetcher := &schemamock.Fetcher{}
+	reporter := &fakeApplyReporter{}
+
+	result, err := service.ApplyPatch(context.Background(), mounter, vcs, fetcher, reporter, "/graph", "patch.md")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(0, result.Created["type"])).
+		Should(it.Equal(1, result.Merged["type"]))
+	it.Then(t).
+		Should(it.String(store.written[kernel.TypesDir+"/Source.md"]).Contain("optional:: [[proposes]]")).
+		Should(it.String(store.written[kernel.TypesDir+"/Source.md"]).Contain("optional:: [[raises]]")).
+		Should(it.String(store.written[kernel.TypesDir+"/Source.md"]).Contain("provenance origin"))
+}
+
+const propertyOptionalOnlyPatch = `---
+kind: patch
+document: acme-extension-schema
+published: 2026-07-15
+title: Acme extension vocabulary
+---
+# Property
+
+## mentions
+` + "```yaml" + `
+"@id": "mentions"
+"@type": Property
+` + "```" + `
+
+Newly clarified prose for an already-registered predicate.
+`
+
+// spec 018 US3 Acceptance Scenario 1 counterpart (Bugfix BUG-002): the same
+// delta-merge shape for a Property section omitting role/merge against an
+// already-registered predicate.
+func TestApplyPatchMergesPropertyOmittingRoleAndMerge(t *testing.T) {
+	store := newSeededStore()
+	store.files["patch.md"] = propertyOptionalOnlyPatch
+	mounter := fakeMounter{store: store}
+	vcs := &schemamock.VCS{CommitHash: "abc123"}
+	fetcher := &schemamock.Fetcher{}
+	reporter := &fakeApplyReporter{}
+
+	result, err := service.ApplyPatch(context.Background(), mounter, vcs, fetcher, reporter, "/graph", "patch.md")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(0, result.Created["predicate"])).
+		Should(it.Equal(1, result.Merged["predicate"]))
+	it.Then(t).Should(it.String(store.written[kernel.PredicatesDir+"/mentions.md"]).Contain("Newly clarified prose"))
+}
+
+const classNoDescriptionPatch = `---
+kind: patch
+document: acme-extension-schema
+published: 2026-07-15
+title: Acme extension vocabulary
+---
+# Class
+
+## Gadget
+` + "```yaml" + `
+"@id": "Gadget"
+"@type": Class
+merge: union
+` + "```" + `
+
+**Optional**
+- optional:: [[proposes]]
+`
+
+// spec 018 FR-013 (Bugfix BUG-002): a brand-new Class definition (no
+// existing document to merge with) still independently requires a
+// description — the relaxation only applies when merging into an
+// already-existing definition.
+func TestApplyPatchRejectsBrandNewClassMissingDescription(t *testing.T) {
+	store := newSeededStore()
+	store.files["patch.md"] = classNoDescriptionPatch
+	writtenBefore := len(store.written)
+	mounter := fakeMounter{store: store}
+	vcs := &schemamock.VCS{CommitHash: "abc123"}
+	fetcher := &schemamock.Fetcher{}
+	reporter := &fakeApplyReporter{}
+
+	_, err := service.ApplyPatch(context.Background(), mounter, vcs, fetcher, reporter, "/graph", "patch.md")
+
+	it.Then(t).ShouldNot(it.Nil(err))
+	it.Then(t).
+		Should(it.String(err.Error()).Contain("Gadget")).
+		Should(it.String(err.Error()).Contain("description"))
+	it.Then(t).Should(it.Equal(writtenBefore, len(store.written)))
+}
+
 // spec 018 US3 Acceptance Scenario 2: an unchanged re-apply reports zero
 // created/merged and produces no commit.
 func TestApplyPatchNoOpReappliedReportsZeroAndNoCommit(t *testing.T) {
@@ -258,7 +381,7 @@ func TestApplyPatchRejectsDisallowedNodeTypeWithZeroWrites(t *testing.T) {
 	it.Then(t).ShouldNot(it.Nil(err))
 	it.Then(t).
 		Should(it.String(err.Error()).Contain("Acme Corp")).
-		Should(it.String(err.Error()).Contain("entity"))
+		Should(it.String(err.Error()).Contain("Entity"))
 	it.Then(t).Should(it.Equal(writtenBefore, len(store.written)))
 }
 

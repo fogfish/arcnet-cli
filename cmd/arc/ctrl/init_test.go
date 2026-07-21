@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/fogfish/it/v2"
 	"github.com/spf13/cobra"
@@ -131,7 +132,7 @@ func TestInitCurrentDirectoryCreatesLayout(t *testing.T) {
 	for _, folder := range []string{"sources", "entities", "resources", filepath.Join("timeline", "yearly"), filepath.Join("timeline", "monthly"), filepath.Join("_schema", "types"), filepath.Join("_schema", "predicates")} {
 		assertIsDir(t, filepath.Join(dir, folder))
 	}
-	assertIsFile(t, filepath.Join(dir, "_schema", "types", "entity.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "types", "Entity.md"))
 	assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "related.md"))
 	_, metaErr := os.Stat(filepath.Join(dir, "_meta"))
 	it.Then(t).Should(it.True(os.IsNotExist(metaErr)))
@@ -192,7 +193,7 @@ func TestInitCurrentDirectoryFoldersInHistory(t *testing.T) {
 		Should(it.String(tracked).Contain("resources/.gitkeep")).
 		Should(it.String(tracked).Contain("timeline/yearly/.gitkeep")).
 		Should(it.String(tracked).Contain("timeline/monthly/.gitkeep")).
-		Should(it.String(tracked).Contain("_schema/types/entity.md")).
+		Should(it.String(tracked).Contain("_schema/types/Entity.md")).
 		Should(it.String(tracked).Contain("_schema/predicates/related.md"))
 }
 
@@ -261,7 +262,7 @@ func TestInitSeedsNodeTypeAndWiresContentTypesToIt(t *testing.T) {
 		it.Then(t).Should(it.String(string(nodeContent)).Contain("optional:: [[" + optional + "]]"))
 	}
 
-	for _, name := range []string{"source", "entity", "resource", "timeline"} {
+	for _, name := range []string{"Source", "Entity", "Resource", "Timeline"} {
 		content, rerr := os.ReadFile(filepath.Join(dir, "_schema", "types", name+".md"))
 		it.Then(t).Should(it.Nil(rerr))
 		it.Then(t).Should(it.String(string(content)).Contain("subClassOf:: [[Node]]"))
@@ -292,7 +293,7 @@ func TestInitSucceedsWithNoNetworkAccess(t *testing.T) {
 
 	out, err := sut(NewInitCmd(), []string{dir})
 	it.Then(t).ShouldNot(it.Error(out, err))
-	assertIsFile(t, filepath.Join(dir, "_schema", "types", "entity.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "types", "Entity.md"))
 }
 
 // arc init <target-file>
@@ -455,4 +456,33 @@ func TestInitRefusesReInitialization(t *testing.T) {
 
 	after := gitOutput(t, dir, "log", "--oneline")
 	it.Then(t).Should(it.Equal(before, after))
+}
+
+// arc init
+// spec.md US2 Acceptance Scenarios 1-2: every class name arc init seeds
+// under _schema/types/ begins with an uppercase letter, and no two seeded
+// class names differ only by casing.
+func TestInitSeededSchemaTypesAreAllCamelCase(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	entries, rerr := os.ReadDir(filepath.Join(dir, "_schema", "types"))
+	it.Then(t).Should(it.Nil(rerr))
+
+	seen := map[string]bool{}
+	for _, e := range entries {
+		name := strings.TrimSuffix(e.Name(), ".md")
+		if name == "" {
+			continue
+		}
+		r := []rune(name)
+		it.Then(t).Should(it.True(unicode.IsUpper(r[0])))
+
+		lower := strings.ToLower(name)
+		it.Then(t).Should(it.True(!seen[lower]))
+		seen[lower] = true
+	}
 }

@@ -19,4 +19,9 @@ const (
 	// names the specific file and the specific problem.
 	ErrManifestInvalid = faults.Type("manifest is missing a mandatory field or uses the pre-0.5 node format")
 	ErrPatchStructure  = faults.Type("patch body does not follow the H1-kind/H2-node section structure")
+
+	// ErrTypeCasing is returned when a patch's class-defining H1 heading or
+	// explicit "@type" value does not begin with an uppercase letter (spec
+	// 019 FR-004/FR-005/FR-008), naming the offending value.
+	ErrTypeCasing = faults.Safe1[string]("class name %q must be CamelCase — start with an uppercase letter")
 )

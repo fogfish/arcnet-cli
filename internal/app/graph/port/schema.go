@@ -20,5 +20,19 @@ import (
 // internal/app/schema directly.
 type SchemaRegistry interface {
 	RegisterType(store fsys.Store, typ string) (created bool, err error)
-	RegisterPredicate(store fsys.Store, predicate string) (created bool, err error)
+	// RegisterPredicate auto-registers predicate on first observation.
+	// observedRole ("edge", "link", or "text", BUG-002/BUG-003) is the role
+	// the predicate was actually seen in — a text-observed predicate
+	// defaults to role: text, merge: append instead of always role: edge,
+	// merge: union, so newly discovered non-wikilink content (spec 010
+	// FR-019) merges correctly on a later re-apply instead of being
+	// silently coerced into edge shape; an edge occurrence carried with its
+	// own "**Label**" block observes role: link instead of role: edge, so
+	// its per-block grouping survives a write (spec 010 FR-022). label is
+	// the block's own literal label text, when the predicate was carried
+	// with one (BUG-003, spec 010 FR-021) — set as the registered
+	// document's `label` attribute so its exact heading text (not a
+	// derived-id approximation) is recoverable on a later render; empty
+	// when the predicate has no carried label.
+	RegisterPredicate(store fsys.Store, predicate, observedRole, label string) (created bool, err error)
 }

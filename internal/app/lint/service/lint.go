@@ -83,7 +83,7 @@ func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios
 			continue
 		}
 
-		node, err := core.ParseNode(bytes.NewReader(raw))
+		node, err := core.ParseNode(bytes.NewReader(raw), index)
 		if err != nil {
 			if quoting := checkBareIdentityKeys(path, raw); len(quoting) > 0 {
 				fileViolations[path] = append(fileViolations[path], quoting...)
@@ -123,6 +123,7 @@ func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios
 
 	start = time.Now()
 	graphSpanning := checkUniqueBasenames(basenameIndex)
+	graphSpanning = append(graphSpanning, checkSchemaTypeCase(index)...)
 	for _, p := range parsed {
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkUnrecognizedKind(p.Node, p.Path, index)...)
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkLinksResolve(p.Node, p.Path, p.Raw, basenameIndex)...)
@@ -135,6 +136,7 @@ func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios
 	start = time.Now()
 	for _, p := range parsed {
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkPredicateCase(p.Node, p.Path, p.Raw)...)
+		fileViolations[p.Path] = append(fileViolations[p.Path], checkNodeTypeCase(p.Node, p.Path)...)
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkPredicateRegistered(p.Node, p.Path, p.Raw, index.Predicates)...)
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkCitationPredicate(p.Node, p.Path, p.Raw, index.Predicates)...)
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkTypeRequires(p.Node, p.Path, p.Raw, index)...)

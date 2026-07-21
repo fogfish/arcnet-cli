@@ -19,7 +19,7 @@ import (
 // node's ID does not equal its file's actual on-disk basename
 // (research.md D6).
 func checkSourceCitekey(node core.Node, path, basename string, raw []byte) []kernel.Violation {
-	if node.Type != "source" || node.ID == basename {
+	if node.Type != "Source" || node.ID == basename {
 		return nil
 	}
 	return []kernel.Violation{{
@@ -34,7 +34,7 @@ func checkSourceCitekey(node core.Node, path, basename string, raw []byte) []ker
 // entity node's category attribute is missing, is not a four-element
 // sequence, or fails the fixed positional Sowa word-sets (research.md D7).
 func checkEntityCategory(node core.Node, path string, raw []byte) []kernel.Violation {
-	if node.Type != "entity" {
+	if node.Type != "Entity" {
 		return nil
 	}
 

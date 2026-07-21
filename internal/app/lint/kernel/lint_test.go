@@ -18,11 +18,11 @@ import (
 
 func TestNewLintResultDerivesPassingFailing(t *testing.T) {
 	nodes := []kernel.NodeStatus{
-		{Path: "sources/a.md", ID: "a", Type: "source"},
-		{Path: "entities/b.md", ID: "b", Type: "entity", Violations: []kernel.Violation{
+		{Path: "sources/a.md", ID: "a", Type: "Source"},
+		{Path: "entities/b.md", ID: "b", Type: "Entity", Violations: []kernel.Violation{
 			{Rule: kernel.RuleLinkResolves, Path: "entities/b.md", Line: 3, Message: "boom"},
 		}},
-		{Path: "entities/c.md", ID: "c", Type: "entity"},
+		{Path: "entities/c.md", ID: "c", Type: "Entity"},
 	}
 
 	result := kernel.NewLintResult("/graph", nodes)
@@ -54,6 +54,7 @@ func TestRuleConstantsAreDistinct(t *testing.T) {
 		kernel.RuleSourceCitekey, kernel.RuleEntityCategory, kernel.RuleDerivedProvenance,
 		kernel.RulePredicateCase, kernel.RulePredicateRegistered, kernel.RuleCitationPredicate,
 		kernel.RuleUnrecognizedKind, kernel.RuleIngestCommit, kernel.RuleMergeConflict,
+		kernel.RuleTypeCase,
 	}
 
 	seen := map[kernel.Rule]bool{}
@@ -61,7 +62,7 @@ func TestRuleConstantsAreDistinct(t *testing.T) {
 		it.Then(t).Should(it.True(!seen[r]))
 		seen[r] = true
 	}
-	it.Then(t).Should(it.Equal(12, len(seen)))
+	it.Then(t).Should(it.Equal(13, len(seen)))
 }
 
 func TestValidSowaCategory(t *testing.T) {

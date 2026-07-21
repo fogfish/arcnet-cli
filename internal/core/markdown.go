@@ -54,8 +54,13 @@ func parseDocument(source []byte) (ast.Node, map[string]any, error) {
 }
 
 // ParsePatch parses a CORE §12.2 document patch: the front-matter manifest,
-// plus every H1-type/H2-node body section.
-func ParsePatch(r io.Reader) (Patch, error) {
+// plus every H1-type/H2-node body section. index resolves a "**Label**"
+// body block's predicate identity and role (spec 010 FR-019, Bugfix
+// BUG-002) — pass core.Index{} when no resolved schema is available (e.g.
+// while the schema itself is being built); an empty index only widens
+// fallback per-line text capture (see walkNodeBody), it never regresses
+// already-correct wikilink extraction.
+func ParsePatch(r io.Reader, index Index) (Patch, error) {
 	source, err := io.ReadAll(r)
 	if err != nil {
 		return Patch{}, err
@@ -71,7 +76,7 @@ func ParsePatch(r io.Reader) (Patch, error) {
 		return Patch{}, err
 	}
 
-	nodes, err := parsePatchBody(doc, source)
+	nodes, err := parsePatchBody(doc, source, index)
 	if err != nil {
 		return Patch{}, err
 	}
@@ -80,9 +85,26 @@ func ParsePatch(r io.Reader) (Patch, error) {
 	return patch, nil
 }
 
+// LooksLikePatch reports whether raw's front-matter manifest declares
+// itself as a patch document ("kind: patch"), independent of whether the
+// rest of the document is otherwise well-formed — used by a caller that
+// must distinguish a broken patch-in-progress (e.g. one ParsePatch rejects
+// for a spec 019 CamelCase violation) from a genuinely old-format
+// standalone node file before choosing which parse error to surface
+// (quickstart.md Scenario 2).
+func LooksLikePatch(raw []byte) bool {
+	_, manifest, err := parseDocument(raw)
+	if err != nil {
+		return false
+	}
+	kind, _ := manifest["kind"].(string)
+	return kind == "patch"
+}
+
 // ParseNode parses one on-disk graph node file (front-matter + body) into a
-// Node.
-func ParseNode(r io.Reader) (Node, error) {
+// Node. index resolves a "**Label**" body block's predicate identity and
+// role (spec 010 FR-019, Bugfix BUG-002) — see ParsePatch's doc comment.
+func ParseNode(r io.Reader, index Index) (Node, error) {
 	source, err := io.ReadAll(r)
 	if err != nil {
 		return Node{}, err
@@ -115,7 +137,7 @@ func ParseNode(r io.Reader) (Node, error) {
 		}
 	}
 
-	texts, hrefs, edges := walkNodeBody(children, source, typ)
+	texts, hrefs, edges, labels := walkNodeBody(children, source, typ, index)
 
 	return Node{
 		ID:        id,
@@ -125,6 +147,7 @@ func ParseNode(r io.Reader) (Node, error) {
 		Texts:     texts,
 		HRefs:     hrefs,
 		Edges:     edges,
+		Labels:    labels,
 	}, nil
 }
 
@@ -187,7 +210,7 @@ func patchNodeIdentity(manifest map[string]any, idHeading, typeHeading string) (
 		return "", "", nil, fmt.Errorf("missing mandatory %q field", "@id")
 	}
 
-	typ = strings.ToLower(typeHeading)
+	typ = typeHeading
 	if explicit, ok := manifest["@type"].(string); ok && explicit != "" {
 		if !strings.EqualFold(explicit, typeHeading) {
 			return "", "", nil, fmt.Errorf("\"@type\" %q does not match section heading %q", explicit, typeHeading)
@@ -196,6 +219,9 @@ func patchNodeIdentity(manifest map[string]any, idHeading, typeHeading string) (
 	}
 	if typ == "" {
 		return "", "", nil, fmt.Errorf("missing mandatory %q field", "@type")
+	}
+	if !isCamelCase(typ) {
+		return "", "", nil, ErrTypeCasing.With(errNoCause, typ)
 	}
 
 	rest = make(map[string]any, len(manifest))
@@ -254,6 +280,17 @@ func wrapPredicateValue(v any) []Predicate {
 	return []Predicate{{Value: v}}
 }
 
+// isCamelCase reports whether s begins with an uppercase letter (Unicode-
+// aware, research.md D1, spec 019 FR-004/FR-005/FR-008) — false for an
+// empty string. No constraint is placed on any character beyond the first.
+func isCamelCase(s string) bool {
+	if s == "" {
+		return false
+	}
+	r, _ := utf8.DecodeRuneInString(s)
+	return unicode.IsUpper(r)
+}
+
 // textPredicateFor is a small, explicitly temporary "@type"->text-predicate
 // lookup table (research.md D4): it names the leading and trailing prose
 // slots walkNodeBody still recognizes structurally, so a node's stored
@@ -262,23 +299,26 @@ func wrapPredicateValue(v any) []Predicate {
 // stopgap superseded by spec 011's Schema Index, which will derive text
 // predicate names from a graph's actual schema instead of a hardcoded
 // table.
+// TextPredicateFor exposes textPredicateFor's leading/trailing structural
+// slot-key convention to other internal packages (BUG-002) — e.g.
+// internal/app/graph/service's auto-discovery hook, which must recognize
+// and skip these two reserved keys rather than treat them as genuinely
+// discovered predicates worth registering into _schema/.
+func TextPredicateFor(nodeType string, leading bool) string {
+	return textPredicateFor(nodeType, leading)
+}
+
 func textPredicateFor(nodeType string, leading bool) string {
 	if !leading {
 		return "notes"
 	}
 	switch nodeType {
-	case "source":
+	case "Source":
 		return "abstract"
-	case "entity":
+	case "Entity":
 		return "definition"
-	case "resource":
+	case "Resource":
 		return "relevance"
-	case "hypothesis":
-		return "claim"
-	case "aporia":
-		return "tension"
-	case "thought":
-		return "claim"
 	default:
 		return "text"
 	}
@@ -395,8 +435,10 @@ func linesText(n ast.Node, source []byte) string {
 // shape every pre-existing patch fixture (and real external patch
 // producers) already use — an explicit "@id"/"@type" key inside the node's
 // own yaml fence is optional, and if present MUST agree with the
-// corresponding heading (see patchNodeIdentity).
-func parsePatchBody(doc ast.Node, source []byte) ([]Node, error) {
+// corresponding heading (see patchNodeIdentity). index resolves a
+// "**Label**" body block's predicate identity and role (spec 010 FR-019,
+// Bugfix BUG-002) — see ParsePatch's doc comment.
+func parsePatchBody(doc ast.Node, source []byte, index Index) ([]Node, error) {
 	children := childSlice(doc)
 	if len(children) == 0 {
 		return nil, ErrPatchStructure.With(errNoCause)
@@ -447,7 +489,7 @@ func parsePatchBody(doc ast.Node, source []byte) ([]Node, error) {
 				i++
 			}
 
-			texts, hrefs, edges := walkNodeBody(children[start:i], source, typ)
+			texts, hrefs, edges, labels := walkNodeBody(children[start:i], source, typ, index)
 
 			nodes = append(nodes, Node{
 				ID:        id,
@@ -457,6 +499,7 @@ func parsePatchBody(doc ast.Node, source []byte) ([]Node, error) {
 				Texts:     texts,
 				HRefs:     hrefs,
 				Edges:     edges,
+				Labels:    labels,
 			})
 			sawNode = true
 		}
@@ -519,8 +562,36 @@ func decodeYAMLBlock(fence *ast.FencedCodeBlock, source []byte) (map[string]any,
 // textPredicateFor instead of two fixed fields, and every link — whether
 // from the bare list or from a heading/bold-label block — flattens into one
 // Edges slice, in the order encountered, with no grouping key retained.
-func walkNodeBody(children []ast.Node, source []byte, nodeType string) (texts map[string]string, hrefs, edges []Link) {
+//
+// Bugfix BUG-002 (spec 010 FR-019): a "**Label**"/"## Label" block's list is
+// no longer unconditionally treated as edges-only. index resolves the
+// block's label to a registered predicate via the inverse of labelFor; if
+// resolved, the predicate's declared Role decides how the block's content is
+// consumed (role: text aggregates the full block into Texts[predicateID],
+// anything else keeps today's wikilink-only extraction unchanged). When the
+// label does not resolve — including when index is the zero value, e.g. a
+// caller with no schema in scope — each list line is classified
+// individually: a wikilink/predicate-tagged line still becomes an edge
+// exactly as collectListLinks would, so a homogeneously wikilink-shaped list
+// parses identically to before (no regression); only a line that doesn't
+// match is now preserved as text instead of silently dropped.
+//
+// Bugfix BUG-003 (spec 010 FR-020/FR-021/FR-022): an unresolved label's
+// content is now also captured with its *shape* preserved, not just its
+// words — a text-role block's list items keep their own literal markup
+// (wikilink brackets, `predicate::` tags) verbatim instead of being run
+// through the free-prose inline-link extraction/reconstruction pipeline,
+// and an unresolved label's own literal text is carried forward (in the
+// returned labels map) keyed by each predicate it produced — a bare,
+// untagged wikilink line is itself promoted to carry the label-derived
+// predicate id, rather than staying anonymous — so a later auto-
+// registration step can recover the block's original heading/bold-label
+// text and its per-block grouping (role: link) on write.
+func walkNodeBody(children []ast.Node, source []byte, nodeType string, index Index) (texts map[string]string, hrefs, edges []Link, labels map[string]string) {
 	idx := 0
+	labelIndex := buildLabelIndex(index)
+	namedTexts := map[string][]string{}
+	namedLabels := map[string]string{}
 
 	var leading []string
 	for idx < len(children) {
@@ -541,17 +612,18 @@ func walkNodeBody(children []ast.Node, source []byte, nodeType string) (texts ma
 		leading = append(leading, linesText(p, source))
 		idx++
 	}
-	rawText := strings.Join(leading, "\n\n")
-
 	if idx < len(children) {
 		if list, ok := children[idx].(*ast.List); ok {
-			edges = collectListLinks(list, source)
+			links, textLines := classifyListItems(list, source)
+			edges = append(edges, links...)
+			leading = append(leading, textLines...)
 			idx++
 		}
 	}
+	rawText := strings.Join(leading, "\n\n")
 
 	for idx < len(children) {
-		_, matched := blockTitle(children[idx], source)
+		label, matched := blockTitle(children[idx], source)
 		if !matched || idx+1 >= len(children) {
 			break
 		}
@@ -560,22 +632,49 @@ func walkNodeBody(children []ast.Node, source []byte, nodeType string) (texts ma
 			break
 		}
 
-		edges = append(edges, collectListLinks(list, source)...)
+		if predicate, role, resolved := resolveLabelPredicate(index, labelIndex, label); resolved && role == "text" {
+			if lines := listItemLines(list, source); len(lines) > 0 {
+				namedTexts[predicate] = append(namedTexts[predicate], lines...)
+			}
+		} else if resolved {
+			edges = append(edges, collectListLinks(list, source)...)
+		} else {
+			links, textLines := classifyListItems(list, source)
+			derivedPredicate := camelizeLabel(label)
+			// A bare, untagged wikilink line has no predicate of its own
+			// (BUG-003, FR-022) — promote it to the block's own
+			// label-derived id, so its grouping/label survive a write
+			// instead of it rendering as an anonymous, ungrouped bullet.
+			for i := range links {
+				if links[i].Predicate == "" {
+					links[i].Predicate = derivedPredicate
+				}
+				namedLabels[links[i].Predicate] = label
+			}
+			edges = append(edges, links...)
+			if len(textLines) > 0 {
+				namedTexts[derivedPredicate] = append(namedTexts[derivedPredicate], textLines...)
+				namedLabels[derivedPredicate] = label
+			}
+		}
 		idx += 2
 	}
 
 	// A List reaching this point (BUG-003) means the patch's body did not
 	// pair a heading/bold-label title with it the way the loop above
 	// expects (e.g. a bare list with no title at all, following an
-	// already-matched block) — fold it into the ungrouped edges rather
-	// than silently discarding it, so no declared relation is ever lost.
+	// already-matched block) — classify it per line rather than silently
+	// discarding non-matching content (BUG-002), so no declared relation or
+	// prose is ever lost.
 	var trailing []string
 	for idx < len(children) {
 		switch v := children[idx].(type) {
 		case *ast.Paragraph:
 			trailing = append(trailing, linesText(v, source))
 		case *ast.List:
-			edges = append(edges, collectListLinks(v, source)...)
+			links, textLines := classifyListItems(v, source)
+			edges = append(edges, links...)
+			trailing = append(trailing, textLines...)
 		}
 		idx++
 	}
@@ -594,11 +693,103 @@ func walkNodeBody(children []ast.Node, source []byte, nodeType string) (texts ma
 	if strippedNotes != "" {
 		texts[textPredicateFor(nodeType, false)] = strippedNotes
 	}
+	for predicate, lines := range namedTexts {
+		// BUG-003 (FR-020): a text-role block always originates from a
+		// Markdown list (the label+list loop above never matches a
+		// paragraph), so each line's own literal markup — wikilink
+		// brackets, inline `predicate::` tags — is reconstructed as a
+		// bulleted list verbatim, never routed through
+		// extractInlineLinks/reconstructHRefs's free-prose heuristic.
+		rendered := renderTextListLines(lines)
+		if rendered == "" {
+			continue
+		}
+		if existing, ok := texts[predicate]; ok {
+			texts[predicate] = existing + "\n" + rendered
+		} else {
+			texts[predicate] = rendered
+		}
+	}
 	if len(texts) == 0 {
 		texts = nil
 	}
+	if len(namedLabels) > 0 {
+		labels = namedLabels
+	}
 
-	return texts, hrefs, edges
+	return texts, hrefs, edges, labels
+}
+
+// renderTextListLines reconstructs a Markdown bulleted list, verbatim, from
+// a text-role block's raw per-item lines (BUG-003, FR-020) — each line is
+// already the item's own unmodified source text (listItemLines/
+// classifyListItems never strip or rewrite it), so no inline-link
+// extraction/reconstruction round-trip is needed or performed.
+func renderTextListLines(lines []string) string {
+	var b strings.Builder
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("- " + line)
+	}
+	return b.String()
+}
+
+// buildLabelIndex inverts labelFor's predicate -> display-label resolution,
+// so a body block's literal "**Label**"/"## Label" text can be resolved back
+// to the predicate id that would render it (BUG-002).
+func buildLabelIndex(index Index) map[string]string {
+	if len(index.Predicates) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(index.Predicates))
+	for name := range index.Predicates {
+		out[labelFor(index, name)] = name
+	}
+	return out
+}
+
+// resolveLabelPredicate resolves a "**Label**"/"## Label" block's predicate
+// identity and declared Role via labelIndex (BUG-002); resolved is false
+// when the label matches no registered predicate (including when index
+// carries no schema at all), in which case the caller falls back to
+// per-line structural classification instead of guessing a role.
+func resolveLabelPredicate(index Index, labelIndex map[string]string, label string) (predicate, role string, resolved bool) {
+	id, ok := labelIndex[label]
+	if !ok {
+		return "", "", false
+	}
+	def, ok := index.Predicates[id]
+	if !ok {
+		return "", "", false
+	}
+	return id, def.Role, true
+}
+
+// camelizeLabel derives a predicate id from an unresolved block label
+// (BUG-002) — the inverse of titleCaseType's predicate-name-to-label
+// convention: lowercase the first word, capitalize each subsequent word,
+// e.g. "Related Aporias" -> "relatedAporias".
+func camelizeLabel(label string) string {
+	words := strings.Fields(label)
+	var b strings.Builder
+	for i, w := range words {
+		r := []rune(w)
+		if len(r) == 0 {
+			continue
+		}
+		if i == 0 {
+			b.WriteString(strings.ToLower(string(r[0])))
+		} else {
+			b.WriteString(strings.ToUpper(string(r[0])))
+		}
+		b.WriteString(string(r[1:]))
+	}
+	return b.String()
 }
 
 func collectListLinks(list *ast.List, source []byte) []Link {
@@ -614,6 +805,51 @@ func collectListLinks(list *ast.List, source []byte) []Link {
 		}
 	}
 	return out
+}
+
+// listItemLines returns every non-empty list item's raw line, verbatim, for
+// a block whose predicate resolved to role: text (BUG-002) — unlike
+// classifyListItems, no line is treated as a candidate wikilink, since the
+// schema's own declared role is authoritative once resolved.
+func listItemLines(list *ast.List, source []byte) []string {
+	var out []string
+	for c := list.FirstChild(); c != nil; c = c.NextSibling() {
+		item, ok := c.(*ast.ListItem)
+		if !ok {
+			continue
+		}
+		if line := listItemText(item, source); line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// classifyListItems splits a list's items by structural shape (BUG-002,
+// spec 010 FR-019): a wikilink/predicate-tagged line becomes an edge,
+// exactly as collectListLinks would; any other non-empty line is preserved
+// as text instead of being silently dropped. Used whenever no registered
+// predicate's role is available to dispatch by — a bare (unlabeled) list, a
+// label that resolves to nothing, or a trailing stray list. A
+// homogeneously wikilink-shaped list therefore parses identically to
+// collectListLinks (no regression); only a non-matching line's handling
+// changes.
+func classifyListItems(list *ast.List, source []byte) (links []Link, textLines []string) {
+	for c := list.FirstChild(); c != nil; c = c.NextSibling() {
+		item, ok := c.(*ast.ListItem)
+		if !ok {
+			continue
+		}
+		line := listItemText(item, source)
+		if l, ok := parseListItemLink(line); ok {
+			links = append(links, l)
+			continue
+		}
+		if line != "" {
+			textLines = append(textLines, line)
+		}
+	}
+	return links, textLines
 }
 
 func listItemText(item ast.Node, source []byte) string {
@@ -769,12 +1005,20 @@ func renderNodeBody(n Node, index Index, patchFormat bool) []byte {
 	var buf bytes.Buffer
 
 	consumed := make([]bool, len(n.HRefs))
-	writeText := func(key string) {
+	writeText := func(key string, heading bool) {
 		rendered := reconstructHRefs(n.Texts[key], n.HRefs, consumed)
 		if rendered == "" {
 			return
 		}
 		buf.WriteString("\n")
+		if heading {
+			label := labelForNode(n, index, key)
+			if patchFormat {
+				buf.WriteString("**" + label + "**\n")
+			} else {
+				buf.WriteString("## " + label + "\n")
+			}
+		}
 		buf.WriteString(rendered)
 		buf.WriteString("\n")
 	}
@@ -783,9 +1027,14 @@ func renderNodeBody(n Node, index Index, patchFormat bool) []byte {
 	trailingKey := textPredicateFor(n.Type, false)
 
 	if _, ok := n.Texts[leadingKey]; ok {
-		writeText(leadingKey)
+		writeText(leadingKey, false)
 	}
 
+	// Every "other" Texts key (BUG-003, FR-021) originates from a
+	// "**Label**"/"## Label" body block — walkNodeBody never produces one
+	// any other way — so it always gets its heading back on write, using
+	// the same label-resolution and heading-vs-bold-label format rules
+	// already defined for a role: link edge group (FR-001/FR-004/FR-014).
 	var other []string
 	for k := range n.Texts {
 		if k == leadingKey || k == trailingKey {
@@ -795,26 +1044,46 @@ func renderNodeBody(n Node, index Index, patchFormat bool) []byte {
 	}
 	sort.Strings(other)
 	for _, k := range other {
-		writeText(k)
+		writeText(k, true)
 	}
 
-	renderEdges(&buf, n.Edges, index, patchFormat)
+	renderEdges(&buf, n, index, patchFormat)
 
 	if _, ok := n.Texts[trailingKey]; ok {
-		writeText(trailingKey)
+		writeText(trailingKey, false)
 	}
 
 	return buf.Bytes()
 }
 
-// resolveRenderRole looks up predicate's declared Role in index, falling
-// back to "edge" (flat, the conservative shape — never invents a heading
-// the author didn't declare) when the predicate has no schema document yet,
-// mirroring resolveMergeOp's own unregistered-predicate precedent
-// (research.md D3).
-func resolveRenderRole(index Index, predicate string) string {
+// labelForNode resolves predicate's display label for rendering, preferring
+// the schema's own declared Label (labelFor), then falling back to this
+// node's own transient Labels hint (BUG-003) — a predicate discovered from
+// an unresolved "**Label**" block during this same parse, not yet reflected
+// in index since auto-registration writes straight to disk without updating
+// the in-memory index — before labelFor's own titleCaseType-derived
+// default.
+func labelForNode(n Node, index Index, predicate string) string {
+	if def, ok := index.Predicates[predicate]; ok && def.Label != "" {
+		return def.Label
+	}
+	if label, ok := n.Labels[predicate]; ok && label != "" {
+		return label
+	}
+	return titleCaseType(predicate)
+}
+
+// resolveRenderRoleForNode mirrors resolveRenderRole, additionally treating
+// a predicate carried in n.Labels as role: link (BUG-003) — an edge that
+// occurred under its own "**Label**" block this same parse — so its
+// grouping survives a write even before the schema index reflects the
+// auto-registration this same Apply call just persisted to disk.
+func resolveRenderRoleForNode(n Node, index Index, predicate string) string {
 	if def, ok := index.Predicates[predicate]; ok {
 		return def.Role
+	}
+	if label, ok := n.Labels[predicate]; ok && label != "" {
+		return "link"
 	}
 	return "edge"
 }
@@ -850,8 +1119,8 @@ type linkGroup struct {
 // "## <label>" heading (RenderNode, ARCNET-CORE §5) — the partition,
 // ordering, and single-group-omission decisions below are identical either
 // way; only the two literal markup strings differ.
-func renderEdges(buf *bytes.Buffer, edges []Link, index Index, patchFormat bool) {
-	if len(edges) == 0 {
+func renderEdges(buf *bytes.Buffer, n Node, index Index, patchFormat bool) {
+	if len(n.Edges) == 0 {
 		return
 	}
 
@@ -859,8 +1128,8 @@ func renderEdges(buf *bytes.Buffer, edges []Link, index Index, patchFormat bool)
 	var groups []linkGroup
 	byPredicate := map[string]int{}
 
-	for _, e := range edges {
-		if resolveRenderRole(index, e.Predicate) != "link" {
+	for _, e := range n.Edges {
+		if resolveRenderRoleForNode(n, index, e.Predicate) != "link" {
 			flat = append(flat, e)
 			continue
 		}
@@ -868,7 +1137,7 @@ func renderEdges(buf *bytes.Buffer, edges []Link, index Index, patchFormat bool)
 		if !ok {
 			i = len(groups)
 			byPredicate[e.Predicate] = i
-			groups = append(groups, linkGroup{label: labelFor(index, e.Predicate)})
+			groups = append(groups, linkGroup{label: labelForNode(n, index, e.Predicate)})
 		}
 		groups[i].links = append(groups[i].links, e)
 	}
@@ -1269,5 +1538,13 @@ func followedByBoundary(s string, at int) bool {
 		return true
 	}
 	r, _ := utf8.DecodeRuneInString(s[at:])
-	return unicode.IsSpace(r) || unicode.IsPunct(r)
+	if unicode.IsSpace(r) || unicode.IsPunct(r) {
+		return true
+	}
+	// A lowercase letter immediately following the display text is treated
+	// as an inflectional suffix (BUG-003, FR-020) — e.g. "[[LLM]]s" — rather
+	// than rejected as a false partial-word match; only a following
+	// non-lowercase-letter character (another capital, a digit, etc.)
+	// still blocks reinsertion.
+	return unicode.IsLower(r)
 }

@@ -94,7 +94,7 @@ func TestRevertSkipsWhenSourceNodeAlreadyRemoved(t *testing.T) {
 // discarded or partially reported as success.
 func TestRevertCommitFailurePropagatesWithoutFabricatingResult(t *testing.T) {
 	store := newGraphStore()
-	store.files["sources/foo-2026-x.md"] = []byte("---\n\"@id\": foo-2026-x\n\"@type\": source\n---\n# foo-2026-x\n")
+	store.files["sources/foo-2026-x.md"] = []byte("---\n\"@id\": foo-2026-x\n\"@type\": Source\n---\n# foo-2026-x\n")
 	vcs := &graphmock.VCS{
 		Tracked:           map[string]bool{"sources/foo-2026-x.md": true},
 		CommitsMatchingFn: func(dir, needle string) ([]string, error) { return []string{"ingest123"}, nil },
@@ -144,7 +144,7 @@ func TestRevertWholeCommitPathWhenNothingTouchedSince(t *testing.T) {
 // exclusively owned (invariant: it is always removed).
 func TestRevertDispatchesToPerNodeWhenLaterCommitTouchedAPath(t *testing.T) {
 	store := newGraphStore()
-	store.files["sources/foo-2026-x.md"] = []byte("---\n\"@id\": foo-2026-x\n\"@type\": source\n---\n# foo-2026-x\n")
+	store.files["sources/foo-2026-x.md"] = []byte("---\n\"@id\": foo-2026-x\n\"@type\": Source\n---\n# foo-2026-x\n")
 	vcs := &graphmock.VCS{
 		Tracked:           map[string]bool{"sources/foo-2026-x.md": true},
 		CommitsMatchingFn: func(dir, needle string) ([]string, error) { return []string{"ingest123"}, nil },
@@ -165,10 +165,10 @@ func TestRevertDispatchesToPerNodeWhenLaterCommitTouchedAPath(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
 		Should(it.Equal("per-node", result.Approach)).
-		Should(it.Equal(1, result.Removed["source"])).
+		Should(it.Equal(1, result.Removed["Source"])).
 		Should(it.Equal("commitABC", result.CommitHash))
 	it.Then(t).Should(it.Seq(store.removed).Contain("sources/foo-2026-x.md"))
-	it.Then(t).Should(it.Seq(vcs.Calls).Contain("Commit:/graph:graph(revert): foo-2026-x — per-node reconciliation\n\nRemoved: 1 nodes (source: 1)\nReconciled: 0 nodes ()\nLinks removed: 0\nReverted-Document: foo-2026-x\n"))
+	it.Then(t).Should(it.Seq(vcs.Calls).Contain("Commit:/graph:graph(revert): foo-2026-x — per-node reconciliation\n\nRemoved: 1 nodes (Source: 1)\nReconciled: 0 nodes ()\nLinks removed: 0\nReverted-Document: foo-2026-x\n"))
 }
 
 // research.md D7: a shared node's paragraph is stripped only when every
@@ -178,7 +178,7 @@ func TestRevertReconcilesSharedNodeStrippingOnlyBlamedParagraph(t *testing.T) {
 	store := newGraphStore()
 	node := core.Node{
 		ID:   "Widget",
-		Type: "entity",
+		Type: "Entity",
 		Texts: map[string]string{
 			"notes": "First paragraph from foo-2026-x.\n\nSecond paragraph from later patch.",
 		},
@@ -213,12 +213,12 @@ func TestRevertReconcilesSharedNodeStrippingOnlyBlamedParagraph(t *testing.T) {
 		},
 		CommitHash: "commitDEF",
 	}
-	store.files["sources/foo-2026-x.md"] = []byte("---\n\"@id\": foo-2026-x\n\"@type\": source\n---\n# foo-2026-x\n")
+	store.files["sources/foo-2026-x.md"] = []byte("---\n\"@id\": foo-2026-x\n\"@type\": Source\n---\n# foo-2026-x\n")
 
 	result, err := service.Revert(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, "/graph", "foo-2026-x")
 
 	it.Then(t).Should(it.Nil(err))
-	it.Then(t).Should(it.Equal(1, result.Reconciled["entity"]))
+	it.Then(t).Should(it.Equal(1, result.Reconciled["Entity"]))
 
 	content := string(store.files["entities/Widget.md"])
 	it.Then(t).
@@ -232,13 +232,13 @@ func TestRevertLeavesSharedNodeUnchangedWhenNoAttribution(t *testing.T) {
 	store := newGraphStore()
 	node := core.Node{
 		ID:    "Widget",
-		Type:  "entity",
+		Type:  "Entity",
 		Texts: map[string]string{"notes": "Only a later patch's paragraph."},
 	}
 	rendered, err := core.RenderNode(node, coreIndexFixture)
 	it.Then(t).Should(it.Nil(err))
 	store.files["entities/Widget.md"] = rendered
-	store.files["sources/foo-2026-x.md"] = []byte("---\n\"@id\": foo-2026-x\n\"@type\": source\n---\n# foo-2026-x\n")
+	store.files["sources/foo-2026-x.md"] = []byte("---\n\"@id\": foo-2026-x\n\"@type\": Source\n---\n# foo-2026-x\n")
 
 	vcs := &graphmock.VCS{
 		Tracked:           map[string]bool{"sources/foo-2026-x.md": true},
@@ -259,7 +259,7 @@ func TestRevertLeavesSharedNodeUnchangedWhenNoAttribution(t *testing.T) {
 	result, err := service.Revert(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, "/graph", "foo-2026-x")
 
 	it.Then(t).Should(it.Nil(err))
-	it.Then(t).Should(it.Equal(0, result.Reconciled["entity"]))
+	it.Then(t).Should(it.Equal(0, result.Reconciled["Entity"]))
 	it.Then(t).Should(it.Equal(string(rendered), string(store.files["entities/Widget.md"])))
 
 	var outcome string
@@ -306,10 +306,10 @@ func writeGraphFile(t *testing.T, dir, relPath, content string) {
 func TestRevertRemovesExclusiveNodeAndSweepsBacklinksIncludingTimeline(t *testing.T) {
 	dir := t.TempDir()
 	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, ".arc"), 0o755)))
-	writeGraphFile(t, dir, "sources/foo-2026-x.md", "---\n\"@id\": foo-2026-x\n\"@type\": source\n---\n# foo-2026-x\n")
-	writeGraphFile(t, dir, "entities/OldWidget.md", "---\n\"@id\": OldWidget\n\"@type\": entity\n---\n# OldWidget\n")
-	writeGraphFile(t, dir, "entities/Gadget.md", "---\n\"@id\": Gadget\n\"@type\": entity\n---\n# Gadget\n\n- relatesTo:: [[OldWidget]]\n")
-	writeGraphFile(t, dir, "timeline/yearly/2026.md", "---\n\"@id\": \"2026\"\n\"@type\": timeline\nperiod: \"2026\"\ngranularity: yearly\n---\n# 2026\n\n- cites:: [[OldWidget]] — OldWidget — 2026-01-01\n")
+	writeGraphFile(t, dir, "sources/foo-2026-x.md", "---\n\"@id\": foo-2026-x\n\"@type\": Source\n---\n# foo-2026-x\n")
+	writeGraphFile(t, dir, "entities/OldWidget.md", "---\n\"@id\": OldWidget\n\"@type\": Entity\n---\n# OldWidget\n")
+	writeGraphFile(t, dir, "entities/Gadget.md", "---\n\"@id\": Gadget\n\"@type\": Entity\n---\n# Gadget\n\n- relatesTo:: [[OldWidget]]\n")
+	writeGraphFile(t, dir, "timeline/yearly/2026.md", "---\n\"@id\": \"2026\"\n\"@type\": Timeline\nperiod: \"2026\"\ngranularity: yearly\n---\n# 2026\n\n- cites:: [[OldWidget]] — OldWidget — 2026-01-01\n")
 
 	vcs := &graphmock.VCS{
 		Tracked:           map[string]bool{"sources/foo-2026-x.md": true},
@@ -334,8 +334,8 @@ func TestRevertRemovesExclusiveNodeAndSweepsBacklinksIncludingTimeline(t *testin
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
-		Should(it.Equal(1, result.Removed["source"])).
-		Should(it.Equal(1, result.Removed["entity"])).
+		Should(it.Equal(1, result.Removed["Source"])).
+		Should(it.Equal(1, result.Removed["Entity"])).
 		Should(it.Equal(2, result.LinksRemoved))
 
 	_, statErr := os.Stat(filepath.Join(dir, "entities", "OldWidget.md"))

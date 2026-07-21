@@ -45,8 +45,8 @@ func RegisterType(store fsys.Store, typ string) (created bool, err error) {
 
 // RegisterPredicate creates predicate's predicate schema document if one is
 // not already present. Thin delegator into service.RegisterPredicate.
-func RegisterPredicate(store fsys.Store, predicate string) (created bool, err error) {
-	return service.RegisterPredicate(store, predicate)
+func RegisterPredicate(store fsys.Store, predicate, observedRole, label string) (created bool, err error) {
+	return service.RegisterPredicate(store, predicate, observedRole, label)
 }
 
 // ApplyPatch reads the patch document at source (a local path, URL, or
@@ -67,6 +67,6 @@ func (Component) RegisterType(store fsys.Store, typ string) (created bool, err e
 	return RegisterType(store, typ)
 }
 
-func (Component) RegisterPredicate(store fsys.Store, predicate string) (created bool, err error) {
-	return RegisterPredicate(store, predicate)
+func (Component) RegisterPredicate(store fsys.Store, predicate, observedRole, label string) (created bool, err error) {
+	return RegisterPredicate(store, predicate, observedRole, label)
 }

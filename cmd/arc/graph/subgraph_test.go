@@ -21,7 +21,7 @@ import (
 
 const subgraphEntityTLS = `---
 "@id": Transport Layer Security
-"@type": entity
+"@type": Entity
 category: form structure attribute process
 ---
 # Transport Layer Security
@@ -33,7 +33,7 @@ TLS is the successor to SSL.
 
 const subgraphSourceTLS13 = `---
 "@id": rescorla-2026-tls13
-"@type": source
+"@type": Source
 title: TLS 1.3
 ---
 # rescorla-2026-tls13
@@ -43,7 +43,7 @@ TLS 1.3 is the latest version of the Transport Layer Security protocol.
 
 const subgraphEntitySSL = `---
 "@id": SSL
-"@type": entity
+"@type": Entity
 ---
 # SSL
 
@@ -52,7 +52,7 @@ const subgraphEntitySSL = `---
 
 const subgraphIsolatedNote = `---
 "@id": Isolated Note
-"@type": entity
+"@type": Entity
 ---
 # Isolated Note
 
@@ -147,7 +147,7 @@ func TestSubgraphUnknownBasenameRefusesWithClearErrorNoOutput(t *testing.T) {
 
 const subgraphChainA = `---
 "@id": ChainA
-"@type": entity
+"@type": Entity
 ---
 # ChainA
 
@@ -155,7 +155,7 @@ const subgraphChainA = `---
 `
 const subgraphChainB = `---
 "@id": ChainB
-"@type": entity
+"@type": Entity
 ---
 # ChainB
 
@@ -163,7 +163,7 @@ const subgraphChainB = `---
 `
 const subgraphChainC = `---
 "@id": ChainC
-"@type": entity
+"@type": Entity
 ---
 # ChainC
 
@@ -171,7 +171,7 @@ const subgraphChainC = `---
 `
 const subgraphChainD = `---
 "@id": ChainD
-"@type": entity
+"@type": Entity
 ---
 # ChainD
 `
@@ -242,7 +242,7 @@ func TestSubgraphOmittingDepthBehavesAsDepthOne(t *testing.T) {
 
 const subgraphDiamondA = `---
 "@id": DiamondA
-"@type": entity
+"@type": Entity
 ---
 # DiamondA
 
@@ -251,7 +251,7 @@ const subgraphDiamondA = `---
 `
 const subgraphDiamondB = `---
 "@id": DiamondB
-"@type": entity
+"@type": Entity
 ---
 # DiamondB
 
@@ -259,7 +259,7 @@ const subgraphDiamondB = `---
 `
 const subgraphDiamondC = `---
 "@id": DiamondC
-"@type": entity
+"@type": Entity
 ---
 # DiamondC
 
@@ -267,7 +267,7 @@ const subgraphDiamondC = `---
 `
 const subgraphDiamondD = `---
 "@id": DiamondD
-"@type": entity
+"@type": Entity
 ---
 # DiamondD
 `
@@ -294,7 +294,7 @@ func TestSubgraphMultiPathNodeAppearsExactlyOnce(t *testing.T) {
 
 const subgraphResourceRFC8446 = `---
 "@id": RFC 8446
-"@type": resource
+"@type": Resource
 tags: [cryptography]
 status: draft
 ---
@@ -305,7 +305,7 @@ The TLS 1.3 RFC.
 
 const subgraphSourceOther = `---
 "@id": other-2026
-"@type": source
+"@type": Source
 tags: [cryptography]
 status: draft
 ---
@@ -316,7 +316,7 @@ An unrelated draft source.
 
 const subgraphEntityTLSWithTwoTargets = `---
 "@id": Transport Layer Security
-"@type": entity
+"@type": Entity
 ---
 # Transport Layer Security
 
@@ -332,7 +332,7 @@ func seedSubgraphFilterFixture(t *testing.T, dir string) {
 	writeGrepNode(t, dir, "entities/Transport Layer Security.md", subgraphEntityTLSWithTwoTargets)
 	writeGrepNode(t, dir, "sources/rescorla-2026-tls13.md", `---
 "@id": rescorla-2026-tls13
-"@type": source
+"@type": Source
 tags: [cryptography]
 status: mature
 ---
@@ -354,7 +354,7 @@ func TestSubgraphTypeFilterStillIncludesSeedDespiteMismatch(t *testing.T) {
 	chdir(t, dir)
 
 	cmd := NewSubgraphCmd()
-	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "source")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "Source")))
 	out, err := sut(cmd, []string{"Transport Layer Security"})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
@@ -371,7 +371,7 @@ func TestSubgraphTypeFilterRestrictsReachableNodes(t *testing.T) {
 	chdir(t, dir)
 
 	cmd := NewSubgraphCmd()
-	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "resource")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "Resource")))
 	out, err := sut(cmd, []string{"Transport Layer Security"})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
@@ -412,7 +412,7 @@ func TestSubgraphCombinedFilterNarrowsFurtherCLI(t *testing.T) {
 	chdir(t, dir)
 
 	cmd := NewSubgraphCmd()
-	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "source")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "Source")))
 	it.Then(t).Should(it.Nil(cmd.Flags().Set("tag", "cryptography")))
 	it.Then(t).Should(it.Nil(cmd.Flags().Set("attr", "status=mature")))
 	out, err := sut(cmd, []string{"Transport Layer Security"})
@@ -464,7 +464,7 @@ func TestSubgraphTargetNotAGraphRefuses(t *testing.T) {
 
 const subgraphDanglingEntity = `---
 "@id": Dangling
-"@type": entity
+"@type": Entity
 ---
 # Dangling
 
@@ -495,7 +495,7 @@ func TestSubgraphDanglingLinkTargetExcludedCLI(t *testing.T) {
 
 const subgraphCycleA = `---
 "@id": CycleA
-"@type": entity
+"@type": Entity
 ---
 # CycleA
 
@@ -503,7 +503,7 @@ const subgraphCycleA = `---
 `
 const subgraphCycleB = `---
 "@id": CycleB
-"@type": entity
+"@type": Entity
 ---
 # CycleB
 
@@ -552,12 +552,12 @@ func TestSubgraphTruncatedPoolReportsStatsAndStderrNotice(t *testing.T) {
 	initGraph(t, dir)
 	writeGrepNode(t, dir, "entities/Hub.md", `---
 "@id": Hub
-"@type": entity
+"@type": Entity
 ---
 # Hub
 `)
 	for _, id := range []string{"P1", "P2", "P3"} {
-		writeGrepNode(t, dir, "entities/"+id+".md", "---\n\"@id\": "+id+"\n\"@type\": entity\n---\n# "+id+"\n\n- [[Hub]]\n")
+		writeGrepNode(t, dir, "entities/"+id+".md", "---\n\"@id\": "+id+"\n\"@type\": Entity\n---\n# "+id+"\n\n- [[Hub]]\n")
 	}
 	writeGrepNode(t, dir, ".arc/config.yml", "subgraph:\n  backlinkCap: 2\n")
 	chdir(t, dir)
@@ -572,7 +572,7 @@ func TestSubgraphTruncatedPoolReportsStatsAndStderrNotice(t *testing.T) {
 
 const subgraphEntityWithPublished = `---
 "@id": PublishedThing
-"@type": entity
+"@type": Entity
 published: "2026-04-12"
 ---
 # PublishedThing
@@ -658,7 +658,7 @@ func TestSubgraphStubsRegressionAppliedIntoEmptyGraphHasNoUnresolvedLinks(t *tes
 
 const subgraphEntityMixedShape = `---
 "@id": MixedShapeEntity
-"@type": entity
+"@type": Entity
 ---
 # MixedShapeEntity
 

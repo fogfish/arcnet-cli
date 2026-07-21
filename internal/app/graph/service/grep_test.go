@@ -43,7 +43,7 @@ func newGrepGraph(files map[string]string) grepMounter {
 
 const grepSourceNodeA = `---
 "@id": a
-"@type": source
+"@type": Source
 ---
 # a
 
@@ -52,7 +52,7 @@ TLS 1.3 is great.
 
 const grepSourceNodeMultiLine = `---
 "@id": multi
-"@type": source
+"@type": Source
 ---
 # multi
 
@@ -63,7 +63,7 @@ TLS appears again.
 
 const grepEntityNodeB = `---
 "@id": b
-"@type": entity
+"@type": Entity
 ---
 # b
 
@@ -71,13 +71,13 @@ No match here.
 `
 
 // grepEntityNodeDefinition carries its prose in the "definition" Texts
-// predicate (textPredicateFor's leading slot for "@type": entity) — TLS
+// predicate (textPredicateFor's leading slot for "@type": Entity) — TLS
 // appears only there, never in a generically-named "text" key, so a match
 // here confirms Grep's underlying content scan reaches every named Texts
 // predicate, not just a single default one (spec.md US1, tasks.md T048).
 const grepEntityNodeDefinition = `---
 "@id": c
-"@type": entity
+"@type": Entity
 ---
 # c
 
@@ -103,7 +103,7 @@ func TestGrepEmptyFilterScansEveryNode(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, len(result.Matches)))
 	it.Then(t).
-		Should(it.Equal("source", result.Matches[0].Type)).
+		Should(it.Equal("Source", result.Matches[0].Type)).
 		Should(it.Equal("a", result.Matches[0].ID)).
 		Should(it.Equal("sources/a.md", result.Matches[0].Path))
 }
@@ -113,7 +113,7 @@ func TestGrepFilterExcludesNonMatchingNodesFromScan(t *testing.T) {
 		"sources/a.md":  grepSourceNodeA,
 		"entities/b.md": grepEntityNodeB,
 	})
-	filter := core.Filter{Types: []string{"entity"}}
+	filter := core.Filter{Types: []string{"Entity"}}
 
 	result, err := service.Grep(context.Background(), mounter, filter, "TLS", configkernel.GrepConfig{}, "/graph")
 
@@ -156,7 +156,7 @@ func TestGrepMultiLineNodeProducesOneMatchPerLineInOrder(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(2, len(result.Matches)))
 	it.Then(t).
-		Should(it.Equal("source", result.Matches[0].Type)).
+		Should(it.Equal("Source", result.Matches[0].Type)).
 		Should(it.Equal("multi", result.Matches[0].ID)).
 		Should(it.True(result.Matches[0].Line < result.Matches[1].Line))
 }
@@ -166,7 +166,7 @@ func TestGrepCombinedFilterMatchesZeroNodes(t *testing.T) {
 		"sources/a.md":  grepSourceNodeA,
 		"entities/b.md": grepEntityNodeB,
 	})
-	filter := core.Filter{Types: []string{"resource"}}
+	filter := core.Filter{Types: []string{"Resource"}}
 
 	result, err := service.Grep(context.Background(), mounter, filter, "TLS", configkernel.GrepConfig{}, "/graph")
 
@@ -189,7 +189,7 @@ func TestGrepMatchesNonDefaultNamedTextsPredicate(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, len(result.Matches)))
 	it.Then(t).
-		Should(it.Equal("entity", result.Matches[0].Type)).
+		Should(it.Equal("Entity", result.Matches[0].Type)).
 		Should(it.Equal("c", result.Matches[0].ID)).
 		Should(it.Equal("entities/c.md", result.Matches[0].Path))
 }

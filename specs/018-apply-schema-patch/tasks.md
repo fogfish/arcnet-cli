@@ -104,7 +104,7 @@ description: "Task list for implementing arc apply schema"
 - [X] T022 [US1] Implement patch-source reading in `internal/app/schema/service/apply.go`: dispatch on T021's classification to either mount+`Open` a local file via `fsys.Mounter`/`fsys.Store` (mirroring `graph/service/apply.go`'s `readPatch`) or `Fetch` via `port.Fetcher`, then `core.ParsePatch` the result; wrap failures in `ErrPatchRead`
 - [X] T023 [US1] Implement the node-classification pass in `internal/app/schema/service/apply.go`: iterate `patch.Nodes`, bucket each by `Type` into `Property`/`Class`/disallowed (used by both this story's happy path and User Story 2's rejection path)
 - [X] T024 [US1] Implement the create/merge loop for `Property` nodes into `_schema/predicates/<name>.md` in `internal/app/schema/service/apply.go`, reusing `decodePredicateDef` (from `internal/app/schema/service/schema.go`) for validation and `core.Merge` for an existing document
-- [X] T025 [US1] Implement the create/merge loop for `Class` nodes into `_schema/types/<name>.md` in `internal/app/schema/service/apply.go`, reusing `decodeTypeDef` for validation and `core.Merge` for an existing document
+- [X] T025 [US1] ~~⚠️ Reopened (reopened — BUG-001)~~ Re-closed 2026-07-19: spec 012's [tasks.md Phase 8](../012-predicate-merge-policies/tasks.md) (T048-T054) landed — `decodeTypeDef` no longer requires a `Class` node's `merge` field to be present/valid (FR-020). Implement the create/merge loop for `Class` nodes into `_schema/types/<name>.md` in `internal/app/schema/service/apply.go`, reusing `decodeTypeDef` for validation and `core.Merge` for an existing document. Verified via a new regression test (`TestApplySchemaCreatesTypeFromClassOnlyPatchWithNoMergeField`, `cmd/arc/ctrl/apply_schema_test.go`) and this story's own E2E suite (T030) both passing.
 - [X] T026 [US1] Implement the commit step in `internal/app/schema/service/apply.go`: `vcs.StageAll` + `vcs.Commit` with a `"schema(apply): <n> predicate(s), <m> type(s)"`-style subject (mirroring `graph/service/apply.go`'s `buildCommitMessage` shape), assembling and returning `kernel.ApplySchemaResult`
 - [X] T027 [US1] Add the `ApplyPatch(ctx, mounter, vcs, fetcher, reporter, dir, source string) (kernel.ApplySchemaResult, error)` delegator to `internal/app/schema/component.go`
 - [X] T028 [US1] Implement `RunE` in `cmd/arc/ctrl/apply_schema.go`: wire `fsys.Local{}`, `git.New(reporter)`, `http.New(timeout)`, call `appschema.ApplyPatch`, and render human/`--json` output (`Created`/`Merged`/`CommitHash`) via a `bios.Registry[kernel.ApplySchemaResult]`
@@ -144,11 +144,25 @@ description: "Task list for implementing arc apply schema"
 
 > E2E tests for this story were already written in Phase 2d (T013) and MUST currently be failing (red).
 
-- [X] T035 [US3] Verify/extend the T024/T025 create/merge loop in `internal/app/schema/service/apply.go` so an existing `_schema/predicates/<name>.md`/`_schema/types/<name>.md` document is read back (`readExistingNode`-style) and merged via `core.Merge` rather than overwritten, incrementing `kernel.ApplySchemaResult.Merged` instead of `.Created`
+- [X] T035 [US3] ~~⚠️ Reopened (reopened — BUG-002)~~ Re-closed 2026-07-19: T041 landed — `planSchemaNode`'s validation now runs against the merged result. Verify/extend the T024/T025 create/merge loop in `internal/app/schema/service/apply.go` so an existing `_schema/predicates/<name>.md`/`_schema/types/<name>.md` document is read back (`readExistingNode`-style) and merged via `core.Merge` rather than overwritten, incrementing `kernel.ApplySchemaResult.Merged` instead of `.Created`
 - [X] T036 [US3] Implement no-op detection in `internal/app/schema/service/apply.go`: compare the merged node's rendered bytes against the existing document's (mirroring `graph/service/apply.go`'s `nodeContentChanged`); when every node is unchanged, skip `StageAll`/`Commit` entirely and return a zero-valued `Created`/`Merged` with an empty `CommitHash`
 - [X] T037 [US3] Add unit tests in `internal/app/schema/service/apply_test.go` for "re-apply with a changed field merges it" and "re-apply with no changes reports zero created/merged and makes no commit"
 
 **Checkpoint**: All user stories' E2E tests pass independently
+
+---
+
+## Phase 6: Bugfix BUG-002 — Merging Sections Must Validate Against the Merged Result
+
+**Purpose**: Addresses [bugs/BUG-002.md](bugs/BUG-002.md), reported when `arc apply schema` rejected a patch section adding a new `Optional` predicate to the already-registered built-in `Source` type because the section omitted `description`, even though `Source`'s existing schema document already had one. Root cause: `planSchemaNode` (`internal/app/schema/service/apply.go`) runs `decodePredicateDef`/`decodeTypeDef` against the raw incoming section before reading back the existing document or attempting `core.Merge` — the same validate-too-early pattern already fixed for `merge` in BUG-001, now generalized to every mandatory field (FR-013).
+
+- [X] T041 [P] Reorder `planSchemaNode` in `internal/app/schema/service/apply.go`: compute `final` (existing read-back + `core.Merge`, when `existed`) first, then run `decodePredicateDef(final)`/`decodeTypeDef(final)` against it instead of the raw `node` — when nothing existed beforehand, `final == node` unchanged, so a brand-new definition still independently requires every mandatory field (FR-013); re-close T035 once this lands
+- [X] T042 [P] Add unit tests in `internal/app/schema/service/apply_test.go`: a `Class` section adding a new `Optional` predicate to an already-existing type with no `description`/`merge` in the section succeeds, preserving the existing description; the same shape for a `Property` section omitting `role` against an already-registered predicate succeeds; a brand-new `Class`/`Property` section (no existing document) missing a mandatory field still fails
+- [X] T043 [P] Add an E2E regression test in `cmd/arc/ctrl/apply_schema_test.go` mirroring T013's User Story 3 suite: re-applying a patch whose `Class` section adds an `Optional` predicate to an already-registered built-in type (e.g. `Source`), carrying no `description`/`merge`, succeeds and merges the new predicate in (spec.md User Story 3 Acceptance Scenario 3, SC-006)
+- [X] T044 Run `go build ./... && go test ./... && go vet ./... && staticcheck ./...`; confirm all green
+- [X] T045 Manually re-verify against the exact patch shape that triggered this report — a `Class` section re-declaring `Source` with only new `Optional` predicate bullets and an empty yaml fence — confirm `arc apply schema` now succeeds
+
+**Checkpoint**: BUG-002 fixed — T035 re-closed once T041 lands; a `Property`/`Class` section merging into an existing definition is validated as a delta against the merged result, matching User Story 3's own stated intent, while a brand-new definition still independently requires every mandatory field.
 
 ---
 
@@ -267,3 +281,11 @@ Task: "Implement internal/app/schema/kernel/apply.go"
 - Commit after each task or logical group
 - Stop at any checkpoint to validate story independently
 - Phase 2 and Phase N sections are retained verbatim per constitution Governance > Task List Requirements — only task descriptions were adapted to this feature
+
+**Bugfix**: 2026-07-19 — BUG-001 reopened T025: `decodeTypeDef` (reused for `Class` validation) wrongly required a `merge` field, rejecting a real, published extension's `Class` definitions. The actual fix lands in spec 012's tasks.md Phase 8 (T048-T054, shared schema-index infrastructure); T025 re-closes once that phase lands and this story's own E2E suite still passes against a `Class` section with no `merge` field.
+
+**Bugfix**: 2026-07-19 — BUG-001 re-closed T025: spec 012 Phase 8 landed; `decodeTypeDef` no longer requires a `Class` node's `merge` field. Added `TestApplySchemaCreatesTypeFromClassOnlyPatchWithNoMergeField` (`cmd/arc/ctrl/apply_schema_test.go`) as a direct regression test for this story; `go build ./... && go test ./... && go vet ./... && staticcheck ./...` all green.
+
+**Bugfix**: 2026-07-19 — BUG-002 reopened T035; added Phase 6 (T041-T045) to reorder `planSchemaNode`'s validation to run against the merged result rather than the raw incoming section, so a re-import that merely adds a predicate to an already-registered type/predicate no longer needs to restate mandatory fields the existing document already supplies (FR-013).
+
+**Bugfix**: 2026-07-19 — BUG-002 Phase 6 (T041-T045) complete, T035 re-closed: `planSchemaNode` now validates `final` (post-merge) instead of the raw incoming section. Added `TestApplyPatchMergesOptionalPredicateIntoExistingTypeOmittingDescription`/`TestApplyPatchMergesPropertyOmittingRoleAndMerge`/`TestApplyPatchRejectsBrandNewClassMissingDescription` (`internal/app/schema/service/apply_test.go`) and `TestApplySchemaMergesOptionalPredicateIntoExistingTypeOmittingDescription` (`cmd/arc/ctrl/apply_schema_test.go`); manually reproduced the exact reported patch shape against a real graph — `Source`'s existing description is preserved and the new `Optional` predicates merge in; `go build ./... && go test ./... && go vet ./... && staticcheck ./...` all green.

@@ -180,6 +180,22 @@ description: "Task list for Per-Predicate Merge Reconciliation for arc apply"
 
 ---
 
+## Phase 8: Bugfix 018/BUG-001 — `Class`-Level `merge` Field Must Not Be Mandatory
+
+**Purpose**: Addresses [specs/018-apply-schema-patch/bugs/BUG-001.md](../018-apply-schema-patch/bugs/BUG-001.md), reported when `arc apply schema -v ../arcnet-spec/schema/domain-article.md` rejected a well-formed, published extension's `Hypothesis` `Class` definition with "schema document Hypothesis has a missing or invalid merge". Root cause: this feature's own FR-015 retired the whole-node `merge` field from reconciliation (it is never consulted once per-predicate dispatch runs), but `internal/app/schema/service.decodeTypeDef` — used by `Resolve` and therefore by `arc apply`, `arc lint`, and `arc apply schema` alike — was never updated to stop treating that now-functionally-inert field as a mandatory, validated one (FR-020).
+
+- [X] T048 [P] Update `decodeTypeDef` in `internal/app/schema/service/schema.go`: stop requiring a `Class` node's `merge` attribute to be present/valid — an absent or unrecognized value resolves to the zero-value `core.MergeOp` ("no whole-node merge declared") rather than returning `"merge"` as an invalid field (FR-020); `decodePredicateDef`'s `Property`-level `merge` check is unchanged (still mandatory)
+- [X] T049 [P] Update `internal/app/schema/service/schema_test.go`: add a case asserting `resolveTypes`/`Resolve` succeed for a `Class` document with no `merge` field (and, separately, still fail for a `Property` document missing `merge`, confirming FR-020 narrows validation for `Class` documents only)
+- [X] T050 [P] Add an E2E regression test (`cmd/arc/ctrl/apply_schema_test.go` or `internal/app/schema/service/apply_test.go`): `arc apply schema` against a patch whose `Class` section carries no `merge` field succeeds and creates the type definition (018 spec.md User Story 1, Acceptance Scenario 2; SC-008)
+- [X] T051 Confirm `Seed()` (`internal/app/schema/service/schema.go`) and `RegisterType` still emit `merge: union` on built-in/auto-registered `Class` documents for shape continuity (data-model.md) — no behavior change forced there; add/confirm an existing test still asserts this
+- [X] T052 Update [ARCHITECTURE.md](../../ARCHITECTURE.md)'s Type Schema Node glossary entry to state `merge` is optional (validated only for continuity, never required) on a Type Schema Node, mandatory only on a Predicate Schema Node
+- [X] T053 Run `go build ./... && go test ./... && go vet ./... && staticcheck ./...`; confirm all green
+- [X] T054 Manually re-verify against the exact command that triggered this report — `arc apply schema` (or `-v`) against a `Class`-only patch section with no `merge` field — confirm it now succeeds
+
+**Checkpoint**: 018/BUG-001 fixed — a `Class` document's `merge` field is validated as optional (mandatory only for `Property`), unblocking `arc apply schema`'s own headline scenario (importing a published extension) for any CORE-conformant `Class` definition, regardless of whether it declares the now-vestigial field.
+
+---
+
 ## Phase N: Constitution Compliance Verification
 
 **Purpose**: Implements the constitution's Compliance Checklist (Implementation Phase). Retained verbatim per Governance > Task List Requirements.
@@ -268,3 +284,5 @@ Because Phase 2.5 implements all three stories' behavior in one pass (they share
 **Bugfix**: 2026-07-08 — BUG-001 Updated from bugfix patch. Added Phase 6 (T035-T042); reopened TN10; annotated TN15.
 
 **Bugfix**: 2026-07-12 — BUG-002 Updated from bugfix patch. Reopened T035/T037; added Phase 7 (T043-T047) to fix `mergeTexts`/`mergeAttrs`'s `isListMerge` branch reporting `appended` for a genuine no-op merge (FR-019).
+
+**Bugfix**: 2026-07-19 — 018/BUG-001 Updated from bugfix patch. Added Phase 8 (T048-T054) to make `decodeTypeDef`'s `merge` check optional for `Class` documents (FR-020), unblocking `arc apply schema`'s import of a published extension's `Class` definitions that carry no `merge` field.

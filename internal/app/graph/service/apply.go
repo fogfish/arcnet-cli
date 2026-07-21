@@ -30,9 +30,9 @@ import (
 )
 
 var coreKindFolders = map[string]string{
-	"source":   "sources",
-	"entity":   "entities",
-	"resource": "resources",
+	"Source":   "sources",
+	"Entity":   "entities",
+	"Resource": "resources",
 }
 
 // nodeFolder is never called with kind == "timeline": Apply's per-node loop
@@ -57,24 +57,84 @@ func nodePath(node core.Node) string {
 	return nodeFolder(node.Type) + "/" + node.ID + ".md"
 }
 
-// distinctPredicates collects every distinct predicate name node declares:
+// predicateObservation is one distinct predicate distinctPredicates saw on a
+// node, paired with the role its content was actually observed in (BUG-002)
+// and, when carried, the block's own literal label text (BUG-003) — used to
+// pick RegisterPredicate's auto-discovery default: an edge-observed
+// predicate with no carried label still defaults to role: edge, merge:
+// union, exactly as before; one carrying its own "**Label**" block
+// (spec 010 FR-022) defaults to role: link instead, so its grouping
+// survives a write; a text-observed one (a "**Label**" block that resolved
+// to nothing and fell back to text, or a leading/trailing prose slot)
+// defaults to role: text, merge: append. label, when non-empty, is stored
+// as the registered document's own `label` attribute (spec 010 FR-021).
+type predicateObservation struct {
+	name  string
+	role  string
+	label string
+}
+
+// combineLabels unions existing's and incoming's transient Labels hints
+// (BUG-003), incoming taking precedence on conflict as the freshest
+// discovery — both may carry labels for a predicate neither side has yet
+// seen registered in the schema index.
+func combineLabels(existing, incoming map[string]string) map[string]string {
+	if len(existing) == 0 {
+		return incoming
+	}
+	if len(incoming) == 0 {
+		return existing
+	}
+	out := make(map[string]string, len(existing)+len(incoming))
+	for k, v := range existing {
+		out[k] = v
+	}
+	for k, v := range incoming {
+		out[k] = v
+	}
+	return out
+}
+
+// distinctPredicates collects every distinct predicate name node declares —
 // every non-empty Link.Predicate in Edges (research.md D4, D5 — Edges is
-// now the single unioned collection, what used to be Edges+Links). HRefs
-// are excluded — those are citation-type predicates, a separate vocabulary
-// this feature does not seed.
-func distinctPredicates(node core.Node) []string {
+// now the single unioned collection, what used to be Edges+Links) plus every
+// Texts key that isn't one of textPredicateFor's own two reserved structural
+// slots (BUG-002) — each paired with the role it was observed in and, via
+// labels (BUG-003, combineLabels' output), the block's own literal label
+// text when carried. The leading/trailing slot keys are excluded: they are
+// walkNodeBody's own always-present structural convention (research.md D4,
+// "a temporary stopgap superseded by spec 011's Schema Index"), not a
+// predicate genuinely discovered from body content, so auto-registering a
+// schema document for "abstract"/"definition"/"text"/etc. on every single
+// node would be a much larger behavior change than this bugfix intends.
+// HRefs are excluded too — those are citation-type predicates, a separate
+// vocabulary this feature does not seed.
+func distinctPredicates(node core.Node, labels map[string]string) []predicateObservation {
 	seen := map[string]bool{}
-	var out []string
-	add := func(name string) {
+	var out []predicateObservation
+	add := func(name, role string) {
 		if name == "" || seen[name] {
 			return
 		}
 		seen[name] = true
-		out = append(out, name)
+		label := labels[name]
+		if role == "edge" && label != "" {
+			role = "link"
+		}
+		out = append(out, predicateObservation{name: name, role: role, label: label})
 	}
 
 	for _, l := range node.Edges {
-		add(l.Predicate)
+		add(l.Predicate, "edge")
+	}
+
+	leadingKey := core.TextPredicateFor(node.Type, true)
+	trailingKey := core.TextPredicateFor(node.Type, false)
+	for k := range node.Texts {
+		if k == leadingKey || k == trailingKey {
+			continue
+		}
+		add(k, "text")
 	}
 	return out
 }
@@ -161,14 +221,14 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 		return kernel.ApplyResult{}, err
 	}
 
-	if err := guardNoOldFormatNodes(store); err != nil {
+	if err := guardNoOldFormatNodes(store, index); err != nil {
 		return kernel.ApplyResult{}, err
 	}
 
 	start := time.Now()
 	appliedAt := time.Now().UTC()
 	stamp := appliedAt.Format(time.RFC3339)
-	patch, err := readPatch(mounter, patchPath)
+	patch, err := readPatch(mounter, patchPath, index)
 	if err != nil {
 		reporter.Error(labelReadingPatch, err)
 		return kernel.ApplyResult{}, err
@@ -176,7 +236,7 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 	reporter.Done(labelReadingPatch, time.Since(start))
 
 	start = time.Now()
-	sourcePath := nodeFolder("source") + "/" + patch.Document + ".md"
+	sourcePath := nodeFolder("Source") + "/" + patch.Document + ".md"
 	tracked, err := vcs.IsTracked(ctx, dir, sourcePath)
 	if err != nil {
 		reporter.Error(labelIdempotency, err)
@@ -213,7 +273,7 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 		// yearly/monthly layout. Its declared period id is instead folded
 		// into applyTimeline's own derivation further below (research.md
 		// D8b revised, BUG-005/BUG-006).
-		if node.Type == "timeline" {
+		if node.Type == "Timeline" {
 			timelinePeriodsFromPatch = append(timelinePeriodsFromPatch, node.ID)
 			reporter.Step(fmt.Sprintf("%s: folded into timeline index", node.ID))
 			continue
@@ -232,7 +292,7 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 
 		path := nodePath(node)
 
-		existing, existed, err := readExistingNode(store, path)
+		existing, existed, err := readExistingNode(store, path, index)
 		if err != nil {
 			reporter.Error(labelApplyingNodes, err)
 			rollback(store, createdPaths)
@@ -276,11 +336,12 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 			}
 		}
 
-		for _, name := range distinctPredicates(merged) {
-			if _, ok := index.Predicates[name]; ok {
+		labels := combineLabels(existing.Labels, node.Labels)
+		for _, obs := range distinctPredicates(merged, labels) {
+			if _, ok := index.Predicates[obs.name]; ok {
 				continue
 			}
-			if _, err := schema.RegisterPredicate(store, name); err != nil {
+			if _, err := schema.RegisterPredicate(store, obs.name, obs.role, obs.label); err != nil {
 				reporter.Error(labelApplyingNodes, err)
 				rollback(store, createdPaths)
 				return kernel.ApplyResult{}, err
@@ -301,7 +362,7 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 			reporter.Step(fmt.Sprintf("  %s: %s -> %s", po.Name, po.Op, po.Outcome))
 		}
 
-		if node.Type == "source" && node.ID == patch.Document {
+		if node.Type == "Source" && node.ID == patch.Document {
 			sourceNode = node
 		}
 	}
@@ -364,7 +425,7 @@ func validateNodeBasename(node core.Node, path string) error {
 // package's own writePatchFile-style convention) is not a graph node and
 // is skipped — its own "kind: patch" manifest is a distinct, still-valid
 // concept unaffected by this feature (data-model.md's Patch section).
-func guardNoOldFormatNodes(store fsys.Store) error {
+func guardNoOldFormatNodes(store fsys.Store, index core.Index) error {
 	paths, err := walkNodeFiles(store)
 	if err != nil {
 		return err
@@ -380,11 +441,19 @@ func guardNoOldFormatNodes(store fsys.Store) error {
 			continue
 		}
 
-		if _, perr := core.ParsePatch(bytes.NewReader(raw)); perr == nil {
+		if _, perr := core.ParsePatch(bytes.NewReader(raw), index); perr == nil {
 			continue
+		} else if core.LooksLikePatch(raw) {
+			// A "kind: patch" document that fails to parse is a broken
+			// patch-in-progress, not an old-format node — surfacing perr
+			// here (e.g. spec 019's ErrTypeCasing) instead of misreporting
+			// it via ParseNode's own "legacy kind field" heuristic below,
+			// which would otherwise shadow the real rejection reason
+			// (quickstart.md Scenario 2, SC-004).
+			return ErrNodeWrite.With(perr, path)
 		}
 
-		node, parseErr := core.ParseNode(bytes.NewReader(raw))
+		node, parseErr := core.ParseNode(bytes.NewReader(raw), index)
 		if parseErr != nil {
 			return ErrNodeWrite.With(parseErr, path)
 		}
@@ -401,7 +470,7 @@ func guardNoOldFormatNodes(store fsys.Store) error {
 // it may live anywhere on disk, including outside dir's tree, which an
 // fs.FS scoped to dir could never reach (fs.FS forbids both absolute paths
 // and ".." traversal).
-func readPatch(mounter fsys.Mounter, patchPath string) (core.Patch, error) {
+func readPatch(mounter fsys.Mounter, patchPath string, index core.Index) (core.Patch, error) {
 	store, err := mounter.Mount(filepath.Dir(patchPath))
 	if err != nil {
 		return core.Patch{}, ErrPatchRead.With(err, patchPath)
@@ -413,14 +482,14 @@ func readPatch(mounter fsys.Mounter, patchPath string) (core.Patch, error) {
 	}
 	defer f.Close()
 
-	patch, err := core.ParsePatch(f)
+	patch, err := core.ParsePatch(f, index)
 	if err != nil {
 		return core.Patch{}, err
 	}
 	return patch, nil
 }
 
-func readExistingNode(store fsys.Store, path string) (core.Node, bool, error) {
+func readExistingNode(store fsys.Store, path string, index core.Index) (core.Node, bool, error) {
 	f, err := store.Open(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -430,7 +499,7 @@ func readExistingNode(store fsys.Store, path string) (core.Node, bool, error) {
 	}
 	defer f.Close()
 
-	node, err := core.ParseNode(f)
+	node, err := core.ParseNode(f, index)
 	if err != nil {
 		return core.Node{}, false, ErrNodeWrite.With(err, path)
 	}
@@ -664,7 +733,7 @@ func upsertTimelinePeriod(store fsys.Store, path, period, granularity, heading s
 	// wholesale on each upsert rather than going through internal/core's
 	// per-predicate merge dispatch (research.md D5's flagged consequence).
 	created := stamp
-	if node, perr := core.ParseNode(strings.NewReader(existing)); perr == nil {
+	if node, perr := core.ParseNode(strings.NewReader(existing), core.Index{}); perr == nil {
 		if v := attrString(node, "created"); v != "" {
 			created = v
 		}
@@ -681,7 +750,7 @@ func upsertTimelinePeriod(store fsys.Store, path, period, granularity, heading s
 	// — a bare 4-digit yearly value (e.g. "2026") would otherwise decode
 	// as an integer (research.md D8 Bugfix, BUG-007).
 	buf.WriteString("\"@id\": \"" + period + "\"\n")
-	buf.WriteString("\"@type\": timeline\n")
+	buf.WriteString("\"@type\": Timeline\n")
 	buf.WriteString("period: \"" + period + "\"\n")
 	buf.WriteString("granularity: " + granularity + "\n")
 	buf.WriteString("published: \"" + created + "\"\n")

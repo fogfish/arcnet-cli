@@ -85,7 +85,7 @@ internal/app/schema/
 ├── kernel/
 │   └── apply.go             # new: ApplySchemaResult domain value type
 ├── service/
-│   ├── apply.go             # new: ApplyPatch — validate-all-then-write, reuse decodePredicateDef/decodeTypeDef
+│   ├── apply.go             # new: ApplyPatch — validate-all-then-write, reuse decodePredicateDef/decodeTypeDef; validated against the merged result when the definition already exists, the raw section only when it's brand-new (FR-013, Bugfix BUG-002, 2026-07-19)
 │   └── errors.go             # gains ErrDisallowedNodeType, ErrPatchRead
 └── adapter/mock/
     └── mock.go               # new: in-memory VCS + Fetcher fakes for unit/E2E tests
@@ -110,3 +110,5 @@ something private to this one use-case.
 ## Complexity Tracking
 
 *No violations — table omitted.*
+
+**Bugfix**: 2026-07-19 — BUG-002 Updated from bugfix patch. `internal/app/schema/service/apply.go`'s `planSchemaNode` is back in scope: `decodePredicateDef`/`decodeTypeDef`'s validation call must move to run against the merged result (`final`), not the raw incoming section, whenever an existing document is being merged into (FR-013). No Constitution Check or Structure Decision changes — same file, same reused validation functions, only the ordering relative to the existing read-back/`core.Merge` step changes.

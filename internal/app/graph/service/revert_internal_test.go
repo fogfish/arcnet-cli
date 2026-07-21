@@ -74,10 +74,10 @@ func TestResolveConflictMarkerWhenRevertedPatchIsFrozenExistingSide(t *testing.T
 	// block — a placeholder Edge forces "Old text." to round-trip back
 	// into the trailing "notes" key rather than entity's leading
 	// "definition" key.
-	c1Bytes, err := core.RenderNode(core.Node{ID: "Widget", Type: "entity"}, core.Index{})
+	c1Bytes, err := core.RenderNode(core.Node{ID: "Widget", Type: "Entity"}, core.Index{})
 	it.Then(t).Should(it.Nil(err))
 	c2Bytes, err := core.RenderNode(core.Node{
-		ID: "Widget", Type: "entity",
+		ID: "Widget", Type: "Entity",
 		Texts: map[string]string{"notes": "Old text."},
 		Edges: []core.Link{{Predicate: "relatesTo", Target: "Other"}},
 	}, core.Index{})
@@ -112,10 +112,10 @@ func TestResolveConflictMarkerWhenRevertedPatchIsFrozenExistingSide(t *testing.T
 // research.md D8 "neither": the reverted patch made no contribution to
 // this specific predicate — left untouched, not an error.
 func TestResolveConflictMarkerWhenRevertedPatchIsNeitherSide(t *testing.T) {
-	c1Bytes, err := core.RenderNode(core.Node{ID: "Widget", Type: "entity"}, core.Index{})
+	c1Bytes, err := core.RenderNode(core.Node{ID: "Widget", Type: "Entity"}, core.Index{})
 	it.Then(t).Should(it.Nil(err))
 	c2Bytes, err := core.RenderNode(core.Node{
-		ID: "Widget", Type: "entity",
+		ID: "Widget", Type: "Entity",
 		Texts: map[string]string{"notes": "Old text."},
 		Edges: []core.Link{{Predicate: "relatesTo", Target: "Other"}},
 	}, core.Index{})
@@ -149,7 +149,7 @@ func TestResolveConflictMarkerWhenRevertedPatchIsNeitherSide(t *testing.T) {
 func TestMapTextParagraphsLocatesEachParagraphsLineRange(t *testing.T) {
 	node := core.Node{
 		ID:   "Widget",
-		Type: "entity",
+		Type: "Entity",
 		Texts: map[string]string{
 			"notes": "First paragraph.\n\nSecond paragraph.",
 		},
@@ -178,8 +178,8 @@ func TestSplitParagraphsLocal(t *testing.T) {
 
 func TestBuildRevertCommitMessageCarriesRevertedDocumentTrailerNotSourceId(t *testing.T) {
 	result := kernel.RevertResult{
-		Removed:      map[string]int{"entity": 1},
-		Reconciled:   map[string]int{"resource": 2},
+		Removed:      map[string]int{"Entity": 1},
+		Reconciled:   map[string]int{"Resource": 2},
 		LinksRemoved: 3,
 	}
 

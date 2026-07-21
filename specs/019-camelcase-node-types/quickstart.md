@@ -17,8 +17,8 @@ ls _schema/types/
 
 **Expected**: `Class.md Entity.md Node.md Property.md Resource.md Source.md Timeline.md`
 — every filename begins with an uppercase letter; `grep '"@type"' _schema/types/Entity.md`
-shows `"@type": "Class"` and `grep '"@id"' _schema/types/Entity.md` shows
-`"@id": "Entity"`.
+shows `"@type": Class` and `grep '"@id"' _schema/types/Entity.md` shows
+`"@id": Entity`.
 
 ## Scenario 2 — `arc apply` rejects a lowercase H1 (spec User Story 1, Acceptance Scenario 1)
 
@@ -30,13 +30,14 @@ document: bad-entry
 published: 2026-07-19
 title: A lowercase-headed contribution
 ---
-
 # entity
 
 ## acme-widget
+```yaml
+category: [object]
+```
 
-category:: object
-definition:: A thing that should have been rejected.
+A thing that should have been rejected.
 EOF
 
 ./arc apply bad.patch.md; echo "exit: $?"
@@ -49,7 +50,13 @@ this command ran.
 
 ## Scenario 3 — `arc apply` accepts a CamelCase H1 (spec User Story 1, Acceptance Scenario 2)
 
+Remove Scenario 2's rejected `bad.patch.md` first — a stray broken patch
+document left sitting anywhere in the graph aborts every subsequent `arc
+apply` (spec 003 FR-012, unrelated to this feature).
+
 ```sh
+rm -f bad.patch.md
+
 cat > good.patch.md <<'EOF'
 ---
 kind: patch
@@ -57,13 +64,14 @@ document: good-entry
 published: 2026-07-19
 title: A CamelCase contribution
 ---
-
 # Entity
 
 ## acme-widget
+```yaml
+category: [object]
+```
 
-category:: object
-definition:: A thing that should have been accepted.
+A thing that should have been accepted.
 EOF
 
 ./arc apply good.patch.md; echo "exit: $?"
@@ -71,7 +79,7 @@ grep '"@type"' entities/acme-widget.md
 ```
 
 **Expected**: exits `0`; `entities/acme-widget.md` exists with
-`"@type": "Entity"` (not lowercased); exactly one new commit.
+`"@type": Entity` (not lowercased); exactly one new commit.
 
 ## Scenario 4 — `arc lint` flags a hand-authored lowercase type (spec User Story 3)
 
@@ -79,8 +87,8 @@ grep '"@type"' entities/acme-widget.md
 mkdir -p _schema/types
 cat > _schema/types/gadget.md <<'EOF'
 ---
-"@id": "gadget"
-"@type": "Class"
+"@id": gadget
+"@type": Class
 merge: union
 ---
 # gadget

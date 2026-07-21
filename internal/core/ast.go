@@ -59,8 +59,10 @@ type Node struct {
 	// ID is the basename, equal to the filename without ".md" (CORE §6, AST §4).
 	ID string `json:"id"`
 	// Type is mandatory, from "@type". Open vocabulary (AST §4 invariant 5):
-	// this feature recognizes "source", "entity", "resource", "timeline",
-	// plus whatever a graph's .arc/config.yml additionally registers.
+	// this feature recognizes "Source", "Entity", "Resource", "Timeline",
+	// plus whatever a graph's .arc/config.yml additionally registers. Every
+	// Type value must be CamelCase — begin with an uppercase letter
+	// (specs/019-camelcase-node-types).
 	Type string `json:"type"`
 	// Published is the source document's declared publication date,
 	// propagated to every non-stub, non-schema node the patch creates
@@ -87,6 +89,19 @@ type Node struct {
 	// or grouped under a heading/bold label (research.md D5) — grouping is
 	// derived at render time, never stored (AST §3 invariant 4).
 	Edges []Link `json:"edges,omitempty"`
+	// Labels carries, for a predicate discovered this parse from an
+	// unresolved "**Label**"/"## Label" body block (BUG-003, spec 010
+	// FR-021/FR-022), that block's own literal label text, keyed by the
+	// predicate's derived or explicit id. It is a transient parse-time hint
+	// consumed only by auto-registration (internal/app/graph/service.Apply)
+	// to populate a newly-discovered predicate's `label` schema attribute
+	// and to distinguish an edge occurrence that had its own label
+	// (registers role: link) from one that didn't (role: edge) — it is not
+	// part of a node's persisted shape, is never rendered, is not merge-
+	// policy-governed like Texts/Edges/Attrs, and is excluded from the
+	// --json contract (spec 007). A predicate already resolved against the
+	// schema has its real label in its own schema document instead.
+	Labels map[string]string `json:"-"`
 }
 
 // Patch is one CORE §12.2 document patch: a manifest plus every H1/H2 node

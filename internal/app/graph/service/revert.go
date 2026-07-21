@@ -72,7 +72,7 @@ func Revert(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bi
 	reporter.Done(labelLocatingIngestCommit, time.Since(start))
 
 	start = time.Now()
-	sourcePath := nodeFolder("source") + "/" + sourceID + ".md"
+	sourcePath := nodeFolder("Source") + "/" + sourceID + ".md"
 	tracked, err := vcs.IsTracked(ctx, dir, sourcePath)
 	if err != nil {
 		reporter.Error(labelIdempotency, err)
@@ -189,7 +189,7 @@ func revertPerNode(ctx context.Context, store fsys.Store, vcs port.VCS, reporter
 	removedIDs := map[string]bool{}
 	removedByPath := map[string]core.Node{}
 	for _, p := range exclusivePaths {
-		node, ok, err := readExistingNode(store, p)
+		node, ok, err := readExistingNode(store, p, index)
 		if err != nil {
 			return kernel.RevertResult{}, err
 		}
@@ -225,7 +225,7 @@ func revertPerNode(ctx context.Context, store fsys.Store, vcs port.VCS, reporter
 	}
 
 	for _, p := range sharedPaths {
-		node, ok, err := readExistingNode(store, p)
+		node, ok, err := readExistingNode(store, p, index)
 		if err != nil {
 			return kernel.RevertResult{}, err
 		}
@@ -296,12 +296,12 @@ func isPatchDocument(store fsys.Store, path string) bool {
 	if err != nil {
 		return false
 	}
-	_, perr := core.ParsePatch(bytes.NewReader(raw))
+	_, perr := core.ParsePatch(bytes.NewReader(raw), core.Index{})
 	return perr == nil
 }
 
 // referrerPath is nodePath's own generic per-kind folder derivation,
-// except for a @type: timeline referrer — nodePath's fallback
+// except for a @type: Timeline referrer — nodePath's fallback
 // pluralization would derive "timelines/<id>.md", but a timeline period
 // file actually lives under periodGranularity's own two-tier
 // "timeline/yearly|monthly/<id>.md" layout (apply.go's own
@@ -309,7 +309,7 @@ func isPatchDocument(store fsys.Store, path string) bool {
 // map under the path a caller's own ChangedPaths-derived path (`p`) will
 // actually match.
 func referrerPath(node core.Node) string {
-	if node.Type == "timeline" {
+	if node.Type == "Timeline" {
 		if path, _, _, ok := periodGranularity(node.ID); ok {
 			return path
 		}
@@ -320,7 +320,7 @@ func referrerPath(node core.Node) string {
 // sweepBacklinks rewrites every referrer of any id in removedIDs, computed
 // once against the pre-revert reverseIndex, in exactly one pass per
 // referrer (research.md D6). An ordinary referrer is rewritten via
-// core.RenderNode; a @type: timeline referrer is diverted to
+// core.RenderNode; a @type: Timeline referrer is diverted to
 // removeTimelineEntry, the structural sibling to apply.go's own
 // upsertTimelinePeriod (BUG-007's rendering boundary, preserved here
 // rather than duplicated with a second, divergent writer). The returned
@@ -363,7 +363,7 @@ func sweepBacklinks(store fsys.Store, index core.Index, preIndex nodeIndex, rev 
 		}
 		swept[referrerPath(referrer)] = dropped
 
-		if referrer.Type == "timeline" {
+		if referrer.Type == "Timeline" {
 			if err := removeTimelineEntry(store, referrer, removedIDs); err != nil {
 				return nil, err
 			}
@@ -395,11 +395,11 @@ func pluralSuffix(n int) string {
 // table ever changes.
 func revertLeadingKey(nodeType string) string {
 	switch nodeType {
-	case "source":
+	case "Source":
 		return "abstract"
-	case "entity":
+	case "Entity":
 		return "definition"
-	case "resource":
+	case "Resource":
 		return "relevance"
 	case "hypothesis":
 		return "claim"
@@ -476,7 +476,7 @@ func resolveConflictMarker(ctx context.Context, vcs port.VCS, dir, path, key, ex
 		if raw == nil {
 			continue
 		}
-		historical, err := core.ParseNode(bytes.NewReader(raw))
+		historical, err := core.ParseNode(bytes.NewReader(raw), core.Index{})
 		if err != nil {
 			continue
 		}
@@ -776,7 +776,7 @@ func removeTimelineEntry(store fsys.Store, node core.Node, removedIDs map[string
 	var buf strings.Builder
 	buf.WriteString("---\n")
 	buf.WriteString("\"@id\": \"" + period + "\"\n")
-	buf.WriteString("\"@type\": timeline\n")
+	buf.WriteString("\"@type\": Timeline\n")
 	buf.WriteString("period: \"" + period + "\"\n")
 	buf.WriteString("granularity: " + granularity + "\n")
 	buf.WriteString("published: \"" + created + "\"\n")

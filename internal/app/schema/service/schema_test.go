@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/fogfish/it/v2"
 
@@ -148,7 +149,7 @@ func TestSeedEntriesRoundTripThroughParseNode(t *testing.T) {
 	seed := service.Seed()
 
 	for path, raw := range seed {
-		node, err := core.ParseNode(bytes.NewReader(raw))
+		node, err := core.ParseNode(bytes.NewReader(raw), core.Index{})
 		it.Then(t).Should(it.Nil(err))
 
 		if def, ok := kernel.CorePredicateDefs[node.ID]; ok {
@@ -177,7 +178,7 @@ func TestSeedEntriesRoundTripThroughParseNode(t *testing.T) {
 func TestSeedContentTypesCarrySubClassOfNodeEdge(t *testing.T) {
 	seed := service.Seed()
 
-	for _, name := range []string{"source", "entity", "resource", "timeline"} {
+	for _, name := range []string{"Source", "Entity", "Resource", "Timeline"} {
 		raw, ok := seed[kernel.TypesDir+"/"+name+".md"]
 		it.Then(t).Should(it.True(ok))
 		it.Then(t).Should(it.String(string(raw)).Contain("subClassOf:: [[Node]]"))
@@ -186,6 +187,21 @@ func TestSeedContentTypesCarrySubClassOfNodeEdge(t *testing.T) {
 	nodeRaw, ok := seed[kernel.TypesDir+"/Node.md"]
 	it.Then(t).Should(it.True(ok))
 	it.Then(t).ShouldNot(it.String(string(nodeRaw)).Contain("- subClassOf::"))
+}
+
+// spec 019 FR-002/FR-003: every key Seed() produces under _schema/types/
+// begins with an uppercase letter — a regression guard against a future
+// built-in type being added with a lowercase-first-letter name.
+func TestSeedTypeKeysAreAllCamelCase(t *testing.T) {
+	seed := service.Seed()
+
+	for path := range seed {
+		if !strings.HasPrefix(path, kernel.TypesDir+"/") {
+			continue
+		}
+		name := strings.TrimSuffix(strings.TrimPrefix(path, kernel.TypesDir+"/"), ".md")
+		it.Then(t).Should(it.True(unicode.IsUpper([]rune(name)[0])))
+	}
 }
 
 func TestResolveRoundTripsSeedOutput(t *testing.T) {
@@ -198,7 +214,7 @@ func TestResolveRoundTripsSeedOutput(t *testing.T) {
 		Should(it.Equal(len(kernel.CorePredicateDefs), len(index.Predicates))).
 		Should(it.Equal(len(kernel.CoreTypeDefs), len(index.Types)))
 
-	entity, ok := index.Types["entity"]
+	entity, ok := index.Types["Entity"]
 	it.Then(t).Should(it.True(ok))
 	it.Then(t).
 		Should(it.Equal(core.MergeUnion, entity.Merge)).
@@ -257,6 +273,31 @@ func TestResolveDocumentMissingDescriptionFails(t *testing.T) {
 	it.Then(t).Should(it.True(errors.Is(err, service.ErrSchemaInvalid)))
 }
 
+// spec 012 FR-020, Bugfix 018/BUG-001: a Class document with no merge
+// field resolves successfully — the whole-node merge field is no longer
+// consulted by reconciliation and is not validated as mandatory.
+func TestResolveClassDocumentMissingMergeSucceeds(t *testing.T) {
+	store := newSeededStore()
+	store.files[kernel.TypesDir+"/Hypothesis.md"] = "---\n\"@id\": Hypothesis\n\"@type\": Class\n---\n# Hypothesis\n\nA conclusion distilled from sources.\n"
+
+	index, err := service.Resolve(store)
+
+	it.Then(t).Should(it.Nil(err))
+	_, ok := index.Types["Hypothesis"]
+	it.Then(t).Should(it.True(ok))
+}
+
+// spec 012 FR-020, Bugfix 018/BUG-001: a Property document's merge field
+// remains mandatory — only Class-level validation is narrowed.
+func TestResolvePropertyDocumentMissingMergeFails(t *testing.T) {
+	store := newSeededStore()
+	store.files[kernel.PredicatesDir+"/broken.md"] = "---\n\"@id\": broken\n\"@type\": Property\nrole: edge\n---\n# broken\n\nSome text.\n"
+
+	_, err := service.Resolve(store)
+
+	it.Then(t).Should(it.True(errors.Is(err, service.ErrSchemaInvalid)))
+}
+
 func TestRegisterTypeCreatesFileOnce(t *testing.T) {
 	store := newFakeStore(nil)
 
@@ -280,7 +321,7 @@ func TestRegisterTypeCreatesFileOnce(t *testing.T) {
 func TestRegisterPredicateCreatesFileOnce(t *testing.T) {
 	store := newFakeStore(nil)
 
-	created, err := service.RegisterPredicate(store, "relatesTo")
+	created, err := service.RegisterPredicate(store, "relatesTo", "edge", "")
 	it.Then(t).
 		Should(it.Nil(err)).
 		Should(it.True(created))
@@ -291,11 +332,53 @@ func TestRegisterPredicateCreatesFileOnce(t *testing.T) {
 		Should(it.String(content).Contain("role: edge")).
 		Should(it.String(content).Contain("merge: union"))
 
-	created, err = service.RegisterPredicate(store, "relatesTo")
+	created, err = service.RegisterPredicate(store, "relatesTo", "edge", "")
 	it.Then(t).
 		Should(it.Nil(err)).
 		Should(it.True(!created))
 	it.Then(t).Should(it.Equal(1, len(store.written)))
+}
+
+// TestRegisterPredicateTextObservedDefaultsToAppend (Bugfix BUG-002, spec
+// 010 FR-019): a predicate first observed as non-wikilink body content
+// auto-registers as role: text, merge: append instead of the edge/union
+// default, so its content merges correctly (rather than being coerced into
+// edge shape) on a later re-apply.
+func TestRegisterPredicateTextObservedDefaultsToAppend(t *testing.T) {
+	store := newFakeStore(nil)
+
+	created, err := service.RegisterPredicate(store, "assumptions", "text", "")
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.True(created))
+
+	content := store.written[kernel.PredicatesDir+"/assumptions.md"]
+	it.Then(t).
+		Should(it.String(content).Contain(`"@type": Property`)).
+		Should(it.String(content).Contain("role: text")).
+		Should(it.String(content).Contain("merge: append"))
+}
+
+// TestRegisterPredicateLinkObservedGetsRoleLinkAndLabel (Bugfix BUG-003,
+// spec 010 FR-021/FR-022): an edge occurrence carried with its own
+// "**Label**" block auto-registers as role: link (not the flat role: edge
+// default), with its `label` attribute set to the block's own literal
+// label text, so the block's original grouping and heading survive a
+// write.
+func TestRegisterPredicateLinkObservedGetsRoleLinkAndLabel(t *testing.T) {
+	store := newFakeStore(nil)
+
+	created, err := service.RegisterPredicate(store, "relatedAporias", "link", "Related Aporias")
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.True(created))
+
+	content := store.written[kernel.PredicatesDir+"/relatedAporias.md"]
+	it.Then(t).
+		Should(it.String(content).Contain(`"@type": Property`)).
+		Should(it.String(content).Contain("role: link")).
+		Should(it.String(content).Contain("merge: union")).
+		Should(it.String(content).Contain("label: Related Aporias"))
 }
 
 func TestRegisterTypeWriteFailure(t *testing.T) {
@@ -311,7 +394,7 @@ func TestRegisterPredicateWriteFailure(t *testing.T) {
 	store := newFakeStore(nil)
 	store.createErr = errors.New("disk full")
 
-	_, err := service.RegisterPredicate(store, "relatesTo")
+	_, err := service.RegisterPredicate(store, "relatesTo", "edge", "")
 
 	it.Then(t).Should(it.True(errors.Is(err, service.ErrSchemaWrite)))
 }

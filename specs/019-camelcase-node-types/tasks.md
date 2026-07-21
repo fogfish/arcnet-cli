@@ -34,8 +34,8 @@ description: "Task list for implementing CamelCase node class names"
 
 **Purpose**: Confirm the baseline before this feature's rename/validation work begins. No new package, module dependency, or command is introduced (plan.md Technical Context).
 
-- [ ] T001 Run `go build ./...` and `go test ./...` from the repository root to confirm a clean baseline before any change in this feature
-- [ ] T002 [P] Run `staticcheck ./...` to confirm a clean baseline before any change in this feature
+- [X] T001 Run `go build ./...` and `go test ./...` from the repository root to confirm a clean baseline before any change in this feature
+- [X] T002 [P] Run `staticcheck ./...` to confirm a clean baseline before any change in this feature
 
 ---
 
@@ -47,28 +47,28 @@ description: "Task list for implementing CamelCase node class names"
 
 ### Phase 2a: Domain Model & Glossary (Principles II, V)
 
-- [ ] T003 Update [ARCHITECTURE.md](../../ARCHITECTURE.md)'s Glossary "Type Schema Node" and "Text Predicate / Prose Field" entries to state the new CamelCase-first-letter naming invariant for `@type`/Class identifiers (spec FR-002/FR-004/FR-005/FR-008) and update their lowercase example casing (`an entity's definition` → `an Entity's definition`) to match
-- [ ] T004 Verify no new domain type is needed for this feature (data-model.md confirms `core.Node`, `core.TypeDef`, `kernel.Violation` are all reused unchanged) before writing any new code
+- [X] T003 Update [ARCHITECTURE.md](../../ARCHITECTURE.md)'s Glossary "Type Schema Node" and "Text Predicate / Prose Field" entries to state the new CamelCase-first-letter naming invariant for `@type`/Class identifiers (spec FR-002/FR-004/FR-005/FR-008) and update their lowercase example casing (`an entity's definition` → `an Entity's definition`) to match
+- [X] T004 Verify no new domain type is needed for this feature (data-model.md confirms `core.Node`, `core.TypeDef`, `kernel.Violation` are all reused unchanged) before writing any new code
 
 ### Phase 2b: Command & Flag Contract Design (Principle IX)
 
-- [ ] T005 Confirm [contracts/cli-contract.md](contracts/cli-contract.md) against the current `arc apply`/`arc init`/`arc lint` command surface: no command, flag, or `--json`/`--plain` field is added/renamed — only new error text and one new `Rule` enum value (`"typeCase"`)
+- [X] T005 Confirm [contracts/cli-contract.md](contracts/cli-contract.md) against the current `arc apply`/`arc init`/`arc lint` command surface: no command, flag, or `--json`/`--plain` field is added/renamed — only new error text and one new `Rule` enum value (`"typeCase"`)
 
 ### Phase 2c: External Integration & Adapter Design (Principle VII)
 
-- [ ] T006 Confirm this feature introduces no new external system, port, or adapter (plan.md Constitution Check: Principle VII N/A) before proceeding
+- [X] T006 Confirm this feature introduces no new external system, port, or adapter (plan.md Constitution Check: Principle VII N/A) before proceeding
 
 ### Phase 2d: E2E Acceptance Test Design (Principle VIII)
 
 > Tests below MUST compile and fail semantically (red phase) before Phase 3+ implementation begins.
 
-- [ ] T007 [P] [US1] Write E2E tests in `cmd/arc/graph/apply_test.go` for spec.md User Story 1 Acceptance Scenarios 1-3: a patch whose H1 begins lowercase is rejected (non-zero exit, no node file written, no new commit), a patch whose H1 begins uppercase succeeds with the class stored using the heading's exact casing, and a multi-H1-section patch with one non-compliant heading rejects the whole document
-- [ ] T008 [P] [US2] Write E2E test in `cmd/arc/ctrl/init_test.go` for spec.md User Story 2 Acceptance Scenarios 1-2: every file under `_schema/types/` seeded by `arc init` begins with an uppercase letter, and no two seeded class names differ only by casing
-- [ ] T009 [P] [US3] Write E2E tests in `cmd/arc/lint/lint_test.go` for spec.md User Story 3 Acceptance Scenarios 1-3: a lowercase-named schema type definition produces a `typeCase` violation, a node whose `@type` begins lowercase produces a `typeCase` violation, and a graph where every class name is CamelCase reports no `typeCase` violation
+- [X] T007 [P] [US1] Write E2E tests in `cmd/arc/graph/apply_test.go` for spec.md User Story 1 Acceptance Scenarios 1-3: a patch whose H1 begins lowercase is rejected (non-zero exit, no node file written, no new commit), a patch whose H1 begins uppercase succeeds with the class stored using the heading's exact casing, and a multi-H1-section patch with one non-compliant heading rejects the whole document
+- [X] T008 [P] [US2] Write E2E test in `cmd/arc/ctrl/init_test.go` for spec.md User Story 2 Acceptance Scenarios 1-2: every file under `_schema/types/` seeded by `arc init` begins with an uppercase letter, and no two seeded class names differ only by casing
+- [X] T009 [P] [US3] Write E2E tests in `cmd/arc/lint/lint_test.go` for spec.md User Story 3 Acceptance Scenarios 1-3: a lowercase-named schema type definition produces a `typeCase` violation, a node whose `@type` begins lowercase produces a `typeCase` violation, and a graph where every class name is CamelCase reports no `typeCase` violation
 
 ### Phase 2e: Configuration & Secrets Review (Principle XI)
 
-- [ ] T010 Confirm this feature introduces no new configuration value, environment variable, or secret-handling path (spec.md Assumptions) before proceeding
+- [X] T010 Confirm this feature introduces no new configuration value, environment variable, or secret-handling path (spec.md Assumptions) before proceeding
 
 **Checkpoint**: All Phase 2 subsections complete — user story implementation can now begin
 
@@ -78,15 +78,15 @@ description: "Task list for implementing CamelCase node class names"
 
 **Purpose**: The built-in content-type rename (FR-002) and its mechanical propagation across every literal comparison/lookup that depends on the old lowercase names (research.md D4/D5/D7). This is genuinely shared prerequisite work: leaving any one of these files un-renamed while another is renamed would break existing, already-passing behavior (e.g. a "Source" node would land in a `Sources/` folder instead of `sources/`, or stop matching `checkSourceCitekey`'s own-citekey rule) — so this phase lands as one atomic unit before any user story's own new behavior (the apply gate, the lint rule) is exercised end-to-end.
 
-- [ ] T011 [P] Rename `CoreTypeDefs`/`CoreTypeBases` map keys in `internal/app/schema/kernel/schema.go`: `source`→`Source`, `entity`→`Entity`, `resource`→`Resource`, `timeline`→`Timeline` (`Node`/`Property`/`Class` and `CoreTypeBases`' `["Node"]` values are already correct and unchanged) (research.md D4)
-- [ ] T012 [P] Update `internal/core/markdown.go`'s `textPredicateFor` switch cases: `"source"`→`"Source"`, `"entity"`→`"Entity"`, `"resource"`→`"Resource"`; leave the `"hypothesis"`/`"aporia"`/`"thought"` cases untouched — they are not built-in seeded types (research.md D7)
-- [ ] T013 [P] Update `internal/app/graph/service/apply.go`: `coreKindFolders` map keys become `"Source"`/`"Entity"`/`"Resource"` (values `"sources"`/`"entities"`/`"resources"` unchanged), `node.Type == "timeline"` (line ~216) → `"Timeline"`, `node.Type == "source"` (line ~304) → `"Source"`, `sourcePath := nodeFolder("source")` (line ~179) → `nodeFolder("Source")` (research.md D5/D7)
-- [ ] T014 [P] Update `internal/app/lint/service/rules_identity.go`: `node.Type != "source"` (line ~22) → `"Source"`, `node.Type != "entity"` (line ~37) → `"Entity"` (research.md D7)
-- [ ] T015 [P] Update `internal/app/lint/service/rules_links.go`: `node.Type == "source" || node.Type == "timeline"` (line ~57) → `"Source"`/`"Timeline"`, `kind == "source"` (line ~65) → `"Source"` (research.md D7)
-- [ ] T016 [P] Update `internal/app/lint/service/rules_history.go`: `node.Type != "source"` (line ~24) → `"Source"` (research.md D7)
-- [ ] T017 [P] Update `cmd/arc/graph/apply.go`'s `pluralizeKind`: `kind == "entity"` (line ~35) → `"Entity"` (research.md D5)
-- [ ] T018 [P] Update `internal/core/ast.go`'s `Node.Type` doc comment (line ~62), which currently names `"source"`, `"entity"`, `"resource"`, `"timeline"` as examples, to the new CamelCase names — documentation accuracy only, no runtime behavior (research.md D7)
-- [ ] T019 Run `go build ./... && go test ./...`; fix every pre-existing test/fixture broken by T011-T018 (hand-constructed `core.Node{Type: "source", ...}`-style literals, explicit lowercase `"@type"` yaml-fence values in fixtures meant to represent already-valid patches, and any hardcoded-lowercase assertions) across the existing suite — the pre-existing test suite MUST be green again before Phase 3 begins (depends on T011-T018)
+- [X] T011 [P] Rename `CoreTypeDefs`/`CoreTypeBases` map keys in `internal/app/schema/kernel/schema.go`: `source`→`Source`, `entity`→`Entity`, `resource`→`Resource`, `timeline`→`Timeline` (`Node`/`Property`/`Class` and `CoreTypeBases`' `["Node"]` values are already correct and unchanged) (research.md D4)
+- [X] T012 [P] Update `internal/core/markdown.go`'s `textPredicateFor` switch cases: `"source"`→`"Source"`, `"entity"`→`"Entity"`, `"resource"`→`"Resource"`; leave the `"hypothesis"`/`"aporia"`/`"thought"` cases untouched — they are not built-in seeded types (research.md D7)
+- [X] T013 [P] Update `internal/app/graph/service/apply.go`: `coreKindFolders` map keys become `"Source"`/`"Entity"`/`"Resource"` (values `"sources"`/`"entities"`/`"resources"` unchanged), `node.Type == "timeline"` (line ~216) → `"Timeline"`, `node.Type == "source"` (line ~304) → `"Source"`, `sourcePath := nodeFolder("source")` (line ~179) → `nodeFolder("Source")` (research.md D5/D7)
+- [X] T014 [P] Update `internal/app/lint/service/rules_identity.go`: `node.Type != "source"` (line ~22) → `"Source"`, `node.Type != "entity"` (line ~37) → `"Entity"` (research.md D7)
+- [X] T015 [P] Update `internal/app/lint/service/rules_links.go`: `node.Type == "source" || node.Type == "timeline"` (line ~57) → `"Source"`/`"Timeline"`, `kind == "source"` (line ~65) → `"Source"` (research.md D7)
+- [X] T016 [P] Update `internal/app/lint/service/rules_history.go`: `node.Type != "source"` (line ~24) → `"Source"` (research.md D7)
+- [X] T017 [P] Update `cmd/arc/graph/apply.go`'s `pluralizeKind`: `kind == "entity"` (line ~35) → `"Entity"` (research.md D5)
+- [X] T018 [P] Update `internal/core/ast.go`'s `Node.Type` doc comment (line ~62), which currently names `"source"`, `"entity"`, `"resource"`, `"timeline"` as examples, to the new CamelCase names — documentation accuracy only, no runtime behavior (research.md D7)
+- [X] T019 Run `go build ./... && go test ./...`; fix every pre-existing test/fixture broken by T011-T018 (hand-constructed `core.Node{Type: "source", ...}`-style literals, explicit lowercase `"@type"` yaml-fence values in fixtures meant to represent already-valid patches, and any hardcoded-lowercase assertions) across the existing suite — the pre-existing test suite MUST be green again before Phase 3 begins (depends on T011-T018)
 
 **Checkpoint**: Foundational rename complete, existing suite green — user story implementation can now proceed
 
@@ -102,11 +102,11 @@ description: "Task list for implementing CamelCase node class names"
 
 > E2E tests for this story were already written in Phase 2d (T007) and MUST currently be failing (red). Implementation below MUST turn them green with minimal test changes.
 
-- [ ] T020 [US1] Add `ErrTypeCasing = faults.Safe1[string]("class name %q must be CamelCase — start with an uppercase letter")` to `internal/core/errors.go` (research.md D3)
-- [ ] T021 [US1] Add an unexported `isCamelCase(s string) bool` helper to `internal/core/markdown.go`: false for an empty string, else `unicode.IsUpper` on the first rune (research.md D1)
-- [ ] T022 [US1] In `internal/core/markdown.go`'s `patchNodeIdentity` (lines ~174-209): delete `typ = strings.ToLower(typeHeading)`, use `typeHeading` verbatim as the default `typ`; gate `typeHeading` through `isCamelCase`, returning `ErrTypeCasing.With(typeHeading)` on failure; when an explicit `@type` is present, additionally gate it through `isCamelCase`, returning `ErrTypeCasing.With(explicit)` on failure — independent of whether the heading itself passed (FR-004/FR-005/FR-008, research.md D2) (depends on T020, T021)
-- [ ] T023 [US1] Add unit tests in `internal/core/markdown_test.go`: a CamelCase H1 heading is preserved verbatim (no lowercasing) in the parsed node's `Type`; a lowercase H1 heading returns `ErrTypeCasing`; a CamelCase H1 with a lowercase explicit `@type` returns `ErrTypeCasing` naming the explicit value; a patch with two H1 sections where only the second is lowercase still fails the whole parse (depends on T022)
-- [ ] T024 [US1] Confirm T007's E2E tests in `cmd/arc/graph/apply_test.go` now pass; additionally assert no new commit is created and the target node folder gains no file on rejection (FR-005) (depends on T022)
+- [X] T020 [US1] Add `ErrTypeCasing = faults.Safe1[string]("class name %q must be CamelCase — start with an uppercase letter")` to `internal/core/errors.go` (research.md D3)
+- [X] T021 [US1] Add an unexported `isCamelCase(s string) bool` helper to `internal/core/markdown.go`: false for an empty string, else `unicode.IsUpper` on the first rune (research.md D1)
+- [X] T022 [US1] In `internal/core/markdown.go`'s `patchNodeIdentity` (lines ~174-209): delete `typ = strings.ToLower(typeHeading)`, use `typeHeading` verbatim as the default `typ`; gate `typeHeading` through `isCamelCase`, returning `ErrTypeCasing.With(typeHeading)` on failure; when an explicit `@type` is present, additionally gate it through `isCamelCase`, returning `ErrTypeCasing.With(explicit)` on failure — independent of whether the heading itself passed (FR-004/FR-005/FR-008, research.md D2) (depends on T020, T021)
+- [X] T023 [US1] Add unit tests in `internal/core/markdown_test.go`: a CamelCase H1 heading is preserved verbatim (no lowercasing) in the parsed node's `Type`; a lowercase H1 heading returns `ErrTypeCasing`; a CamelCase H1 with a lowercase explicit `@type` returns `ErrTypeCasing` naming the explicit value; a patch with two H1 sections where only the second is lowercase still fails the whole parse (depends on T022)
+- [X] T024 [US1] Confirm T007's E2E tests in `cmd/arc/graph/apply_test.go` now pass; additionally assert no new commit is created and the target node folder gains no file on rejection (FR-005) (depends on T022)
 
 **Checkpoint**: At this point, User Story 1's E2E tests (T007) pass and the story is fully functional and testable independently
 
@@ -122,8 +122,8 @@ description: "Task list for implementing CamelCase node class names"
 
 > E2E tests for this story were already written in Phase 2d (T008) and MUST currently be failing (red) until Phase 2.5's T011 lands. No further production code change is needed beyond Phase 2.5 — this phase closes the loop with verification and a regression-guarding unit test.
 
-- [ ] T025 [US2] Confirm T008's E2E test in `cmd/arc/ctrl/init_test.go` passes against Phase 2.5's T011 rename; assert every seeded `_schema/types/*.md` filename begins uppercase and no two seeded classes differ only by casing (FR-002/FR-003) (depends on T011)
-- [ ] T026 [US2] Add a table-driven unit test in `internal/app/schema/service/schema_test.go` (`github.com/fogfish/it/v2`) asserting every key `Seed()` produces under `_schema/types/` begins with an uppercase letter, guarding against future regression (depends on T011)
+- [X] T025 [US2] Confirm T008's E2E test in `cmd/arc/ctrl/init_test.go` passes against Phase 2.5's T011 rename; assert every seeded `_schema/types/*.md` filename begins uppercase and no two seeded classes differ only by casing (FR-002/FR-003) (depends on T011)
+- [X] T026 [US2] Add a table-driven unit test in `internal/app/schema/service/schema_test.go` (`github.com/fogfish/it/v2`) asserting every key `Seed()` produces under `_schema/types/` begins with an uppercase letter, guarding against future regression (depends on T011)
 
 **Checkpoint**: User Stories 1 AND 2 both pass their E2E tests independently
 
@@ -139,12 +139,12 @@ description: "Task list for implementing CamelCase node class names"
 
 > E2E tests for this story were already written in Phase 2d (T009) and MUST currently be failing (red).
 
-- [ ] T027 [US3] Add `RuleTypeCase Rule = "typeCase"` to `internal/app/lint/kernel/lint.go`'s `Rule` const block; add it to `TestRuleConstantsAreDistinct`'s list in `internal/app/lint/kernel/lint_test.go` (research.md D6)
-- [ ] T028 [P] [US3] Implement `checkNodeTypeCase(node core.Node, path string) []kernel.Violation` in new file `internal/app/lint/service/rules_types_case.go`: one `kernel.RuleTypeCase` violation, `Line: 0`, when `node.Type` fails a `^[A-Z][a-zA-Z0-9]*$`-shaped regex (mirroring `camelCasePattern`'s idiom, inverted) — FR-007, research.md D6
-- [ ] T029 [US3] Implement `checkSchemaTypeCase(index core.Index) []kernel.Violation` in `internal/app/lint/service/rules_types_case.go`: one graph-spanning `kernel.RuleTypeCase` violation per `index.Types` key failing the same check, `Path` set to `kernel.TypesDir+"/"+name+".md"`, iterated in sorted-key order for deterministic output — FR-006, research.md D6 (depends on T028, same file)
-- [ ] T030 [US3] Wire `checkNodeTypeCase` into `internal/app/lint/service/lint.go`'s existing per-node loop (alongside `checkPredicateCase`, ~line 137); append `checkSchemaTypeCase(index)`'s output onto the existing `graphSpanning` slice (alongside `checkUniqueBasenames`, ~line 122) so it flows into `kernel.NewLintResult` (depends on T027, T028, T029)
-- [ ] T031 [US3] Add unit tests in new `internal/app/lint/service/rules_types_case_test.go`, mirroring `rules_predicates_test.go`'s structure: a CamelCase node type produces no violation, a lowercase node type produces exactly one `RuleTypeCase` violation, a CamelCase schema type index produces no violation via `checkSchemaTypeCase`, a lowercase schema type key produces exactly one (depends on T028, T029)
-- [ ] T032 [US3] Confirm T009's E2E tests in `cmd/arc/lint/lint_test.go` pass; additionally confirm a freshly-`arc init`'d graph (post Phase 2.5/T011) reports zero `typeCase` violations (depends on T030)
+- [X] T027 [US3] Add `RuleTypeCase Rule = "typeCase"` to `internal/app/lint/kernel/lint.go`'s `Rule` const block; add it to `TestRuleConstantsAreDistinct`'s list in `internal/app/lint/kernel/lint_test.go` (research.md D6)
+- [X] T028 [P] [US3] Implement `checkNodeTypeCase(node core.Node, path string) []kernel.Violation` in new file `internal/app/lint/service/rules_types_case.go`: one `kernel.RuleTypeCase` violation, `Line: 0`, when `node.Type` fails a `^[A-Z][a-zA-Z0-9]*$`-shaped regex (mirroring `camelCasePattern`'s idiom, inverted) — FR-007, research.md D6
+- [X] T029 [US3] Implement `checkSchemaTypeCase(index core.Index) []kernel.Violation` in `internal/app/lint/service/rules_types_case.go`: one graph-spanning `kernel.RuleTypeCase` violation per `index.Types` key failing the same check, `Path` set to `kernel.TypesDir+"/"+name+".md"`, iterated in sorted-key order for deterministic output — FR-006, research.md D6 (depends on T028, same file)
+- [X] T030 [US3] Wire `checkNodeTypeCase` into `internal/app/lint/service/lint.go`'s existing per-node loop (alongside `checkPredicateCase`, ~line 137); append `checkSchemaTypeCase(index)`'s output onto the existing `graphSpanning` slice (alongside `checkUniqueBasenames`, ~line 122) so it flows into `kernel.NewLintResult` (depends on T027, T028, T029)
+- [X] T031 [US3] Add unit tests in new `internal/app/lint/service/rules_types_case_test.go`, mirroring `rules_predicates_test.go`'s structure: a CamelCase node type produces no violation, a lowercase node type produces exactly one `RuleTypeCase` violation, a CamelCase schema type index produces no violation via `checkSchemaTypeCase`, a lowercase schema type key produces exactly one (depends on T028, T029)
+- [X] T032 [US3] Confirm T009's E2E tests in `cmd/arc/lint/lint_test.go` pass; additionally confirm a freshly-`arc init`'d graph (post Phase 2.5/T011) reports zero `typeCase` violations (depends on T030)
 
 **Checkpoint**: All three user stories' E2E tests pass independently
 
@@ -154,9 +154,9 @@ description: "Task list for implementing CamelCase node class names"
 
 **Purpose**: Improvements that affect multiple user stories.
 
-- [ ] T033 [P] Update README.md if it documents `_schema/types/` filenames or example `@type` values with the old lowercase casing
-- [ ] T034 [P] Sweep ARCHITECTURE.md for any other lowercase built-in type example missed by T003 (e.g. in the Checklist Rule glossary entry) and correct to CamelCase
-- [ ] T035 Manually run all four [quickstart.md](quickstart.md) scenarios against a locally built `arc` binary to validate the feature end-to-end
+- [X] T033 [P] Update README.md if it documents `_schema/types/` filenames or example `@type` values with the old lowercase casing
+- [X] T034 [P] Sweep ARCHITECTURE.md for any other lowercase built-in type example missed by T003 (e.g. in the Checklist Rule glossary entry) and correct to CamelCase
+- [X] T035 Manually run all four [quickstart.md](quickstart.md) scenarios against a locally built `arc` binary to validate the feature end-to-end
 
 ---
 
@@ -166,24 +166,24 @@ description: "Task list for implementing CamelCase node class names"
 
 ### Design Phase Verification
 
-- [ ] TN01 [ARCHITECTURE.md](../../ARCHITECTURE.md) reflects architectural changes, if any (Principle I)
-- [ ] TN02 Domain concepts added to the [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary (Principle II)
-- [ ] TN03 Command/flag surface matches the Phase 2b design exactly: flag names, help text, exit codes (Principle IX)
+- [X] TN01 [ARCHITECTURE.md](../../ARCHITECTURE.md) reflects architectural changes, if any (Principle I)
+- [X] TN02 Domain concepts added to the [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary (Principle II)
+- [X] TN03 Command/flag surface matches the Phase 2b design exactly: flag names, help text, exit codes (Principle IX)
 
 ### Implementation Phase Verification (grouped by principle)
 
-- [ ] TN04 Major decisions recorded in [adrs/](../../adrs/) with correct numbering, if a new architectural pattern was introduced (Principle I) — not expected for this feature (no new pattern, per plan.md Constitution Check)
-- [ ] TN05 Domain logic uses ports (interfaces); Cobra wiring and adapters remain separated (Principle III)
-- [ ] TN06 Unit tests were written first, compiled, and failed semantically before implementation (Principle VI)
-- [ ] TN07 Unit and E2E tests use `github.com/fogfish/it/v2` exclusively — no `testify` or stdlib-only comparisons mixed in (Principle VI, [Mandatory Libraries & Tooling](../../.specify/memory/constitution.md#mandatory-libraries--tooling))
-- [ ] TN08 No Bash scripts were used for unit-level code correctness validation (Principle VI)
-- [ ] TN09 New external integrations follow the port/adapter pattern; no vendor SDK types leak through a port (Principle VII) — N/A, no new integration
-- [ ] TN10 Terminal output respects TTY detection, `NO_COLOR`, `--quiet`/`--verbose`, and uses `github.com/charmbracelet/lipgloss` for any styling (Principle X) — unaffected by this feature
-- [ ] TN11 Configuration precedence and XDG locations respected; no secrets logged or accepted only via plaintext flags (Principle XI) — N/A, no new configuration
-- [ ] TN12 Help text (`Short`/`Long`/`Example`) populated for every new/changed command (Principle XII) — no command changed; verify no help text now describes stale lowercase casing
-- [ ] TN13 E2E tests from Phase 2d turned GREEN and changed minimally during implementation (Principle VIII)
-- [ ] TN14 All spec.md scenarios for this feature have a passing, colocated E2E test (Principle VIII)
-- [ ] TN15 Release/versioning impact assessed: this feature changes `arc apply`'s acceptance behavior and `arc init`/`arc lint`'s output content in a scriptable-breaking way without renaming a flag/field — contracts/cli-contract.md documents it; confirm the release notes call out the major-version-worthy behavior change (Principle XIV)
+- [X] TN04 Major decisions recorded in [adrs/](../../adrs/) with correct numbering, if a new architectural pattern was introduced (Principle I) — not expected for this feature (no new pattern, per plan.md Constitution Check)
+- [X] TN05 Domain logic uses ports (interfaces); Cobra wiring and adapters remain separated (Principle III)
+- [X] TN06 Unit tests were written first, compiled, and failed semantically before implementation (Principle VI)
+- [X] TN07 Unit and E2E tests use `github.com/fogfish/it/v2` exclusively — no `testify` or stdlib-only comparisons mixed in (Principle VI, [Mandatory Libraries & Tooling](../../.specify/memory/constitution.md#mandatory-libraries--tooling))
+- [X] TN08 No Bash scripts were used for unit-level code correctness validation (Principle VI)
+- [X] TN09 New external integrations follow the port/adapter pattern; no vendor SDK types leak through a port (Principle VII) — N/A, no new integration
+- [X] TN10 Terminal output respects TTY detection, `NO_COLOR`, `--quiet`/`--verbose`, and uses `github.com/charmbracelet/lipgloss` for any styling (Principle X) — unaffected by this feature
+- [X] TN11 Configuration precedence and XDG locations respected; no secrets logged or accepted only via plaintext flags (Principle XI) — N/A, no new configuration
+- [X] TN12 Help text (`Short`/`Long`/`Example`) populated for every new/changed command (Principle XII) — no command changed; verify no help text now describes stale lowercase casing
+- [X] TN13 E2E tests from Phase 2d turned GREEN and changed minimally during implementation (Principle VIII)
+- [X] TN14 All spec.md scenarios for this feature have a passing, colocated E2E test (Principle VIII)
+- [X] TN15 Release/versioning impact assessed: this feature changes `arc apply`'s acceptance behavior and `arc init`/`arc lint`'s output content in a scriptable-breaking way without renaming a flag/field — contracts/cli-contract.md documents it; confirm the release notes call out the major-version-worthy behavior change (Principle XIV)
 
 ---
 
