@@ -18,16 +18,16 @@ import (
 )
 
 func TestFilterZeroValueMatchesEveryNode(t *testing.T) {
-	node := core.Node{Type: "entity", Attrs: map[string][]core.Predicate{"status": {{Value: "mature"}}}}
+	node := core.Node{Type: "Entity", Attrs: map[string][]core.Predicate{"status": {{Value: "mature"}}}}
 
 	it.Then(t).Should(it.True(core.Filter{}.Match(node)))
 }
 
 func TestFilterTypesIsOR(t *testing.T) {
-	source := core.Node{Type: "source"}
-	entity := core.Node{Type: "entity"}
-	resource := core.Node{Type: "resource"}
-	f := core.Filter{Types: []string{"source", "entity"}}
+	source := core.Node{Type: "Source"}
+	entity := core.Node{Type: "Entity"}
+	resource := core.Node{Type: "Resource"}
+	f := core.Filter{Types: []string{"Source", "Entity"}}
 
 	it.Then(t).
 		Should(it.True(f.Match(source))).
@@ -80,19 +80,19 @@ func TestFilterAttrPatternsRegexpMatchScalarAndArray(t *testing.T) {
 
 func TestFilterCombinedGroupsAreANDed(t *testing.T) {
 	node := core.Node{
-		Type: "entity",
+		Type: "Entity",
 		Attrs: map[string][]core.Predicate{
 			"tags":   {{Value: "cryptography"}},
 			"status": {{Value: "mature"}},
 		},
 	}
 	f := core.Filter{
-		Types:        []string{"entity"},
+		Types:        []string{"Entity"},
 		Tags:         []string{"cryptography"},
 		Attrs:        map[string]string{"status": "mature"},
 		AttrPatterns: map[string]*regexp.Regexp{"status": regexp.MustCompile(`^mat`)},
 	}
-	fWrongType := core.Filter{Types: []string{"resource"}, Tags: []string{"cryptography"}}
+	fWrongType := core.Filter{Types: []string{"Resource"}, Tags: []string{"cryptography"}}
 
 	it.Then(t).
 		Should(it.True(f.Match(node))).
@@ -100,8 +100,8 @@ func TestFilterCombinedGroupsAreANDed(t *testing.T) {
 }
 
 func TestFilterMatchingZeroNodes(t *testing.T) {
-	node := core.Node{Type: "source"}
-	f := core.Filter{Types: []string{"resource"}}
+	node := core.Node{Type: "Source"}
+	f := core.Filter{Types: []string{"Resource"}}
 
 	it.Then(t).Should(it.True(!f.Match(node)))
 }

@@ -157,7 +157,7 @@ func readGrepNode(store fsys.Store, path string) (core.Node, bool, error) {
 	}
 	defer f.Close()
 
-	node, err := core.ParseNode(f)
+	node, err := core.ParseNode(f, core.Index{})
 	if err != nil {
 		return core.Node{}, false, err
 	}

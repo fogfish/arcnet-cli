@@ -19,7 +19,7 @@ import (
 
 var typeConformanceIndexFixture = core.Index{
 	Types: map[string]core.TypeDef{
-		"source": {Required: []string{"title", "abstract"}, Optional: []string{"tags"}},
+		"Source": {Required: []string{"title", "abstract"}, Optional: []string{"tags"}},
 		"loose":  {},
 	},
 	Predicates: map[string]core.PredicateDef{
@@ -32,19 +32,19 @@ var typeConformanceIndexFixture = core.Index{
 }
 
 func TestCheckTypeRequiresPresentNoViolation(t *testing.T) {
-	node := core.Node{Type: "source", Attrs: map[string][]core.Predicate{"title": {{Value: "T"}}}, Texts: map[string]string{"abstract": "A"}}
+	node := core.Node{Type: "Source", Attrs: map[string][]core.Predicate{"title": {{Value: "T"}}}, Texts: map[string]string{"abstract": "A"}}
 	out := checkTypeRequires(node, "sources/x.md", []byte("---\ntitle: T\n---\n"), typeConformanceIndexFixture)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
 func TestCheckTypeRequiresAbsentReportsViolation(t *testing.T) {
-	node := core.Node{Type: "source", Attrs: map[string][]core.Predicate{"title": {{Value: "T"}}}}
+	node := core.Node{Type: "Source", Attrs: map[string][]core.Predicate{"title": {{Value: "T"}}}}
 	out := checkTypeRequires(node, "sources/x.md", []byte("---\ntitle: T\n---\n"), typeConformanceIndexFixture)
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).
 		Should(it.Equal(kernel.RuleTypeRequires, out[0].Rule)).
 		Should(it.String(out[0].Message).Contain("abstract")).
-		Should(it.String(out[0].Message).Contain("source"))
+		Should(it.String(out[0].Message).Contain("Source"))
 }
 
 func TestCheckTypeRequiresUnregisteredTypeSkipped(t *testing.T) {
@@ -60,7 +60,7 @@ func TestCheckTypeRequiresEmptyRequiredNeverViolates(t *testing.T) {
 }
 
 func TestCheckTypeOptionalListedPredicateNoViolation(t *testing.T) {
-	node := core.Node{Type: "source", Attrs: map[string][]core.Predicate{
+	node := core.Node{Type: "Source", Attrs: map[string][]core.Predicate{
 		"title": {{Value: "T"}}, "tags": {{Value: "x"}},
 	}, Texts: map[string]string{"abstract": "A"}}
 	out := checkTypeOptional(node, "sources/x.md", []byte("---\ntitle: T\ntags: [x]\n---\n"), typeConformanceIndexFixture)
@@ -68,7 +68,7 @@ func TestCheckTypeOptionalListedPredicateNoViolation(t *testing.T) {
 }
 
 func TestCheckTypeOptionalUnlistedPredicateReportsViolation(t *testing.T) {
-	node := core.Node{Type: "source", Attrs: map[string][]core.Predicate{
+	node := core.Node{Type: "Source", Attrs: map[string][]core.Predicate{
 		"title": {{Value: "T"}}, "extra": {{Value: "x"}},
 	}, Texts: map[string]string{"abstract": "A"}}
 	out := checkTypeOptional(node, "sources/x.md", []byte("---\ntitle: T\nextra: x\n---\n"), typeConformanceIndexFixture)
@@ -76,7 +76,7 @@ func TestCheckTypeOptionalUnlistedPredicateReportsViolation(t *testing.T) {
 	it.Then(t).
 		Should(it.Equal(kernel.RuleTypeOptional, out[0].Rule)).
 		Should(it.String(out[0].Message).Contain("extra")).
-		Should(it.String(out[0].Message).Contain("source"))
+		Should(it.String(out[0].Message).Contain("Source"))
 }
 
 func TestCheckTypeOptionalEmptyOptionalPermitsNothingExtra(t *testing.T) {

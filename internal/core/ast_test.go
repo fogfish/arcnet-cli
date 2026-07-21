@@ -35,7 +35,7 @@ func TestNodeZeroValue(t *testing.T) {
 // ordinary struct field, no different from any other typed field.
 func TestNodePublishedRetainsSetValue(t *testing.T) {
 	published := time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)
-	n := core.Node{ID: "x", Type: "source", Published: published}
+	n := core.Node{ID: "x", Type: "Source", Published: published}
 
 	it.Then(t).
 		ShouldNot(it.True(n.Published.IsZero())).

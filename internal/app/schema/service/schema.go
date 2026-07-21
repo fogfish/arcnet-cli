@@ -332,10 +332,17 @@ func decodePredicateDef(node core.Node) (core.PredicateDef, string) {
 	}, ""
 }
 
+// decodeTypeDef validates a Class node's shape. Unlike decodePredicateDef,
+// it does not require "merge" to be present or valid (spec 012 FR-020,
+// Bugfix 018/BUG-001): the whole-node merge field is no longer consulted by
+// reconciliation (FR-015), so an absent or unrecognized value resolves to
+// the zero-value MergeOp ("no whole-node merge declared") rather than
+// failing validation — a real, CORE-conformant Class definition has no
+// reason to carry a functionally inert field.
 func decodeTypeDef(node core.Node) (rawType, string) {
-	merge, ok := attrString(node, "merge")
-	if !ok || !validMergeOps[core.MergeOp(merge)] {
-		return rawType{}, "merge"
+	var merge core.MergeOp
+	if raw, ok := attrString(node, "merge"); ok && validMergeOps[core.MergeOp(raw)] {
+		merge = core.MergeOp(raw)
 	}
 	description := node.Texts[descriptionKey]
 	if description == "" {
@@ -355,7 +362,7 @@ func decodeTypeDef(node core.Node) (rawType, string) {
 	}
 
 	return rawType{
-		merge:       core.MergeOp(merge),
+		merge:       merge,
 		required:    required,
 		optional:    optional,
 		subClassOf:  subClassOf,
@@ -388,18 +395,44 @@ func RegisterType(store fsys.Store, typ string) (created bool, err error) {
 	})
 }
 
-// RegisterPredicate creates predicate's predicate schema document — role:
-// edge, merge: union, a placeholder description (research.md D5) — if one
-// is not already present.
-func RegisterPredicate(store fsys.Store, predicate string) (created bool, err error) {
+// RegisterPredicate creates predicate's predicate schema document — role and
+// merge default to edge/union, a placeholder description (research.md D5) —
+// if one is not already present. observedRole (BUG-002, spec 010 FR-019)
+// is the role the predicate was actually seen in when first discovered: a
+// predicate observed as "text" (non-wikilink body content) defaults instead
+// to role: text, merge: append, closing spec 011 research.md's own flagged
+// gap ("today's auto-discovery path only ever observes edge-position
+// predicates"); a predicate observed as "link" (an edge occurrence carried
+// with its own "**Label**" block, BUG-003 spec 010 FR-022) registers
+// role: link, merge: union, so it renders grouped under its own heading
+// instead of collapsing into the flat edge list. Any other observedRole
+// (including "edge") keeps the original edge/union default. label, when
+// non-empty (BUG-003, spec 010 FR-021), is stored as the document's own
+// `label` attribute, so the predicate's exact original heading/bold-label
+// text is recoverable on a later render instead of a derived-id
+// approximation.
+func RegisterPredicate(store fsys.Store, predicate, observedRole, label string) (created bool, err error) {
+	role, merge := "edge", core.MergeUnion
+	switch observedRole {
+	case "text":
+		role, merge = "text", core.MergeAppend
+	case "link":
+		role = "link"
+	}
+
+	attrs := map[string][]core.Predicate{
+		"role":  {{Value: role}},
+		"merge": {{Value: string(merge)}},
+	}
+	if label != "" {
+		attrs["label"] = []core.Predicate{{Value: label}}
+	}
+
 	path := kernel.PredicatesDir + "/" + predicate + ".md"
 	return registerIfAbsent(store, path, core.Node{
-		ID:   predicate,
-		Type: propertyType,
-		Attrs: map[string][]core.Predicate{
-			"role":  {{Value: "edge"}},
-			"merge": {{Value: string(core.MergeUnion)}},
-		},
+		ID:    predicate,
+		Type:  propertyType,
+		Attrs: attrs,
 		Texts: map[string]string{descriptionKey: autoRegisteredPredicateDescription},
 	})
 }
@@ -455,5 +488,5 @@ func parseNode(store fsys.Store, path string) (core.Node, error) {
 	}
 	defer f.Close()
 
-	return core.ParseNode(f)
+	return core.ParseNode(f, core.Index{})
 }

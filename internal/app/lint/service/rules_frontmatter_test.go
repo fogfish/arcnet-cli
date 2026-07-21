@@ -19,10 +19,10 @@ import (
 
 var coreIndexFixture = core.Index{
 	Types: map[string]core.TypeDef{
-		"source":   {Merge: core.MergeImmutable},
-		"entity":   {Merge: core.MergeUnion},
-		"resource": {Merge: core.MergeFirstWriteWin},
-		"timeline": {Merge: core.MergeAppend},
+		"Source":   {Merge: core.MergeImmutable},
+		"Entity":   {Merge: core.MergeUnion},
+		"Resource": {Merge: core.MergeFirstWriteWin},
+		"Timeline": {Merge: core.MergeAppend},
 	},
 }
 
@@ -59,7 +59,7 @@ func TestCheckUniqueBasenamesThreeWayCollisionNamesEveryFile(t *testing.T) {
 }
 
 func TestCheckUnrecognizedKindRecognized(t *testing.T) {
-	node := core.Node{Type: "source"}
+	node := core.Node{Type: "Source"}
 	out := checkUnrecognizedKind(node, "sources/foo.md", coreIndexFixture)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
@@ -75,10 +75,10 @@ func TestCheckUnrecognizedKindUnrecognized(t *testing.T) {
 
 func TestCheckUnrecognizedKindConfigRegistered(t *testing.T) {
 	index := core.Index{Types: map[string]core.TypeDef{
-		"source":     {Merge: core.MergeImmutable},
-		"entity":     {Merge: core.MergeUnion},
-		"resource":   {Merge: core.MergeFirstWriteWin},
-		"timeline":   {Merge: core.MergeAppend},
+		"Source":     {Merge: core.MergeImmutable},
+		"Entity":     {Merge: core.MergeUnion},
+		"Resource":   {Merge: core.MergeFirstWriteWin},
+		"Timeline":   {Merge: core.MergeAppend},
 		"hypothesis": {Merge: core.MergeValidatedOverwrite},
 	}}
 	node := core.Node{Type: "hypothesis"}
@@ -87,13 +87,13 @@ func TestCheckUnrecognizedKindConfigRegistered(t *testing.T) {
 }
 
 func TestCheckIdentityKeyQuotingBothQuotedNoViolation(t *testing.T) {
-	raw := []byte("---\n\"@id\": foo\n\"@type\": source\n---\n")
+	raw := []byte("---\n\"@id\": foo\n\"@type\": Source\n---\n")
 	out := checkIdentityKeyQuoting(core.Node{}, "sources/foo.md", raw)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
 func TestCheckIdentityKeyQuotingUnquotedIdReportsViolation(t *testing.T) {
-	raw := []byte("---\n@id: foo\n\"@type\": source\n---\n")
+	raw := []byte("---\n@id: foo\n\"@type\": Source\n---\n")
 	out := checkIdentityKeyQuoting(core.Node{}, "sources/foo.md", raw)
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).
@@ -103,7 +103,7 @@ func TestCheckIdentityKeyQuotingUnquotedIdReportsViolation(t *testing.T) {
 }
 
 func TestCheckIdentityKeyQuotingUnquotedTypeReportsViolation(t *testing.T) {
-	raw := []byte("---\n\"@id\": foo\n@type: source\n---\n")
+	raw := []byte("---\n\"@id\": foo\n@type: Source\n---\n")
 	out := checkIdentityKeyQuoting(core.Node{}, "sources/foo.md", raw)
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).

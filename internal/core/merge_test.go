@@ -38,12 +38,12 @@ func TestMergeThreePredicatesEachFollowOwnRuleInOneApplication(t *testing.T) {
 		"status": {Merge: core.MergeLastWriteWin},
 		"tags":   {Merge: core.MergeUnion},
 	}}
-	existing := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{
+	existing := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{
 		"ref":    {{Value: "book"}},
 		"status": {{Value: "backlog"}},
 		"tags":   {{Value: "ai"}},
 	}}
-	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{
+	incoming := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{
 		"ref":    {{Value: "article"}},
 		"status": {{Value: "read"}},
 		"tags":   {{Value: "ml"}},
@@ -63,8 +63,8 @@ func TestMergeThreePredicatesEachFollowOwnRuleInOneApplication(t *testing.T) {
 
 func TestMergeImmutableRejectsLaterDivergingValueNoConflict(t *testing.T) {
 	index := indexWith("ref", core.MergeImmutable)
-	existing := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"ref": {{Value: "book"}}}}
-	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"ref": {{Value: "article"}}}}
+	existing := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"ref": {{Value: "book"}}}}
+	incoming := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"ref": {{Value: "article"}}}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -76,8 +76,8 @@ func TestMergeImmutableRejectsLaterDivergingValueNoConflict(t *testing.T) {
 
 func TestMergeImmutableAcceptsFirstValueWhenExistingEmpty(t *testing.T) {
 	index := indexWith("ref", core.MergeImmutable)
-	existing := core.Node{ID: "x", Type: "resource"}
-	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"ref": {{Value: "book"}}}}
+	existing := core.Node{ID: "x", Type: "Resource"}
+	incoming := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"ref": {{Value: "book"}}}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -89,8 +89,8 @@ func TestMergeImmutableAcceptsFirstValueWhenExistingEmpty(t *testing.T) {
 
 func TestMergeImmutableTextsBehavesSameAsAttrs(t *testing.T) {
 	index := indexWith("definition", core.MergeImmutable)
-	existing := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"definition": "original"}}
-	incoming := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"definition": "different"}}
+	existing := core.Node{ID: "x", Type: "Entity", Texts: map[string]string{"definition": "original"}}
+	incoming := core.Node{ID: "x", Type: "Entity", Texts: map[string]string{"definition": "different"}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -105,8 +105,8 @@ func TestMergeImmutableTextsBehavesSameAsAttrs(t *testing.T) {
 // spec.md US1 Acceptance Scenario 3 / US2 Acceptance Scenario 3.
 func TestMergeUnionAccumulatesDistinctValuesNoConflict(t *testing.T) {
 	index := indexWith("tags", core.MergeUnion)
-	existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "a"}, {Value: "b"}}}}
-	incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "b"}, {Value: "c"}}}}
+	existing := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "a"}, {Value: "b"}}}}
+	incoming := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "b"}, {Value: "c"}}}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -121,8 +121,8 @@ func TestMergeUnionAccumulatesDistinctValuesNoConflict(t *testing.T) {
 // change from the old arity-based dispatch.
 func TestMergeUnionSingleValuedBothSidesStillListUnions(t *testing.T) {
 	index := indexWith("authors", core.MergeUnion)
-	existing := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"authors": {{Value: "Alice"}}}}
-	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"authors": {{Value: "Bob"}}}}
+	existing := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"authors": {{Value: "Alice"}}}}
+	incoming := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"authors": {{Value: "Bob"}}}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -137,8 +137,8 @@ func TestMergeUnionSingleValuedBothSidesStillListUnions(t *testing.T) {
 // regenerated paragraph).
 func TestMergeUnionTextAppendsGenuinelyNewParagraph(t *testing.T) {
 	index := indexWith("abstract", core.MergeUnion)
-	existing := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge management"}}
-	incoming := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"abstract": "Andrej Karpathy has publicly argued that agentic coding workflows will reshape how software is written and reviewed"}}
+	existing := core.Node{ID: "x", Type: "Entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge management"}}
+	incoming := core.Node{ID: "x", Type: "Entity", Texts: map[string]string{"abstract": "Andrej Karpathy has publicly argued that agentic coding workflows will reshape how software is written and reviewed"}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -151,8 +151,8 @@ func TestMergeUnionTextAppendsGenuinelyNewParagraph(t *testing.T) {
 
 func TestMergeUnionTextDropsNearDuplicateParagraph(t *testing.T) {
 	index := indexWith("abstract", core.MergeUnion)
-	existing := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge management"}}
-	incoming := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge organization"}}
+	existing := core.Node{ID: "x", Type: "Entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge management"}}
+	incoming := core.Node{ID: "x", Type: "Entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge organization"}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -168,8 +168,8 @@ func TestMergeUnionTextDropsNearDuplicateParagraph(t *testing.T) {
 func TestMergeUnionTextExactDuplicateReportsUnchanged(t *testing.T) {
 	index := indexWith("definition", core.MergeAppend)
 	same := "Large Language Models; technological systems that have fundamentally transformed approaches to ontologies, graph construction, and knowledge management."
-	existing := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"definition": same}}
-	incoming := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"definition": same}}
+	existing := core.Node{ID: "x", Type: "Entity", Texts: map[string]string{"definition": same}}
+	incoming := core.Node{ID: "x", Type: "Entity", Texts: map[string]string{"definition": same}}
 
 	merged, _, outcomes, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -186,8 +186,8 @@ func TestMergeUnionTextExactDuplicateReportsUnchanged(t *testing.T) {
 // and must likewise report unchanged rather than appended.
 func TestMergeUnionTextNearDuplicateReportsUnchanged(t *testing.T) {
 	index := indexWith("abstract", core.MergeUnion)
-	existing := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge management"}}
-	incoming := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge organization"}}
+	existing := core.Node{ID: "x", Type: "Entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge management"}}
+	incoming := core.Node{ID: "x", Type: "Entity", Texts: map[string]string{"abstract": "Large Language Models are technological systems that have fundamentally transformed approaches to ontologies graph construction and knowledge organization"}}
 
 	_, _, outcomes, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -201,8 +201,8 @@ func TestMergeUnionTextNearDuplicateReportsUnchanged(t *testing.T) {
 // spec.md US2 Acceptance Scenario 1.
 func TestMergeFirstWriteWinFlagsGenuineDivergence(t *testing.T) {
 	index := indexWith("abstract", core.MergeFirstWriteWin)
-	existing := core.Node{ID: "x", Type: "resource", Texts: map[string]string{"abstract": "First summary."}}
-	incoming := core.Node{ID: "x", Type: "resource", Texts: map[string]string{"abstract": "A different summary."}}
+	existing := core.Node{ID: "x", Type: "Resource", Texts: map[string]string{"abstract": "First summary."}}
+	incoming := core.Node{ID: "x", Type: "Resource", Texts: map[string]string{"abstract": "A different summary."}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "doc-42")
 
@@ -218,8 +218,8 @@ func TestMergeFirstWriteWinFlagsGenuineDivergence(t *testing.T) {
 
 func TestMergeFirstWriteWinAttrsFlagsGenuineDivergence(t *testing.T) {
 	index := indexWith("category", core.MergeFirstWriteWin)
-	existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"category": {{Value: "physical"}}}}
-	incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"category": {{Value: "abstract"}}}}
+	existing := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"category": {{Value: "physical"}}}}
+	incoming := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"category": {{Value: "abstract"}}}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -232,8 +232,8 @@ func TestMergeFirstWriteWinAttrsFlagsGenuineDivergence(t *testing.T) {
 
 func TestMergeFirstWriteWinFillsEmptyWithoutFlag(t *testing.T) {
 	index := indexWith("category", core.MergeFirstWriteWin)
-	existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"category": {{Value: ""}}}}
-	incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"category": {{Value: "abstract"}}}}
+	existing := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"category": {{Value: ""}}}}
+	incoming := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"category": {{Value: "abstract"}}}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -245,8 +245,8 @@ func TestMergeFirstWriteWinFillsEmptyWithoutFlag(t *testing.T) {
 
 func TestMergeFirstWriteWinIdenticalValueNeverFlags(t *testing.T) {
 	index := indexWith("category", core.MergeFirstWriteWin)
-	existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"category": {{Value: "abstract"}}}}
-	incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"category": {{Value: "abstract"}}}}
+	existing := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"category": {{Value: "abstract"}}}}
+	incoming := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"category": {{Value: "abstract"}}}}
 
 	_, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -261,8 +261,8 @@ func TestMergeFirstWriteWinIdenticalValueNeverFlags(t *testing.T) {
 // exactly like firstWriteWin.
 func TestMergeFillIfEmptyAcceptsFirstValueNoFlag(t *testing.T) {
 	index := indexWith("url", core.MergeFillIfEmpty)
-	existing := core.Node{ID: "x", Type: "resource"}
-	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"url": {{Value: "https://example.org/a"}}}}
+	existing := core.Node{ID: "x", Type: "Resource"}
+	incoming := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"url": {{Value: "https://example.org/a"}}}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -274,8 +274,8 @@ func TestMergeFillIfEmptyAcceptsFirstValueNoFlag(t *testing.T) {
 
 func TestMergeFillIfEmptyFlagsDivergenceAfterFirstWrite(t *testing.T) {
 	index := indexWith("url", core.MergeFillIfEmpty)
-	existing := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"url": {{Value: "https://example.org/a"}}}}
-	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"url": {{Value: "https://example.org/b"}}}}
+	existing := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"url": {{Value: "https://example.org/a"}}}}
+	incoming := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"url": {{Value: "https://example.org/b"}}}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -287,8 +287,8 @@ func TestMergeFillIfEmptyFlagsDivergenceAfterFirstWrite(t *testing.T) {
 
 func TestMergeFillIfEmptyIdenticalRepeatedValueNeverFlags(t *testing.T) {
 	index := indexWith("url", core.MergeFillIfEmpty)
-	existing := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"url": {{Value: "https://example.org/a"}}}}
-	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"url": {{Value: "https://example.org/a"}}}}
+	existing := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"url": {{Value: "https://example.org/a"}}}}
+	incoming := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"url": {{Value: "https://example.org/a"}}}}
 
 	_, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -301,8 +301,8 @@ func TestMergeFillIfEmptyIdenticalRepeatedValueNeverFlags(t *testing.T) {
 // spec.md US1 Acceptance Scenario 2 / US2 Acceptance Scenario 2.
 func TestMergeLastWriteWinAlwaysTakesIncomingNoFlag(t *testing.T) {
 	index := indexWith("status", core.MergeLastWriteWin)
-	existing := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: "backlog"}}}}
-	incoming := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: "read"}}}}
+	existing := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"status": {{Value: "backlog"}}}}
+	incoming := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"status": {{Value: "read"}}}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -316,9 +316,9 @@ func TestMergeLastWriteWinAlwaysTakesIncomingNoFlag(t *testing.T) {
 // the reverse order is applied — it is order-sensitive, not conflict-prone.
 func TestMergeLastWriteWinReverseOrderTakesWhicheverAppliedLast(t *testing.T) {
 	index := indexWith("status", core.MergeLastWriteWin)
-	n := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: "backlog"}}}}
-	a := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: "read"}}}}
-	b := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: "archived"}}}}
+	n := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"status": {{Value: "backlog"}}}}
+	a := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"status": {{Value: "read"}}}}
+	b := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"status": {{Value: "archived"}}}}
 
 	abFirst, _, _, err := core.Merge(n, a, index, "doc-a")
 	it.Then(t).Should(it.Nil(err))
@@ -337,8 +337,8 @@ func TestMergeLastWriteWinReverseOrderTakesWhicheverAppliedLast(t *testing.T) {
 
 func TestMergeLastWriteWinTextsBehavesSameAsAttrs(t *testing.T) {
 	index := indexWith("status", core.MergeLastWriteWin)
-	existing := core.Node{ID: "x", Type: "resource", Texts: map[string]string{"status": "backlog"}}
-	incoming := core.Node{ID: "x", Type: "resource", Texts: map[string]string{"status": "read"}}
+	existing := core.Node{ID: "x", Type: "Resource", Texts: map[string]string{"status": "backlog"}}
+	incoming := core.Node{ID: "x", Type: "Resource", Texts: map[string]string{"status": "read"}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -352,8 +352,8 @@ func TestMergeLastWriteWinTextsBehavesSameAsAttrs(t *testing.T) {
 
 func TestMergeAppendAttrsUnionsLikeUnion(t *testing.T) {
 	index := indexWith("entries", core.MergeAppend)
-	existing := core.Node{ID: "x", Type: "timeline", Attrs: map[string][]core.Predicate{"entries": {{Value: "a"}}}}
-	incoming := core.Node{ID: "x", Type: "timeline", Attrs: map[string][]core.Predicate{"entries": {{Value: "b"}}}}
+	existing := core.Node{ID: "x", Type: "Timeline", Attrs: map[string][]core.Predicate{"entries": {{Value: "a"}}}}
+	incoming := core.Node{ID: "x", Type: "Timeline", Attrs: map[string][]core.Predicate{"entries": {{Value: "b"}}}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -365,8 +365,8 @@ func TestMergeAppendAttrsUnionsLikeUnion(t *testing.T) {
 
 func TestMergeAppendTextAppendsParagraphsNeverFlags(t *testing.T) {
 	index := indexWith("text", core.MergeAppend)
-	existing := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"text": "Existing paragraph about a topic worth remembering."}}
-	incoming := core.Node{ID: "x", Type: "entity", Texts: map[string]string{"text": "A genuinely new paragraph introducing another topic entirely."}}
+	existing := core.Node{ID: "x", Type: "Entity", Texts: map[string]string{"text": "Existing paragraph about a topic worth remembering."}}
+	incoming := core.Node{ID: "x", Type: "Entity", Texts: map[string]string{"text": "A genuinely new paragraph introducing another topic entirely."}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -398,8 +398,8 @@ func TestMergeValidatedOverwriteNeverOverwritesOrFlags(t *testing.T) {
 // contribution does not duplicate or re-wrap the marker.
 func TestMergeFirstWriteWinReplayDoesNotRewrapMarker(t *testing.T) {
 	index := indexWith("abstract", core.MergeFirstWriteWin)
-	existing := core.Node{ID: "x", Type: "resource", Texts: map[string]string{"abstract": "First summary."}}
-	incoming := core.Node{ID: "x", Type: "resource", Texts: map[string]string{"abstract": "A different summary."}}
+	existing := core.Node{ID: "x", Type: "Resource", Texts: map[string]string{"abstract": "First summary."}}
+	incoming := core.Node{ID: "x", Type: "Resource", Texts: map[string]string{"abstract": "A different summary."}}
 
 	once, _, _, err := core.Merge(existing, incoming, index, "doc-42")
 	it.Then(t).Should(it.Nil(err))
@@ -427,8 +427,8 @@ func TestMergeNeverFlagsExceptFirstWriteWinAndFillIfEmpty(t *testing.T) {
 	for _, op := range neverFlag {
 		t.Run(string(op), func(t *testing.T) {
 			index := indexWith("field", op)
-			existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"field": {{Value: "existing-value"}}}}
-			incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"field": {{Value: "incoming-value"}}}}
+			existing := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"field": {{Value: "existing-value"}}}}
+			incoming := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"field": {{Value: "incoming-value"}}}}
 
 			_, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -450,8 +450,8 @@ func TestMergeIsIdempotentForEveryOp(t *testing.T) {
 	for _, op := range allOps {
 		t.Run(string(op), func(t *testing.T) {
 			index := indexWith("field", op)
-			existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"field": {{Value: "existing-value"}}}}
-			incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"field": {{Value: "incoming-value"}}}}
+			existing := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"field": {{Value: "existing-value"}}}}
+			incoming := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"field": {{Value: "incoming-value"}}}}
 
 			once, _, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 			it.Then(t).Should(it.Nil(err))
@@ -477,9 +477,9 @@ func TestMergeIsCommutativeOnIndependentPredicatesForEveryOpExceptLastWriteWin(t
 				"fieldA": {Merge: op},
 				"fieldB": {Merge: op},
 			}}
-			n := core.Node{ID: "x", Type: "entity"}
-			a := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"fieldA": {{Value: "a-value"}}}}
-			b := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"fieldB": {{Value: "b-value"}}}}
+			n := core.Node{ID: "x", Type: "Entity"}
+			a := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"fieldA": {{Value: "a-value"}}}}
+			b := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"fieldB": {{Value: "b-value"}}}}
 
 			abOrder, _, _, err := core.Merge(n, a, index, "doc-a")
 			it.Then(t).Should(it.Nil(err))
@@ -502,9 +502,9 @@ func TestMergeIsCommutativeOnIndependentPredicatesForEveryOpExceptLastWriteWin(t
 // reordering which of two contributions is applied last changes the result.
 func TestMergeLastWriteWinIsNotCommutative(t *testing.T) {
 	index := indexWith("status", core.MergeLastWriteWin)
-	n := core.Node{ID: "x", Type: "resource"}
-	a := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: "read"}}}}
-	b := core.Node{ID: "x", Type: "resource", Attrs: map[string][]core.Predicate{"status": {{Value: "archived"}}}}
+	n := core.Node{ID: "x", Type: "Resource"}
+	a := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"status": {{Value: "read"}}}}
+	b := core.Node{ID: "x", Type: "Resource", Attrs: map[string][]core.Predicate{"status": {{Value: "archived"}}}}
 
 	abOrder, _, _, err := core.Merge(n, a, index, "doc-a")
 	it.Then(t).Should(it.Nil(err))
@@ -523,8 +523,8 @@ func TestMergeLastWriteWinIsNotCommutative(t *testing.T) {
 
 func TestMergeUnionReapplyingSameEntryDoesNotDuplicate(t *testing.T) {
 	index := indexWith("tags", core.MergeUnion)
-	existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "ai"}}}}
-	incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "ai"}}}}
+	existing := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "ai"}}}}
+	incoming := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "ai"}}}}
 
 	merged, _, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -537,8 +537,8 @@ func TestMergeUnionReapplyingSameEntryDoesNotDuplicate(t *testing.T) {
 // outcome must say unchanged, not appended.
 func TestMergeUnionAttrsReapplyingSameEntryReportsUnchanged(t *testing.T) {
 	index := indexWith("tags", core.MergeUnion)
-	existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "ai"}}}}
-	incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "ai"}}}}
+	existing := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "ai"}}}}
+	incoming := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"tags": {{Value: "ai"}}}}
 
 	_, _, outcomes, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -562,8 +562,8 @@ func TestMergeEdgesUnionAcrossEveryOp(t *testing.T) {
 	} {
 		t.Run(string(op), func(t *testing.T) {
 			index := indexWith("replaces", op)
-			existing := core.Node{ID: "TLS", Type: "entity", Edges: existingEdges}
-			incoming := core.Node{ID: "TLS", Type: "entity", Edges: incomingEdges}
+			existing := core.Node{ID: "TLS", Type: "Entity", Edges: existingEdges}
+			incoming := core.Node{ID: "TLS", Type: "Entity", Edges: incomingEdges}
 
 			merged, _, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -577,8 +577,8 @@ func TestMergeEdgesUnionAcrossEveryOp(t *testing.T) {
 
 func TestMergeUnregisteredPredicateFallsBackToUnion(t *testing.T) {
 	index := core.Index{Predicates: map[string]core.PredicateDef{}}
-	existing := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"novel": {{Value: "a"}}}}
-	incoming := core.Node{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{"novel": {{Value: "b"}}}}
+	existing := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"novel": {{Value: "a"}}}}
+	incoming := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"novel": {{Value: "b"}}}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -593,8 +593,8 @@ func TestMergeUnregisteredPredicateFallsBackToUnion(t *testing.T) {
 func TestMergePublishedFillsFromIncomingWhenExistingZero(t *testing.T) {
 	incomingPublished := time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)
 	index := indexWith("published", core.MergeImmutable)
-	existing := core.Node{ID: "x", Type: "entity"}
-	incoming := core.Node{ID: "x", Type: "entity", Published: incomingPublished}
+	existing := core.Node{ID: "x", Type: "Entity"}
+	incoming := core.Node{ID: "x", Type: "Entity", Published: incomingPublished}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -608,8 +608,8 @@ func TestMergePublishedImmutableOnceSet(t *testing.T) {
 	existingPublished := time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)
 	incomingPublished := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 	index := indexWith("published", core.MergeImmutable)
-	existing := core.Node{ID: "x", Type: "entity", Published: existingPublished}
-	incoming := core.Node{ID: "x", Type: "entity", Published: incomingPublished}
+	existing := core.Node{ID: "x", Type: "Entity", Published: existingPublished}
+	incoming := core.Node{ID: "x", Type: "Entity", Published: incomingPublished}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -623,8 +623,8 @@ func TestMergePublishedLastWriteWinOverwrites(t *testing.T) {
 	existingPublished := time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)
 	incomingPublished := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 	index := indexWith("published", core.MergeLastWriteWin)
-	existing := core.Node{ID: "x", Type: "entity", Published: existingPublished}
-	incoming := core.Node{ID: "x", Type: "entity", Published: incomingPublished}
+	existing := core.Node{ID: "x", Type: "Entity", Published: existingPublished}
+	incoming := core.Node{ID: "x", Type: "Entity", Published: incomingPublished}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 

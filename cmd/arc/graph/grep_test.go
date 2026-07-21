@@ -32,7 +32,7 @@ func writeGrepNode(t *testing.T, dir, relPath, content string) {
 
 const grepSourceTLS13 = `---
 "@id": "rescorla-2026-tls13"
-"@type": source
+"@type": Source
 tags: [cryptography]
 status: mature
 ---
@@ -45,7 +45,7 @@ This protocol replaces earlier, now-deprecated versions.
 
 const grepEntityTLS = `---
 "@id": "Transport Layer Security"
-"@type": entity
+"@type": Entity
 tags: [cryptography]
 status: mature
 ---
@@ -56,7 +56,7 @@ TLS is the successor to SSL.
 
 const grepEntityBacklog = `---
 "@id": "Another Entity"
-"@type": entity
+"@type": Entity
 tags: [cryptography]
 status: backlog
 ---
@@ -67,7 +67,7 @@ TLS appears here too, in a backlog entity.
 
 const grepResourceUnrelatedTag = `---
 "@id": "Unrelated Note"
-"@type": resource
+"@type": Resource
 tags: [other]
 status: draft
 ---
@@ -103,10 +103,10 @@ func TestGrepReportsEveryOccurrenceAcrossWholeGraph(t *testing.T) {
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	it.Then(t).Should(it.Equal(4, len(lines)))
 	it.Then(t).
-		Should(it.String(out).Contain("source  rescorla-2026-tls13  9")).
-		Should(it.String(out).Contain("entity  Transport Layer Security  9")).
-		Should(it.String(out).Contain("entity  Another Entity  9")).
-		Should(it.String(out).Contain("resource  Unrelated Note  9"))
+		Should(it.String(out).Contain("Source  rescorla-2026-tls13  9")).
+		Should(it.String(out).Contain("Entity  Transport Layer Security  9")).
+		Should(it.String(out).Contain("Entity  Another Entity  9")).
+		Should(it.String(out).Contain("Resource  Unrelated Note  9"))
 }
 
 // arc grep NoSuchTermAnywhere
@@ -138,8 +138,8 @@ func TestGrepNodeMatchingMultipleLinesReportsEachLineSeparately(t *testing.T) {
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	it.Then(t).Should(it.Equal(2, len(lines)))
 	it.Then(t).
-		Should(it.String(lines[0]).Contain("source  rescorla-2026-tls13  9")).
-		Should(it.String(lines[1]).Contain("source  rescorla-2026-tls13  11"))
+		Should(it.String(lines[0]).Contain("Source  rescorla-2026-tls13  9")).
+		Should(it.String(lines[1]).Contain("Source  rescorla-2026-tls13  11"))
 }
 
 // arc grep --type entity TLS
@@ -151,17 +151,17 @@ func TestGrepTypeFilterRestrictsToThatType(t *testing.T) {
 	chdir(t, dir)
 
 	cmd := NewGrepCmd()
-	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "entity")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "Entity")))
 	out, err := sut(cmd, []string{"TLS"})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	it.Then(t).Should(it.Equal(2, len(lines)))
 	it.Then(t).
-		Should(it.String(out).Contain("entity  Transport Layer Security")).
-		Should(it.String(out).Contain("entity  Another Entity")).
-		ShouldNot(it.String(out).Contain("source")).
-		ShouldNot(it.String(out).Contain("resource"))
+		Should(it.String(out).Contain("Entity  Transport Layer Security")).
+		Should(it.String(out).Contain("Entity  Another Entity")).
+		ShouldNot(it.String(out).Contain("Source")).
+		ShouldNot(it.String(out).Contain("Resource"))
 }
 
 // arc grep --tag cryptography TLS
@@ -191,14 +191,14 @@ func TestGrepCombinedTypeAndAttrFilterNarrowsFurther(t *testing.T) {
 	chdir(t, dir)
 
 	cmd := NewGrepCmd()
-	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "entity")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "Entity")))
 	it.Then(t).Should(it.Nil(cmd.Flags().Set("attr", "status=mature")))
 	out, err := sut(cmd, []string{"TLS"})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	it.Then(t).Should(it.Equal(1, len(lines)))
-	it.Then(t).Should(it.String(out).Contain("entity  Transport Layer Security"))
+	it.Then(t).Should(it.String(out).Contain("Entity  Transport Layer Security"))
 }
 
 // arc grep --type hypothesis TLS
@@ -253,7 +253,7 @@ func TestGrepOutputFieldsSplitCleanlyByWhitespace(t *testing.T) {
 	chdir(t, dir)
 
 	cmd := NewGrepCmd()
-	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "source")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "Source")))
 	out, err := sut(cmd, []string{"TLS"})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
@@ -261,7 +261,7 @@ func TestGrepOutputFieldsSplitCleanlyByWhitespace(t *testing.T) {
 	it.Then(t).Should(it.Equal(1, len(lines)))
 	fields := strings.Fields(lines[0])
 	it.Then(t).
-		Should(it.Equal("source", fields[0])).
+		Should(it.Equal("Source", fields[0])).
 		Should(it.Equal("rescorla-2026-tls13", fields[1])).
 		Should(it.Equal("9", fields[2])).
 		Should(it.True(strings.HasPrefix(strings.Join(fields[3:], " "), "TLS")))
@@ -311,7 +311,7 @@ func TestGrepOldKindFlagRejectedAsUnknownFlag(t *testing.T) {
 	chdir(t, dir)
 
 	cmd := NewGrepCmd()
-	cmd.SetArgs([]string{"--kind", "entity", "TLS"})
+	cmd.SetArgs([]string{"--kind", "Entity", "TLS"})
 	it.Then(t).Should(it.Fail(cmd.Execute).Contain("unknown flag: --kind"))
 }
 
@@ -354,7 +354,7 @@ func TestGrepVerboseShowsFullLineColorModeTruncatesDefault(t *testing.T) {
 	initGraph(t, dir)
 
 	longLine := "TLS 1.3 removes support for static RSA key exchange, replacing it with ephemeral Diffie-Hellman key agreement for every handshake, a change motivated entirely by forward secrecy."
-	content := "---\n\"@id\": longline-2026-doc\n\"@type\": source\n---\n# longline-2026-doc\n\n" + longLine + "\n"
+	content := "---\n\"@id\": longline-2026-doc\n\"@type\": Source\n---\n# longline-2026-doc\n\n" + longLine + "\n"
 	writeGrepNode(t, dir, "sources/longline-2026-doc.md", content)
 	// Pinned explicitly rather than relying on the built-in default, so
 	// this test stays correct regardless of that default's own value —
@@ -387,7 +387,7 @@ func TestGrepPlainModeNeverTruncatesEvenLongLine(t *testing.T) {
 	initGraph(t, dir)
 
 	longLine := "TLS 1.3 removes support for static RSA key exchange, replacing it with ephemeral Diffie-Hellman key agreement for every handshake, a change motivated entirely by forward secrecy."
-	content := "---\n\"@id\": longline-2026-doc\n\"@type\": source\n---\n# longline-2026-doc\n\n" + longLine + "\n"
+	content := "---\n\"@id\": longline-2026-doc\n\"@type\": Source\n---\n# longline-2026-doc\n\n" + longLine + "\n"
 	writeGrepNode(t, dir, "sources/longline-2026-doc.md", content)
 	chdir(t, dir)
 

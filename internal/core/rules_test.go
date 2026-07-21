@@ -67,11 +67,11 @@ func TestIndexPredicatesLookup(t *testing.T) {
 func TestIndexTypesLookup(t *testing.T) {
 	index := core.Index{
 		Types: map[string]core.TypeDef{
-			"entity": {Merge: core.MergeUnion, Description: "..."},
+			"Entity": {Merge: core.MergeUnion, Description: "..."},
 		},
 	}
 
-	def, ok := index.Types["entity"]
+	def, ok := index.Types["Entity"]
 	it.Then(t).
 		Should(it.True(ok)).
 		Should(it.Equal(core.MergeUnion, def.Merge))

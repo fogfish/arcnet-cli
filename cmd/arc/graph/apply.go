@@ -32,7 +32,7 @@ func pluralizeKind(kind string, count int) string {
 	if count == 1 {
 		return kind
 	}
-	if kind == "entity" {
+	if kind == "Entity" {
 		return "entities"
 	}
 	if strings.HasSuffix(kind, "s") {

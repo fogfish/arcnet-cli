@@ -55,14 +55,14 @@ func TestCheckLinksResolveDedupSameTargetTwice(t *testing.T) {
 }
 
 func TestCheckDerivedProvenanceSourceExempt(t *testing.T) {
-	node := core.Node{Type: "source"}
+	node := core.Node{Type: "Source"}
 	out := checkDerivedProvenance(node, "sources/x.md", map[string]string{})
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
 func TestCheckDerivedProvenanceLinksToSourcePasses(t *testing.T) {
-	node := core.Node{Type: "entity", Edges: []core.Link{{Target: "foo-2026-x"}}}
-	kindIndex := map[string]string{"foo-2026-x": "source"}
+	node := core.Node{Type: "Entity", Edges: []core.Link{{Target: "foo-2026-x"}}}
+	kindIndex := map[string]string{"foo-2026-x": "Source"}
 	out := checkDerivedProvenance(node, "entities/x.md", kindIndex)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
@@ -71,15 +71,15 @@ func TestCheckDerivedProvenanceLinksToSourcePasses(t *testing.T) {
 // over many documents, never content distilled from one document, so it
 // is exempt from checkDerivedProvenance regardless of its links.
 func TestCheckDerivedProvenanceTimelineExempt(t *testing.T) {
-	node := core.Node{Type: "timeline", Edges: []core.Link{{Target: "Other Entity"}}}
-	kindIndex := map[string]string{"Other Entity": "entity"}
+	node := core.Node{Type: "Timeline", Edges: []core.Link{{Target: "Other Entity"}}}
+	kindIndex := map[string]string{"Other Entity": "Entity"}
 	out := checkDerivedProvenance(node, "timeline/yearly/2026.md", kindIndex)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
 func TestCheckDerivedProvenanceNoSourceLinkFails(t *testing.T) {
-	node := core.Node{Type: "entity", Edges: []core.Link{{Target: "Other Entity"}}}
-	kindIndex := map[string]string{"Other Entity": "entity"}
+	node := core.Node{Type: "Entity", Edges: []core.Link{{Target: "Other Entity"}}}
+	kindIndex := map[string]string{"Other Entity": "Entity"}
 	out := checkDerivedProvenance(node, "entities/x.md", kindIndex)
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).Should(it.Equal(kernel.RuleDerivedProvenance, out[0].Rule))

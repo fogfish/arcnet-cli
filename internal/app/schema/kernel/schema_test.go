@@ -56,7 +56,7 @@ func TestCorePredicateDefNamesAreCamelCase(t *testing.T) {
 func TestCoreTypeDefsContainsCoreTypesAndSchemaTypesThemselves(t *testing.T) {
 	it.Then(t).Should(it.Equal(7, len(kernel.CoreTypeDefs)))
 
-	for _, name := range []string{"source", "entity", "resource", "timeline", "Node", "Property", "Class"} {
+	for _, name := range []string{"Source", "Entity", "Resource", "Timeline", "Node", "Property", "Class"} {
 		def, ok := kernel.CoreTypeDefs[name]
 		it.Then(t).Should(it.True(ok))
 		it.Then(t).ShouldNot(it.Equal("", def.Description))
@@ -67,13 +67,13 @@ func TestCoreTypeDefsContainsCoreTypesAndSchemaTypesThemselves(t *testing.T) {
 // (spec 017, data-model.md's reshaped-types table) — published/created now
 // arrive only via the implicit Node base, never listed directly here.
 func TestCoreTypeDefsRequiredListsMatchCoreSection11(t *testing.T) {
-	source := kernel.CoreTypeDefs["source"]
+	source := kernel.CoreTypeDefs["Source"]
 	it.Then(t).Should(it.Seq(source.Required).Equal("title", "abstract", "mentions"))
 
-	entity := kernel.CoreTypeDefs["entity"]
+	entity := kernel.CoreTypeDefs["Entity"]
 	it.Then(t).Should(it.Seq(entity.Required).Equal("category", "definition", "mentionedIn"))
 
-	resource := kernel.CoreTypeDefs["resource"]
+	resource := kernel.CoreTypeDefs["Resource"]
 	it.Then(t).Should(it.Seq(resource.Required).Equal("ref", "relevance"))
 
 	// timeline deliberately diverges from CORE §11.5 here (BUG-002,
@@ -81,7 +81,7 @@ func TestCoreTypeDefsRequiredListsMatchCoreSection11(t *testing.T) {
 	// existing citation predicate rather than the name CORE's own worked
 	// example uses), and "period" is an arc-internal addition CORE never
 	// documents (spec 003 BUG-007).
-	timeline := kernel.CoreTypeDefs["timeline"]
+	timeline := kernel.CoreTypeDefs["Timeline"]
 	it.Then(t).Should(it.Seq(timeline.Required).Equal("granularity", "cites", "period"))
 
 	node := kernel.CoreTypeDefs["Node"]
@@ -106,10 +106,10 @@ func TestCoreTypeDefsOptionalListsIncludeCrossCuttingPredicates(t *testing.T) {
 		typ  string
 		want []string
 	}{
-		{"source", []string{"authors", "url", "cites", "doi", "indexed"}},
-		{"entity", append([]string{"aliases", "notes", "indexed", "mentions"}, semantic...)},
-		{"resource", append([]string{"url", "isCitedBy", "authors", "year", "doi", "status", "notes", "indexed", "mentions", "mentionedIn"}, semantic...)},
-		{"timeline", []string{"heading", "indexed", "mentions", "mentionedIn"}},
+		{"Source", []string{"authors", "url", "cites", "doi", "indexed"}},
+		{"Entity", append([]string{"aliases", "notes", "indexed", "mentions"}, semantic...)},
+		{"Resource", append([]string{"url", "isCitedBy", "authors", "year", "doi", "status", "notes", "indexed", "mentions", "mentionedIn"}, semantic...)},
+		{"Timeline", []string{"heading", "indexed", "mentions", "mentionedIn"}},
 	}
 
 	for _, tc := range tests {
@@ -128,7 +128,7 @@ func TestCoreTypeDefsNodeOptionalList(t *testing.T) {
 // Node (spec 017, data-model.md) — redundant with the implicit rule but
 // written for the seeded document's own self-description.
 func TestCoreTypeBasesWireContentTypesToNode(t *testing.T) {
-	for _, name := range []string{"source", "entity", "resource", "timeline"} {
+	for _, name := range []string{"Source", "Entity", "Resource", "Timeline"} {
 		it.Then(t).Should(it.Seq(kernel.CoreTypeBases[name]).Equal("Node"))
 	}
 	_, hasNode := kernel.CoreTypeBases["Node"]

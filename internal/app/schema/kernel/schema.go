@@ -100,13 +100,13 @@ var CorePredicateDefs = map[string]core.PredicateDef{
 // longer consulted by core.Merge's per-predicate dispatch (data-model.md
 // "CoreTypeDefs seed values").
 var CoreTypeDefs = map[string]core.TypeDef{
-	"source": {
+	"Source": {
 		Merge:       core.MergeImmutable,
 		Required:    []string{"title", "abstract", "mentions"},
 		Optional:    []string{"authors", "url", "cites", "doi", "indexed"},
 		Description: "A node for one ingested document — the provenance origin other nodes derive from.",
 	},
-	"entity": {
+	"Entity": {
 		Merge:    core.MergeUnion,
 		Required: []string{"category", "definition", "mentionedIn"},
 		Optional: []string{
@@ -115,7 +115,7 @@ var CoreTypeDefs = map[string]core.TypeDef{
 		},
 		Description: "A node for a subject occurring in sources, typed by Sowa category.",
 	},
-	"resource": {
+	"Resource": {
 		Merge:    core.MergeFirstWriteWin,
 		Required: []string{"ref", "relevance"},
 		Optional: []string{
@@ -125,7 +125,7 @@ var CoreTypeDefs = map[string]core.TypeDef{
 		},
 		Description: "A node for an external work the graph points to but has not ingested, or a topic/area tracked for reading or research.",
 	},
-	"timeline": {
+	"Timeline": {
 		Merge:       core.MergeAppend,
 		Required:    []string{"granularity", "cites", "period"},
 		Optional:    []string{"heading", "indexed", "mentions", "mentionedIn"},
@@ -135,7 +135,7 @@ var CoreTypeDefs = map[string]core.TypeDef{
 		Merge:       core.MergeUnion,
 		Required:    []string{"published", "created"},
 		Optional:    []string{"tags", "text", "updated", "scoreZ", "scoreC"},
-		Description: "The graph's implicit universal base type: every content type (source, entity, resource, timeline) inherits its Required/Optional contract via rdfs:subClassOf, whether declared explicitly or not. Never itself a node's own @type — it exists only to be inherited from (spec 017).",
+		Description: "The graph's implicit universal base type: every content type (Source, Entity, Resource, Timeline) inherits its Required/Optional contract via rdfs:subClassOf, whether declared explicitly or not. Never itself a node's own @type — it exists only to be inherited from (spec 017).",
 	},
 	"Property": {
 		Merge:       core.MergeUnion,
@@ -145,8 +145,8 @@ var CoreTypeDefs = map[string]core.TypeDef{
 	},
 	"Class": {
 		Merge:       core.MergeUnion,
-		Required:    []string{"merge", "description"},
-		Optional:    []string{"required", "optional"},
+		Required:    []string{},
+		Optional:    []string{"required", "optional", "description"},
 		Description: "A type schema node: the mechanism CORE uses to register a @type value's own vocabulary as an ordinary graph node.",
 	},
 }
@@ -157,8 +157,8 @@ var CoreTypeDefs = map[string]core.TypeDef{
 // except Node/Property/Class already receives at resolve time regardless of
 // what this map says.
 var CoreTypeBases = map[string][]string{
-	"source":   {"Node"},
-	"entity":   {"Node"},
-	"resource": {"Node"},
-	"timeline": {"Node"},
+	"Source":   {"Node"},
+	"Entity":   {"Node"},
+	"Resource": {"Node"},
+	"Timeline": {"Node"},
 }

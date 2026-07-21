@@ -65,7 +65,7 @@ title: "TLS 1.3: Design and Rationale"
 ## rescorla-2026-tls13
 ` + "```yaml" + `
 "@id": rescorla-2026-tls13
-"@type": source
+"@type": Source
 title: "TLS 1.3: Design and Rationale"
 authors: [Eric Rescorla]
 published: "2026-04-12"
@@ -81,7 +81,7 @@ A design retrospective on the TLS 1.3 handshake.
 ## Transport Layer Security
 ` + "```yaml" + `
 "@id": Transport Layer Security
-"@type": entity
+"@type": Entity
 category: [independent, abstract, occurrent, script]
 ` + "```" + `
 
@@ -89,7 +89,7 @@ A cryptographic protocol that establishes an authenticated, confidential channel
 `
 
 func TestParsePatchManifestAndNodes(t *testing.T) {
-	patch, err := core.ParsePatch(strings.NewReader(patchFixture))
+	patch, err := core.ParsePatch(strings.NewReader(patchFixture), core.Index{})
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -101,7 +101,7 @@ func TestParsePatchManifestAndNodes(t *testing.T) {
 	source := patch.Nodes[0]
 	it.Then(t).
 		Should(it.Equal("rescorla-2026-tls13", source.ID)).
-		Should(it.Equal("source", source.Type)).
+		Should(it.Equal("Source", source.Type)).
 		Should(it.Equal("A design retrospective on the TLS 1.3 handshake.", source.Texts["abstract"])).
 		Should(it.Equal(1, len(source.Edges))).
 		Should(it.Equal("Transport Layer Security", source.Edges[0].Target))
@@ -109,7 +109,7 @@ func TestParsePatchManifestAndNodes(t *testing.T) {
 	entity := patch.Nodes[1]
 	it.Then(t).
 		Should(it.Equal("Transport Layer Security", entity.ID)).
-		Should(it.Equal("entity", entity.Type))
+		Should(it.Equal("Entity", entity.Type))
 
 	categories := entity.Attrs["category"]
 	it.Then(t).Should(it.Equal(4, len(categories)))
@@ -123,10 +123,10 @@ published: 2026-04-12
 # Source
 
 ## x
-` + "```yaml\n\"@id\": x\n\"@type\": source\n```\n" + `
+` + "```yaml\n\"@id\": x\n\"@type\": Source\n```\n" + `
 text.
 `
-	_, err := core.ParsePatch(strings.NewReader(fixture))
+	_, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
 	it.Then(t).Should(it.True(errors.Is(err, core.ErrManifestInvalid)))
 }
 
@@ -138,10 +138,10 @@ document: foo-2026-x
 # Source
 
 ## x
-` + "```yaml\n\"@id\": x\n\"@type\": source\n```\n" + `
+` + "```yaml\n\"@id\": x\n\"@type\": Source\n```\n" + `
 text.
 `
-	_, err := core.ParsePatch(strings.NewReader(fixture))
+	_, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
 	it.Then(t).Should(it.True(errors.Is(err, core.ErrManifestInvalid)))
 }
 
@@ -153,7 +153,7 @@ published: 2026-04-12
 ---
 Just some prose, no H1/H2 structure at all.
 `
-	_, err := core.ParsePatch(strings.NewReader(fixture))
+	_, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
 	it.Then(t).Should(it.True(errors.Is(err, core.ErrPatchStructure)))
 }
 
@@ -168,7 +168,7 @@ published: 2026-04-12
 ## x
 No fenced yaml block here.
 `
-	_, err := core.ParsePatch(strings.NewReader(fixture))
+	_, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
 	it.Then(t).Should(it.True(errors.Is(err, core.ErrPatchStructure)))
 }
 
@@ -187,22 +187,22 @@ published: 2026-07-12
 # Source
 
 ## foo-2026-x
-` + "```yaml\n\"@id\": foo-2026-x\n\"@type\": source\n```\n" + `
+` + "```yaml\n\"@id\": foo-2026-x\n\"@type\": Source\n```\n" + `
 text.
 
 # Timeline
 
 ## 2026-07
-` + "```yaml\n\"@id\": \"2026-07\"\n\"@type\": timeline\ngranularity: monthly\n```" + `
+` + "```yaml\n\"@id\": \"2026-07\"\n\"@type\": Timeline\ngranularity: monthly\n```" + `
 - [[foo-2026-x]]
 `
-	patch, err := core.ParsePatch(strings.NewReader(fixture))
+	patch, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(2, len(patch.Nodes)))
 
 	timelineNode := patch.Nodes[1]
 	it.Then(t).
-		Should(it.Equal("timeline", timelineNode.Type)).
+		Should(it.Equal("Timeline", timelineNode.Type)).
 		Should(it.Equal("2026-07", timelineNode.ID))
 }
 
@@ -215,11 +215,11 @@ published: 2026-04-12
 # Source
 
 ## foo-2026-x
-` + "```yaml\n\"@id\": foo-2026-x\n\"@type\": source\ntitle: \"X\"\n```" + `
+` + "```yaml\n\"@id\": foo-2026-x\n\"@type\": Source\ntitle: \"X\"\n```" + `
 
 This document discusses [[Transport Layer Security]] in depth.
 `
-	patch, err := core.ParsePatch(strings.NewReader(fixture))
+	patch, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 
 	node := patch.Nodes[0]
@@ -231,7 +231,7 @@ This document discusses [[Transport Layer Security]] in depth.
 
 const entityNodeFixture = `---
 "@id": Transport Layer Security
-"@type": entity
+"@type": Entity
 title: Transport Layer Security
 category: [independent, abstract, occurrent, script]
 aliases: [TLS, TLS 1.3]
@@ -248,12 +248,12 @@ A cryptographic protocol that establishes an authenticated channel.
 `
 
 func TestParseNode(t *testing.T) {
-	node, err := core.ParseNode(strings.NewReader(entityNodeFixture))
+	node, err := core.ParseNode(strings.NewReader(entityNodeFixture), core.Index{})
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
 		Should(it.Equal("Transport Layer Security", node.ID)).
-		Should(it.Equal("entity", node.Type)).
+		Should(it.Equal("Entity", node.Type)).
 		Should(it.Equal("A cryptographic protocol that establishes an authenticated channel.", node.Texts["definition"])).
 		Should(it.Equal(3, len(node.Edges)))
 
@@ -270,10 +270,10 @@ func TestParseNode(t *testing.T) {
 // trailing annotation — ARCNET-CORE §11.5's own worked timeline example
 // convention — must parse into a real Edges entry, not be silently dropped.
 func TestParseNodeListItemWithTrailingAnnotationParsesAsEdge(t *testing.T) {
-	doc := "---\n\"@id\": \"2026\"\n\"@type\": timeline\ngranularity: yearly\n---\n# 2026\n\n" +
+	doc := "---\n\"@id\": \"2026\"\n\"@type\": Timeline\ngranularity: yearly\n---\n# 2026\n\n" +
 		"- entries:: [[rescorla-2026-tls13]] — *TLS 1.3: Design and Rationale* (Eric Rescorla) — 2026-04-12\n"
 
-	node, err := core.ParseNode(strings.NewReader(doc))
+	node, err := core.ParseNode(strings.NewReader(doc), core.Index{})
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, len(node.Edges)))
@@ -291,7 +291,7 @@ title: X
 
 text.
 `
-	node, err := core.ParseNode(strings.NewReader(fixture))
+	node, err := core.ParseNode(strings.NewReader(fixture), core.Index{})
 	it.Then(t).
 		Should(it.True(errors.Is(err, core.ErrManifestInvalid))).
 		Should(it.Equal("", node.ID)).
@@ -300,13 +300,13 @@ text.
 
 func TestParseNodeMissingIDRejected(t *testing.T) {
 	fixture := `---
-"@type": entity
+"@type": Entity
 ---
 # X
 
 text.
 `
-	node, err := core.ParseNode(strings.NewReader(fixture))
+	node, err := core.ParseNode(strings.NewReader(fixture), core.Index{})
 	it.Then(t).
 		Should(it.True(errors.Is(err, core.ErrManifestInvalid))).
 		Should(it.Equal("", node.ID)).
@@ -321,7 +321,7 @@ func TestParseNodeMissingTypeRejected(t *testing.T) {
 
 text.
 `
-	node, err := core.ParseNode(strings.NewReader(fixture))
+	node, err := core.ParseNode(strings.NewReader(fixture), core.Index{})
 	it.Then(t).
 		Should(it.True(errors.Is(err, core.ErrManifestInvalid))).
 		Should(it.Equal("", node.ID)).
@@ -337,11 +337,11 @@ published: 2026-04-12
 # Entity
 
 ## X
-` + "```yaml\nkind: entity\n\"@id\": X\n\"@type\": entity\n```" + `
+` + "```yaml\nkind: entity\n\"@id\": X\n\"@type\": Entity\n```" + `
 
 text.
 `
-	patch, err := core.ParsePatch(strings.NewReader(fixture))
+	patch, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
 	it.Then(t).
 		Should(it.True(errors.Is(err, core.ErrManifestInvalid))).
 		Should(it.Equal(0, len(patch.Nodes)))
@@ -366,12 +366,12 @@ published: 2026-04-12
 
 text.
 `
-	patch, err := core.ParsePatch(strings.NewReader(fixture))
+	patch, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
 		Should(it.Equal(1, len(patch.Nodes))).
 		Should(it.Equal("X", patch.Nodes[0].ID)).
-		Should(it.Equal("entity", patch.Nodes[0].Type))
+		Should(it.Equal("Entity", patch.Nodes[0].Type))
 }
 
 // BUG-001: an explicit "@id" key that agrees with the section heading is
@@ -390,12 +390,12 @@ published: 2026-04-12
 
 text.
 `
-	patch, err := core.ParsePatch(strings.NewReader(fixture))
+	patch, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
 		Should(it.Equal(1, len(patch.Nodes))).
 		Should(it.Equal("X", patch.Nodes[0].ID)).
-		Should(it.Equal("entity", patch.Nodes[0].Type))
+		Should(it.Equal("Entity", patch.Nodes[0].Type))
 }
 
 // BUG-001: an explicit "@type" key that agrees with the enclosing heading
@@ -410,16 +410,16 @@ published: 2026-04-12
 # Entity
 
 ## X
-` + "```yaml\n\"@type\": entity\n```" + `
+` + "```yaml\n\"@type\": Entity\n```" + `
 
 text.
 `
-	patch, err := core.ParsePatch(strings.NewReader(fixture))
+	patch, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
 		Should(it.Equal(1, len(patch.Nodes))).
 		Should(it.Equal("X", patch.Nodes[0].ID)).
-		Should(it.Equal("entity", patch.Nodes[0].Type))
+		Should(it.Equal("Entity", patch.Nodes[0].Type))
 }
 
 // BUG-001: an explicit "@type" key that disagrees with the enclosing
@@ -434,11 +434,11 @@ published: 2026-04-12
 # Entity
 
 ## X
-` + "```yaml\n\"@type\": resource\n```" + `
+` + "```yaml\n\"@type\": Resource\n```" + `
 
 text.
 `
-	_, err := core.ParsePatch(strings.NewReader(fixture))
+	_, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
 	it.Then(t).Should(it.True(errors.Is(err, core.ErrManifestInvalid)))
 }
 
@@ -455,18 +455,104 @@ published: 2026-04-12
 # Entity
 
 ## X
-` + "```yaml\n\"@id\": Y\n\"@type\": entity\n```" + `
+` + "```yaml\n\"@id\": Y\n\"@type\": Entity\n```" + `
 
 text.
 `
-	_, err := core.ParsePatch(strings.NewReader(fixture))
+	_, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
 	it.Then(t).Should(it.True(errors.Is(err, core.ErrManifestInvalid)))
+}
+
+// spec 019 FR-004: a CamelCase H1 heading is preserved verbatim (no
+// lowercasing) in the parsed node's Type.
+func TestParsePatchCamelCaseHeadingPreservedVerbatim(t *testing.T) {
+	fixture := `---
+kind: patch
+document: foo-2026-x
+published: 2026-04-12
+---
+# Entity
+
+## X
+` + "```yaml\ntitle: X\n```" + `
+
+text.
+`
+	patch, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal("Entity", patch.Nodes[0].Type))
+}
+
+// spec 019 FR-005: a lowercase H1 heading returns ErrTypeCasing.
+func TestParsePatchLowercaseHeadingReturnsErrTypeCasing(t *testing.T) {
+	fixture := `---
+kind: patch
+document: foo-2026-x
+published: 2026-04-12
+---
+# entity
+
+## X
+` + "```yaml\ntitle: X\n```" + `
+
+text.
+`
+	_, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
+	it.Then(t).Should(it.True(errors.Is(err, core.ErrTypeCasing)))
+}
+
+// spec 019 FR-008: a CamelCase H1 heading with a lowercase explicit "@type"
+// returns ErrTypeCasing naming the explicit value, independent of the
+// heading's own casing.
+func TestParsePatchCamelCaseHeadingLowercaseExplicitTypeReturnsErrTypeCasing(t *testing.T) {
+	fixture := `---
+kind: patch
+document: foo-2026-x
+published: 2026-04-12
+---
+# Entity
+
+## X
+` + "```yaml\n\"@type\": entity\n```" + `
+
+text.
+`
+	_, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
+	it.Then(t).
+		Should(it.True(errors.Is(err, core.ErrTypeCasing))).
+		Should(it.String(err.Error()).Contain("entity"))
+}
+
+// spec 019 FR-005: a patch with two H1 sections where only the second is
+// lowercase still fails the whole parse — no partial acceptance.
+func TestParsePatchSecondOfTwoH1SectionsLowercaseFailsWholeParse(t *testing.T) {
+	fixture := `---
+kind: patch
+document: foo-2026-x
+published: 2026-04-12
+---
+# Entity
+
+## X
+` + "```yaml\ntitle: X\n```" + `
+
+text.
+
+# resource
+
+## Y
+` + "```yaml\ntitle: Y\n```" + `
+
+more text.
+`
+	_, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
+	it.Then(t).Should(it.True(errors.Is(err, core.ErrTypeCasing)))
 }
 
 func TestRenderNodeAttrsQuotedIDTypeFirstThenSorted(t *testing.T) {
 	n := core.Node{
 		ID:   "X",
-		Type: "entity",
+		Type: "Entity",
 		Attrs: map[string][]core.Predicate{
 			"title": {{Value: "X"}},
 			"tags":  {{Value: "a"}, {Value: "b"}},
@@ -480,7 +566,7 @@ func TestRenderNodeAttrsQuotedIDTypeFirstThenSorted(t *testing.T) {
 	rendered := string(out)
 	it.Then(t).
 		Should(it.String(rendered).Contain(`"@id": X`)).
-		Should(it.String(rendered).Contain(`"@type": entity`))
+		Should(it.String(rendered).Contain(`"@type": Entity`))
 
 	idIdx := strings.Index(rendered, `"@id"`)
 	typeIdx := strings.Index(rendered, `"@type"`)
@@ -503,7 +589,7 @@ func TestRenderNodeAttrsQuotedIDTypeFirstThenSorted(t *testing.T) {
 func TestRenderNodeSchemaDrivenFlatAndGroupedMixOnOneNode(t *testing.T) {
 	n := core.Node{
 		ID:    "X",
-		Type:  "entity",
+		Type:  "Entity",
 		Texts: map[string]string{"definition": "Some text."},
 		Edges: []core.Link{
 			{Predicate: "replaces", Target: "SSL Protocol"},
@@ -551,7 +637,7 @@ func TestRenderNodeLinkRolePredicateUsesCustomLabel(t *testing.T) {
 	// TestRenderNodeSingleLinkRolePredicateBodyOmitsHeading).
 	n := core.Node{
 		ID:    "X",
-		Type:  "entity",
+		Type:  "Entity",
 		Texts: map[string]string{"definition": "Some text."},
 		Edges: []core.Link{
 			{Predicate: "required", Target: "title"},
@@ -574,7 +660,7 @@ func TestRenderNodeLinkRolePredicateUsesCustomLabel(t *testing.T) {
 func TestRenderNodeUnregisteredPredicateDefaultsToFlatEdge(t *testing.T) {
 	n := core.Node{
 		ID:    "X",
-		Type:  "entity",
+		Type:  "Entity",
 		Texts: map[string]string{"definition": "Some text."},
 		Edges: []core.Link{
 			{Predicate: "unregisteredPredicate", Target: "Y"},
@@ -599,7 +685,7 @@ func TestRenderNodeUnregisteredPredicateDefaultsToFlatEdge(t *testing.T) {
 func TestRenderNodeSingleLinkRolePredicateBodyOmitsHeading(t *testing.T) {
 	n := core.Node{
 		ID:   "2026",
-		Type: "timeline",
+		Type: "Timeline",
 		Edges: []core.Link{
 			{Predicate: "entries", Target: "foo-2026-x"},
 			{Predicate: "entries", Target: "bar-2026-y"},
@@ -624,7 +710,7 @@ func TestRenderNodeSingleLinkRolePredicateBodyOmitsHeading(t *testing.T) {
 func TestRenderNodeSingleLinkRolePredicateHeadingReappearsWithOtherContent(t *testing.T) {
 	n := core.Node{
 		ID:   "2026",
-		Type: "timeline",
+		Type: "Timeline",
 		Edges: []core.Link{
 			{Predicate: "entries", Target: "foo-2026-x"},
 			{Predicate: "mentions", Target: "Something Else"},
@@ -645,7 +731,7 @@ func TestRenderNodeSingleLinkRolePredicateHeadingReappearsWithOtherContent(t *te
 func TestRenderNodeWikilinkRepeatedTargetOnlyOneLinked(t *testing.T) {
 	n := core.Node{
 		ID:   "X",
-		Type: "entity",
+		Type: "Entity",
 		Texts: map[string]string{
 			"definition": "Transport Layer Security is great. Transport Layer Security is a protocol.",
 		},
@@ -666,7 +752,7 @@ func TestRenderNodeWikilinkRepeatedTargetOnlyOneLinked(t *testing.T) {
 func TestRenderNodeWikilinkMidWordNotLinked(t *testing.T) {
 	n := core.Node{
 		ID:    "X",
-		Type:  "entity",
+		Type:  "Entity",
 		Texts: map[string]string{"definition": "Insecurity is high here."},
 		HRefs: []core.Link{
 			{Target: "Security"},
@@ -685,7 +771,7 @@ func TestRenderNodeWikilinkMidWordNotLinked(t *testing.T) {
 func TestRenderNodeWikilinkPrecededByWhitespaceLinked(t *testing.T) {
 	n := core.Node{
 		ID:    "X",
-		Type:  "entity",
+		Type:  "Entity",
 		Texts: map[string]string{"definition": "We discussed Security today."},
 		HRefs: []core.Link{
 			{Target: "Security"},
@@ -702,7 +788,7 @@ func TestRenderNodeWikilinkPrecededByWhitespaceLinked(t *testing.T) {
 func TestRenderNodeWikilinkAlreadyBracketedNotDoubleWrapped(t *testing.T) {
 	n := core.Node{
 		ID:    "X",
-		Type:  "entity",
+		Type:  "Entity",
 		Texts: map[string]string{"definition": "See [[Security]] for details, not Security."},
 		HRefs: []core.Link{
 			{Target: "Security"},
@@ -724,9 +810,9 @@ func TestRenderNodeWikilinkAlreadyBracketedNotDoubleWrapped(t *testing.T) {
 // (tasks.md T029).
 func TestRoundTripCoreWorkedExamples(t *testing.T) {
 	fixtures := map[string]string{
-		"source": `---
+		"Source": `---
 "@id": rescorla-2026-tls13
-"@type": source
+"@type": Source
 title: "TLS 1.3: Design and Rationale"
 published: "2026-04-12"
 authors: [Eric Rescorla]
@@ -738,10 +824,10 @@ A design retrospective on the TLS 1.3 handshake.
 
 - mentions:: [[Transport Layer Security]]
 `,
-		"entity": entityNodeFixture,
-		"resource": `---
+		"Entity": entityNodeFixture,
+		"Resource": `---
 "@id": RFC 8446
-"@type": resource
+"@type": Resource
 title: RFC 8446
 ref: standard
 authors: [Eric Rescorla]
@@ -755,9 +841,9 @@ The normative specification of TLS 1.3.
 
 - isCitedBy:: [[rescorla-2026-tls13]]
 `,
-		"timeline": `---
+		"Timeline": `---
 "@id": "2026-04"
-"@type": timeline
+"@type": Timeline
 granularity: monthly
 ---
 # 2026-04
@@ -781,14 +867,14 @@ TLS 1.3 handshakes provide forward secrecy by default.
 
 	for typ, fixture := range fixtures {
 		t.Run(typ, func(t *testing.T) {
-			first, err := core.ParseNode(strings.NewReader(fixture))
+			first, err := core.ParseNode(strings.NewReader(fixture), core.Index{})
 			it.Then(t).Should(it.Nil(err))
 			it.Then(t).Should(it.Equal(typ, first.Type))
 
 			rendered, err := core.RenderNode(first, testIndex)
 			it.Then(t).Should(it.Nil(err))
 
-			second, err := core.ParseNode(strings.NewReader(string(rendered)))
+			second, err := core.ParseNode(strings.NewReader(string(rendered)), core.Index{})
 			it.Then(t).Should(it.Nil(err))
 
 			it.Then(t).
@@ -817,7 +903,7 @@ published: 2026-01-01
 # Entity
 
 ## Arcnet-spec
-` + "```yaml\n\"@id\": Arcnet-spec\n\"@type\": entity\ncategory: [independent, abstract, occurrent, script]\n```" + `
+` + "```yaml\n\"@id\": Arcnet-spec\n\"@type\": Entity\ncategory: [independent, abstract, occurrent, script]\n```" + `
 
 A lightweight ontology specification developed by the sender defining core graph structures, [[Article Extension]]s, and thought extensions for knowledge management.
 
@@ -832,7 +918,7 @@ A lightweight ontology specification developed by the sender defining core graph
 `
 
 func TestParsePatchBoldLabelBlocksNoDataLoss(t *testing.T) {
-	patch, err := core.ParsePatch(strings.NewReader(boldLabelThreeBlocksPatch))
+	patch, err := core.ParsePatch(strings.NewReader(boldLabelThreeBlocksPatch), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 
 	node := patch.Nodes[0]
@@ -858,7 +944,7 @@ published: 2026-01-01
 # Entity
 
 ## Widget
-` + "```yaml\n\"@id\": Widget\n\"@type\": entity\n```" + `
+` + "```yaml\n\"@id\": Widget\n\"@type\": Entity\n```" + `
 
 A widget.
 
@@ -870,7 +956,7 @@ A widget.
 `
 
 func TestParsePatchMixedBoldLabelAndHeadingBlocks(t *testing.T) {
-	patch, err := core.ParsePatch(strings.NewReader(mixedBoldAndHeadingPatch))
+	patch, err := core.ParsePatch(strings.NewReader(mixedBoldAndHeadingPatch), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 
 	node := patch.Nodes[0]
@@ -881,6 +967,255 @@ func TestParsePatchMixedBoldLabelAndHeadingBlocks(t *testing.T) {
 		Should(it.Equal("A", node.Edges[0].Target)).
 		Should(it.Equal("cites", node.Edges[1].Predicate)).
 		Should(it.Equal("B", node.Edges[1].Target))
+}
+
+// BUG-002 (spec 010 FR-019): a "**Label**" block whose label resolves to a
+// registered role: text predicate aggregates its full list content into
+// Texts[predicateID] — verbatim, regardless of whether any individual line
+// looks like a wikilink — instead of running it through the wikilink-only
+// extraction a role: edge/link block still uses.
+const labeledTextRolePatch = `---
+kind: patch
+document: dmitry-2026-article
+published: 2026-01-01
+---
+# Hypothesis
+
+## Ontology-Driven
+
+` + "```yaml\n\"@id\": Ontology-Driven\n\"@type\": Hypothesis\n```" + `
+
+**Assumptions**
+- Ontologies are static once published
+- Users prefer YAML front matter over JSON
+`
+
+func TestParsePatchLabeledTextRoleBlockRoundTrips(t *testing.T) {
+	index := core.Index{Predicates: map[string]core.PredicateDef{
+		"assumptions": {Role: "text", Merge: core.MergeAppend},
+	}}
+
+	patch, err := core.ParsePatch(strings.NewReader(labeledTextRolePatch), index)
+	it.Then(t).Should(it.Nil(err))
+
+	node := patch.Nodes[0]
+	it.Then(t).
+		Should(it.Equal(0, len(node.Edges))).
+		Should(it.String(node.Texts["assumptions"]).Contain("Ontologies are static once published")).
+		Should(it.String(node.Texts["assumptions"]).Contain("Users prefer YAML front matter over JSON"))
+}
+
+// BUG-002: a "**Label**" block whose label resolves to a registered
+// role: edge predicate is unaffected by this fix — wikilink extraction into
+// Edges still works exactly as before.
+const labeledEdgeRolePatch = `---
+kind: patch
+document: foo-2026-x
+published: 2026-01-01
+---
+# Entity
+
+## Widget
+` + "```yaml\n\"@id\": Widget\n\"@type\": Entity\n```" + `
+
+**Mentions**
+- mentions:: [[A]]
+`
+
+func TestParsePatchLabeledEdgeRoleBlockUnaffected(t *testing.T) {
+	index := core.Index{Predicates: map[string]core.PredicateDef{
+		"mentions": {Role: "edge"},
+	}}
+
+	patch, err := core.ParsePatch(strings.NewReader(labeledEdgeRolePatch), index)
+	it.Then(t).Should(it.Nil(err))
+
+	node := patch.Nodes[0]
+	it.Then(t).
+		Should(it.Equal(0, len(node.Texts))).
+		Should(it.Equal(1, len(node.Edges))).
+		Should(it.Equal("mentions", node.Edges[0].Predicate)).
+		Should(it.Equal("A", node.Edges[0].Target))
+}
+
+// BUG-002: an unregistered label's non-wikilink content (a real reproduction
+// of the reported bug — standard "[Title](url) - description" markdown
+// links, not [[wikilinks]]) is preserved as text under a predicate id
+// derived from the label, instead of being silently dropped.
+const unregisteredLabelReferencesPatch = `---
+kind: patch
+document: dmitry-2026-article
+published: 2026-01-01
+---
+# Hypothesis
+
+## Ontology-Driven
+
+` + "```yaml\n\"@id\": Ontology-Driven\n\"@type\": Hypothesis\n```" + `
+
+**References**
+- [RFC 8259](https://tools.ietf.org/html/rfc8259) - JSON specification
+- [YAML 1.2](https://yaml.org/spec/1.2.2/) - YAML specification
+`
+
+func TestParsePatchUnregisteredLabelNonWikilinkContentPreservedAsText(t *testing.T) {
+	patch, err := core.ParsePatch(strings.NewReader(unregisteredLabelReferencesPatch), core.Index{})
+	it.Then(t).Should(it.Nil(err))
+
+	node := patch.Nodes[0]
+	it.Then(t).
+		Should(it.Equal(0, len(node.Edges))).
+		Should(it.String(node.Texts["references"]).Contain("RFC 8259")).
+		Should(it.String(node.Texts["references"]).Contain("YAML 1.2"))
+}
+
+// BUG-002: a mixed list under an unresolved label — some lines wikilink-
+// shaped, some not — preserves both: matching lines still become Edges,
+// exactly as collectListLinks would, and the rest is preserved as text
+// rather than dropped.
+const mixedUnresolvedLabelPatch = `---
+kind: patch
+document: dmitry-2026-article
+published: 2026-01-01
+---
+# Hypothesis
+
+## Ontology-Driven
+
+` + "```yaml\n\"@id\": Ontology-Driven\n\"@type\": Hypothesis\n```" + `
+
+**Related Aporias**
+- [[SomeAporia]]
+- This one is not a wikilink, just prose.
+`
+
+func TestParsePatchMixedListPreservesBothEdgesAndText(t *testing.T) {
+	patch, err := core.ParsePatch(strings.NewReader(mixedUnresolvedLabelPatch), core.Index{})
+	it.Then(t).Should(it.Nil(err))
+
+	node := patch.Nodes[0]
+	it.Then(t).
+		Should(it.Equal(1, len(node.Edges))).
+		Should(it.Equal("SomeAporia", node.Edges[0].Target)).
+		Should(it.String(node.Texts["relatedAporias"]).Contain("This one is not a wikilink, just prose."))
+}
+
+// BUG-003 (spec 010 FR-020/FR-021/FR-022): the full reported reproduction —
+// a text-role block whose list items include plain prose lines and a
+// wikilink immediately followed by an inflectional suffix ("[[LLM]]s", no
+// separating whitespace); an unregistered label whose bare wikilink gets
+// promoted to carry the label-derived predicate id; and three distinctly
+// labeled edge blocks (Assumes/Derived From/Related Aporias). Content
+// survives with its *shape* intact: literal wikilink brackets and list
+// markers, recovered headings, and separate per-block grouping — not just
+// the words.
+const fullReproductionPatch = `---
+kind: patch
+document: dmitry-2026-article
+published: 2026-01-01
+title: "A Test Article"
+---
+# Hypothesis
+
+## Ontology-Driven Multi-Purpose Knowledge Representation
+` + "```yaml\n\"@id\": \"Ontology-Driven Multi-Purpose Knowledge Representation\"\n\"@type\": Hypothesis\n```" + `
+
+A hypothesis about ontology-driven representation.
+
+**Assumptions**
+- Core graph structure can be meaningfully separated from domain-specific semantics
+- [[LLM]]s can be effectively trained on regulated node structures to maintain semantic consistency
+
+**Related Aporias**
+- [[Domain Overspecialization Limits Generalization]]
+
+**Assumes**
+- assumes:: [[LLM]]
+
+**Derived From**
+- derivedFrom:: [[dmitry-2026-article]]
+`
+
+func TestParsePatchLabeledTextRoleListPreservesWikilinksAndListShapeVerbatim(t *testing.T) {
+	index := core.Index{Predicates: map[string]core.PredicateDef{
+		"assumptions": {Role: "text", Merge: core.MergeAppend},
+	}}
+
+	patch, err := core.ParsePatch(strings.NewReader(fullReproductionPatch), index)
+	it.Then(t).Should(it.Nil(err))
+
+	node := patch.Nodes[0]
+	assumptions := node.Texts["assumptions"]
+	it.Then(t).
+		Should(it.String(assumptions).Contain("- Core graph structure can be meaningfully separated from domain-specific semantics")).
+		Should(it.String(assumptions).Contain("- [[LLM]]s can be effectively trained on regulated node structures to maintain semantic consistency"))
+
+	rendered, err := core.RenderNode(node, index)
+	it.Then(t).Should(it.Nil(err))
+	out := string(rendered)
+	it.Then(t).
+		Should(it.String(out).Contain("- Core graph structure can be meaningfully separated from domain-specific semantics")).
+		Should(it.String(out).Contain("- [[LLM]]s can be effectively trained on regulated node structures to maintain semantic consistency"))
+}
+
+func TestParsePatchUnresolvedLabelBareWikilinkPromotedToDerivedPredicate(t *testing.T) {
+	patch, err := core.ParsePatch(strings.NewReader(fullReproductionPatch), core.Index{})
+	it.Then(t).Should(it.Nil(err))
+
+	node := patch.Nodes[0]
+	var relatedAporias *core.Link
+	for i := range node.Edges {
+		if node.Edges[i].Target == "Domain Overspecialization Limits Generalization" {
+			relatedAporias = &node.Edges[i]
+		}
+	}
+	it.Then(t).ShouldNot(it.Nil(relatedAporias))
+	it.Then(t).Should(it.Equal("relatedAporias", relatedAporias.Predicate))
+	it.Then(t).Should(it.Equal("Related Aporias", node.Labels["relatedAporias"]))
+	it.Then(t).Should(it.Equal("Assumes", node.Labels["assumes"]))
+	it.Then(t).Should(it.Equal("Derived From", node.Labels["derivedFrom"]))
+}
+
+// TestRenderNodeSeparatelyLabeledEdgeBlocksStayDistinctGroups (BUG-003,
+// FR-022): with an empty schema index (so "assumes"/"derivedFrom"/
+// "relatedAporias" are all auto-discovered this parse, none pre-
+// registered), each of the three distinctly-labeled edge blocks in
+// fullReproductionPatch renders under its own recovered heading — never
+// collapsed together into one undifferentiated flat bullet list.
+func TestRenderNodeSeparatelyLabeledEdgeBlocksStayDistinctGroups(t *testing.T) {
+	patch, err := core.ParsePatch(strings.NewReader(fullReproductionPatch), core.Index{})
+	it.Then(t).Should(it.Nil(err))
+
+	node := patch.Nodes[0]
+	rendered, err := core.RenderNode(node, core.Index{})
+	it.Then(t).Should(it.Nil(err))
+
+	out := string(rendered)
+	it.Then(t).
+		Should(it.String(out).Contain("## Related Aporias")).
+		Should(it.String(out).Contain("## Assumes")).
+		Should(it.String(out).Contain("## Derived From")).
+		Should(it.String(out).Contain("[[Domain Overspecialization Limits Generalization]]")).
+		Should(it.String(out).Contain("assumes:: [[LLM]]")).
+		Should(it.String(out).Contain("derivedFrom:: [[dmitry-2026-article]]"))
+}
+
+// TestRenderNodeWikilinkFollowedByInflectionalSuffixLinked (BUG-003,
+// FR-020): reinsertion of a stripped wikilink's markup is not blocked just
+// because the display text is immediately followed by a lowercase
+// inflectional suffix with no separating whitespace ("[[LLM]]s").
+func TestRenderNodeWikilinkFollowedByInflectionalSuffixLinked(t *testing.T) {
+	n := core.Node{
+		ID:    "X",
+		Type:  "Entity",
+		Texts: map[string]string{"definition": "LLMs can be effectively trained on regulated structures."},
+		HRefs: []core.Link{{Target: "LLM"}},
+	}
+
+	out, err := core.RenderNode(n, testIndex)
+	it.Then(t).Should(it.Nil(err))
+
+	it.Then(t).Should(it.String(string(out)).Contain("[[LLM]]s can be effectively trained"))
 }
 
 // sortedByTypeThenID mirrors RenderPatch's own deterministic ordering
@@ -905,7 +1240,7 @@ func TestRenderPatchRoundTripsSingleNode(t *testing.T) {
 		Nodes: []core.Node{
 			{
 				ID:    "Widget",
-				Type:  "entity",
+				Type:  "Entity",
 				Attrs: map[string][]core.Predicate{"category": {{Value: "form"}}},
 				Texts: map[string]string{"definition": "A widget."},
 			},
@@ -915,7 +1250,7 @@ func TestRenderPatchRoundTripsSingleNode(t *testing.T) {
 	raw, err := core.RenderPatch(p, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
-	back, err := core.ParsePatch(strings.NewReader(string(raw)))
+	back, err := core.ParsePatch(strings.NewReader(string(raw)), core.Index{})
 	it.Then(t).
 		Should(it.Nil(err)).
 		Should(it.Equal("foo-2026-x", back.Document)).
@@ -939,7 +1274,7 @@ func TestRenderPatchFenceAlwaysHasQuotedIDAndType(t *testing.T) {
 		Document:  "foo-2026-x2",
 		Published: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		Nodes: []core.Node{
-			{ID: "Widget", Type: "entity", Attrs: map[string][]core.Predicate{"category": {{Value: "form"}}}, Texts: map[string]string{"definition": "A widget."}},
+			{ID: "Widget", Type: "Entity", Attrs: map[string][]core.Predicate{"category": {{Value: "form"}}}, Texts: map[string]string{"definition": "A widget."}},
 		},
 	}
 
@@ -949,9 +1284,9 @@ func TestRenderPatchFenceAlwaysHasQuotedIDAndType(t *testing.T) {
 	rendered := string(raw)
 	it.Then(t).
 		Should(it.String(rendered).Contain(`"@id": Widget`)).
-		Should(it.String(rendered).Contain(`"@type": entity`))
+		Should(it.String(rendered).Contain(`"@type": Entity`))
 
-	back, err := core.ParsePatch(strings.NewReader(rendered))
+	back, err := core.ParsePatch(strings.NewReader(rendered), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, len(back.Nodes)))
 	it.Then(t).Should(it.Equal("Widget", back.Nodes[0].ID))
@@ -959,17 +1294,17 @@ func TestRenderPatchFenceAlwaysHasQuotedIDAndType(t *testing.T) {
 
 func TestRenderPatchRoundTripsMultipleTypesSortedDeterministically(t *testing.T) {
 	nodes := []core.Node{
-		{ID: "z-source", Type: "source", Texts: map[string]string{"abstract": "z body."}},
-		{ID: "Widget", Type: "entity", Attrs: map[string][]core.Predicate{"category": {{Value: "form"}}}, Texts: map[string]string{"definition": "widget body."}},
-		{ID: "a-source", Type: "source", Texts: map[string]string{"abstract": "a body."}},
+		{ID: "z-source", Type: "Source", Texts: map[string]string{"abstract": "z body."}},
+		{ID: "Widget", Type: "Entity", Attrs: map[string][]core.Predicate{"category": {{Value: "form"}}}, Texts: map[string]string{"definition": "widget body."}},
+		{ID: "a-source", Type: "Source", Texts: map[string]string{"abstract": "a body."}},
 	}
 	p := core.Patch{Document: "foo-2026-y", Published: time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC), Nodes: nodes}
 
 	raw, err := core.RenderPatch(p, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
-	// Types sorted alphabetically ("entity" before "source"); within
-	// "source", IDs sorted alphabetically ("a-source" before "z-source") —
+	// Types sorted alphabetically ("Entity" before "Source"); within
+	// "Source", IDs sorted alphabetically ("a-source" before "z-source") —
 	// research.md D9.
 	out := string(raw)
 	entityIdx := strings.Index(out, "# Entity")
@@ -980,7 +1315,7 @@ func TestRenderPatchRoundTripsMultipleTypesSortedDeterministically(t *testing.T)
 		Should(it.True(entityIdx >= 0 && sourceIdx > entityIdx)).
 		Should(it.True(aIdx >= 0 && zIdx > aIdx))
 
-	back, err := core.ParsePatch(strings.NewReader(out))
+	back, err := core.ParsePatch(strings.NewReader(out), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(len(nodes), len(back.Nodes)))
 
@@ -996,7 +1331,7 @@ func TestRenderPatchRoundTripsNodeWithEdgesTextsHRefs(t *testing.T) {
 	nodes := []core.Node{
 		{
 			ID:    "Transport Layer Security",
-			Type:  "entity",
+			Type:  "Entity",
 			Attrs: map[string][]core.Predicate{"category": {{Value: "form"}}},
 			Texts: map[string]string{
 				"definition": "TLS is the successor to SSL.",
@@ -1013,7 +1348,7 @@ func TestRenderPatchRoundTripsNodeWithEdgesTextsHRefs(t *testing.T) {
 	raw, err := core.RenderPatch(p, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
-	back, err := core.ParsePatch(strings.NewReader(string(raw)))
+	back, err := core.ParsePatch(strings.NewReader(string(raw)), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, len(back.Nodes)))
 
@@ -1042,7 +1377,7 @@ func TestRenderPatchStableAcrossHeadingGroupReordering(t *testing.T) {
 	nodes := []core.Node{
 		{
 			ID:   "Widget",
-			Type: "entity",
+			Type: "Entity",
 			Edges: []core.Link{
 				{Predicate: "mentionedIn", Target: "B"},
 				{Predicate: "replaces", Target: "SSL Protocol"},
@@ -1068,7 +1403,7 @@ func TestRenderPatchStableAcrossHeadingGroupReordering(t *testing.T) {
 		Should(it.True(replacesIdx < mentionedInLabelIdx)).
 		Should(it.True(mentionedInLabelIdx < mentionsLabelIdx))
 
-	back, err := core.ParsePatch(strings.NewReader(out))
+	back, err := core.ParsePatch(strings.NewReader(out), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, len(back.Nodes)))
 
@@ -1105,7 +1440,7 @@ func TestRenderPatchBoldLabelRoundTripsWithoutParserChange(t *testing.T) {
 		Nodes: []core.Node{
 			{
 				ID:   "BoldRoundTrip",
-				Type: "entity",
+				Type: "Entity",
 				Edges: []core.Link{
 					{Predicate: "replaces", Target: "SSL Protocol"},
 					{Predicate: "mentions", Target: "A"},
@@ -1126,7 +1461,7 @@ func TestRenderPatchBoldLabelRoundTripsWithoutParserChange(t *testing.T) {
 		Should(it.String(out).Contain("**Mentions**")).
 		Should(it.String(out).Contain("**MentionedIn**"))
 
-	back, err := core.ParsePatch(strings.NewReader(out))
+	back, err := core.ParsePatch(strings.NewReader(out), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, len(back.Nodes)))
 	it.Then(t).Should(it.Equal(3, len(back.Nodes[0].Edges)))
@@ -1141,14 +1476,14 @@ func TestRenderPatchBoldLabelRoundTripsWithoutParserChange(t *testing.T) {
 func TestParseNodeExtractsPublishedNeverLeftInAttrs(t *testing.T) {
 	fixture := `---
 "@id": X
-"@type": entity
+"@type": Entity
 published: "2026-04-12"
 ---
 # X
 
 Some text.
 `
-	node, err := core.ParseNode(strings.NewReader(fixture))
+	node, err := core.ParseNode(strings.NewReader(fixture), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 
 	it.Then(t).
@@ -1172,11 +1507,11 @@ published: 2026-04-12
 # Entity
 
 ## X
-` + "```yaml\n\"@id\": X\n\"@type\": entity\npublished: \"2026-05-01\"\n```" + `
+` + "```yaml\n\"@id\": X\n\"@type\": Entity\npublished: \"2026-05-01\"\n```" + `
 
 Some text.
 `
-	patch, err := core.ParsePatch(strings.NewReader(fixture))
+	patch, err := core.ParsePatch(strings.NewReader(fixture), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, len(patch.Nodes)))
 
@@ -1194,7 +1529,7 @@ Some text.
 func TestRenderNodeRendersNonZeroPublished(t *testing.T) {
 	n := core.Node{
 		ID:        "X",
-		Type:      "entity",
+		Type:      "Entity",
 		Published: time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC),
 		Attrs:     map[string][]core.Predicate{"title": {{Value: "X"}}},
 		Texts:     map[string]string{"definition": "Some text."},
@@ -1214,7 +1549,7 @@ func TestRenderNodeRendersNonZeroPublished(t *testing.T) {
 // data-model.md: RenderNode omits Published entirely when zero (a stub or
 // schema document never gains a "published:" line).
 func TestRenderNodeOmitsZeroPublished(t *testing.T) {
-	n := core.Node{ID: "X", Type: "entity", Attrs: map[string][]core.Predicate{"title": {{Value: "X"}}}}
+	n := core.Node{ID: "X", Type: "Entity", Attrs: map[string][]core.Predicate{"title": {{Value: "X"}}}}
 
 	out, err := core.RenderNode(n, testIndex)
 	it.Then(t).Should(it.Nil(err))
@@ -1228,7 +1563,7 @@ func TestRenderPatchRendersNonZeroPublished(t *testing.T) {
 		Document:  "foo-2026-x",
 		Published: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		Nodes: []core.Node{
-			{ID: "Widget", Type: "entity", Published: time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC), Attrs: map[string][]core.Predicate{"category": {{Value: "form"}}}, Texts: map[string]string{"definition": "A widget."}},
+			{ID: "Widget", Type: "Entity", Published: time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC), Attrs: map[string][]core.Predicate{"category": {{Value: "form"}}}, Texts: map[string]string{"definition": "A widget."}},
 		},
 	}
 
@@ -1242,7 +1577,7 @@ func TestRenderPatchRendersNonZeroPublished(t *testing.T) {
 func TestRoundTripPublished(t *testing.T) {
 	n := core.Node{
 		ID:        "X",
-		Type:      "entity",
+		Type:      "Entity",
 		Published: time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC),
 		Attrs:     map[string][]core.Predicate{"title": {{Value: "X"}}},
 		Texts:     map[string]string{"definition": "Some text."},
@@ -1251,7 +1586,7 @@ func TestRoundTripPublished(t *testing.T) {
 	raw, err := core.RenderNode(n, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
-	back, err := core.ParseNode(strings.NewReader(string(raw)))
+	back, err := core.ParseNode(strings.NewReader(string(raw)), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(n.Published, back.Published))
 }
@@ -1260,7 +1595,7 @@ func TestRenderPatchNoLegacyKindFieldInsidePerNodeFence(t *testing.T) {
 	p := core.Patch{
 		Document:  "foo-2026-w",
 		Published: time.Date(2026, 4, 4, 0, 0, 0, 0, time.UTC),
-		Nodes:     []core.Node{{ID: "x", Type: "entity", Attrs: map[string][]core.Predicate{}}},
+		Nodes:     []core.Node{{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{}}},
 	}
 
 	raw, err := core.RenderPatch(p, testIndex)
@@ -1271,7 +1606,7 @@ func TestRenderPatchNoLegacyKindFieldInsidePerNodeFence(t *testing.T) {
 	// top-level manifest's own "kind: patch" line is the only permitted
 	// "kind:" occurrence in the whole document.
 	it.Then(t).Should(it.Equal(1, strings.Count(string(raw), "kind:")))
-	it.Then(t).Should(it.Equal(1, strings.Count(string(raw), `"@type": entity`)))
+	it.Then(t).Should(it.Equal(1, strings.Count(string(raw), `"@type": Entity`)))
 }
 
 // FR-014/FR-015/spec FR-008, ast-contract.md/render-shape-contract.md:
@@ -1284,7 +1619,7 @@ func TestRenderPatchNoLegacyKindFieldInsidePerNodeFence(t *testing.T) {
 func TestIdempotentRoundTrip(t *testing.T) {
 	n := core.Node{
 		ID:    "Transport Layer Security",
-		Type:  "entity",
+		Type:  "Entity",
 		Attrs: map[string][]core.Predicate{"category": {{Value: "independent"}, {Value: "abstract"}}},
 		Texts: map[string]string{
 			"definition": "A cryptographic protocol that establishes an authenticated channel.",
@@ -1299,7 +1634,7 @@ func TestIdempotentRoundTrip(t *testing.T) {
 	first, err := core.RenderNode(n, testIndex)
 	it.Then(t).Should(it.Nil(err))
 
-	parsed, err := core.ParseNode(strings.NewReader(string(first)))
+	parsed, err := core.ParseNode(strings.NewReader(string(first)), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 
 	second, err := core.RenderNode(parsed, testIndex)
@@ -1324,7 +1659,7 @@ func TestIdempotentRoundTrip(t *testing.T) {
 // Content (Predicate/Target) survives identically either way (FR-010) —
 // only the on-disk grouping layout changes.
 func TestNormalizationCorrectsShapeTowardPredicateRole(t *testing.T) {
-	patch, err := core.ParsePatch(strings.NewReader(boldLabelThreeBlocksPatch))
+	patch, err := core.ParsePatch(strings.NewReader(boldLabelThreeBlocksPatch), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 
 	node := patch.Nodes[0]
@@ -1333,14 +1668,18 @@ func TestNormalizationCorrectsShapeTowardPredicateRole(t *testing.T) {
 
 	out := string(rendered)
 	it.Then(t).
-		Should(it.String(out).Contain("## MentionedIn")).
+		// BUG-003 (FR-021): the heading recovers the source patch's own
+		// literal "**Mentioned In**" label (carried via node.Labels since
+		// testIndex's "mentionedIn" entry declares no explicit Label of its
+		// own) rather than a titleCaseType-derived "MentionedIn".
+		Should(it.String(out).Contain("## Mentioned In")).
 		Should(it.String(out).Contain("mentionedIn:: [[dmitry-2026-graph]]")).
 		Should(it.String(out).Contain("referencedBy:: [[Core Thoughts Extension]]")).
 		Should(it.String(out).Contain("related:: [[Article Extension]]")).
 		ShouldNot(it.String(out).Contain("## ReferencedBy")).
 		ShouldNot(it.String(out).Contain("## Related"))
 
-	back, err := core.ParseNode(strings.NewReader(out))
+	back, err := core.ParseNode(strings.NewReader(out), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 
 	wantTargets := map[string]string{}
@@ -1362,7 +1701,7 @@ func TestNormalizationCorrectsShapeTowardPredicateRole(t *testing.T) {
 	// the heading), is corrected to grouped shape on re-render.
 	flatFixture := `---
 "@id": FlatMentionsEntity
-"@type": entity
+"@type": Entity
 ---
 # FlatMentionsEntity
 
@@ -1371,7 +1710,7 @@ Some text.
 - replaces:: [[SSL Protocol]]
 - mentions:: [[A]]
 `
-	flatNode, err := core.ParseNode(strings.NewReader(flatFixture))
+	flatNode, err := core.ParseNode(strings.NewReader(flatFixture), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 
 	flatRendered, err := core.RenderNode(flatNode, testIndex)

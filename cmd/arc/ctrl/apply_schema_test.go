@@ -106,6 +106,23 @@ merge: union
 A physical item tracked by the Acme extension.
 `
 
+const classOnlySchemaPatchNoMerge = `---
+kind: patch
+document: acme-extension-schema
+published: 2026-07-15
+title: Acme extension vocabulary
+---
+# Class
+
+## Hypothesis
+` + "```yaml" + `
+"@id": "Hypothesis"
+"@type": Class
+` + "```" + `
+
+A conclusion distilled from sources, carrying no whole-node merge field.
+`
+
 const mixedSchemaPatch = `---
 kind: patch
 document: acme-extension-schema
@@ -172,7 +189,7 @@ A physical item tracked by the Acme extension.
 ## Acme Corp
 ` + "```yaml" + `
 "@id": "Acme Corp"
-"@type": entity
+"@type": Entity
 category: [independent, social, continuant, collection]
 ` + "```" + `
 
@@ -190,7 +207,7 @@ title: Acme Corp
 ## Acme Corp
 ` + "```yaml" + `
 "@id": "Acme Corp"
-"@type": entity
+"@type": Entity
 category: [independent, social, continuant, collection]
 ` + "```" + `
 
@@ -208,7 +225,7 @@ title: Acme extension vocabulary
 ## 2026
 ` + "```yaml" + `
 "@id": "2026"
-"@type": timeline
+"@type": Timeline
 ` + "```" + `
 
 Yearly index.
@@ -239,6 +256,23 @@ func TestApplySchemaCreatesTypeFromClassOnlyPatch(t *testing.T) {
 
 	it.Then(t).ShouldNot(it.Error(out, err))
 	assertIsFile(t, filepath.Join(dir, "_schema", "types", "Widget.md"))
+	it.Then(t).Should(it.String(out).Contain("+1 type"))
+}
+
+// arc apply schema <patch.md>
+// spec 018 US1 Acceptance Scenario 2 / SC-008 (Bugfix 018/BUG-001): a Class
+// section carrying no whole-node "merge" field still succeeds and creates
+// the type definition — the field has no effect on reconciliation (spec
+// 012 FR-015/FR-020) and MUST NOT be required, unlike a Property's own
+// "merge" field which remains mandatory.
+func TestApplySchemaCreatesTypeFromClassOnlyPatchWithNoMergeField(t *testing.T) {
+	dir := newSchemaGraph(t)
+	patch := writeSchemaPatchFile(t, dir, "ext.schema.md", classOnlySchemaPatchNoMerge)
+
+	out, err := sut(NewApplySchemaCmd(), []string{patch})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	assertIsFile(t, filepath.Join(dir, "_schema", "types", "Hypothesis.md"))
 	it.Then(t).Should(it.String(out).Contain("+1 type"))
 }
 
@@ -322,7 +356,7 @@ func TestApplySchemaRejectsDisallowedNodeType(t *testing.T) {
 
 	it.Then(t).
 		Should(it.Error(out, err).Contain("Acme Corp")).
-		Should(it.Error(out, err).Contain("entity"))
+		Should(it.Error(out, err).Contain("Entity"))
 	_, statErr := os.Stat(filepath.Join(dir, "_schema", "predicates", "Acme Corp.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }
@@ -358,7 +392,7 @@ func TestApplySchemaRejectsTimelineKind(t *testing.T) {
 
 	it.Then(t).
 		Should(it.Error(out, err).Contain("2026")).
-		Should(it.Error(out, err).Contain("timeline"))
+		Should(it.Error(out, err).Contain("Timeline"))
 }
 
 // arc apply schema <patch.md>
@@ -381,6 +415,47 @@ func TestApplySchemaReapplyMergesChangedField(t *testing.T) {
 	it.Then(t).
 		Should(it.String(string(content)).Contain("kilograms.")).
 		Should(it.String(string(content)).Contain("Measured in kilograms (SI)."))
+}
+
+const sourceOptionalOnlySchemaPatch = `---
+kind: patch
+document: acme-extension-schema
+published: 2026-07-15
+title: Acme extension vocabulary
+---
+# Class
+
+## Source
+` + "```yaml" + `
+"@id": "Source"
+"@type": Class
+` + "```" + `
+
+**Optional**
+- optional:: [[proposes]]
+- optional:: [[raises]]
+`
+
+// arc apply schema <patch.md>
+// spec 018 US3 Acceptance Scenario 3 (Bugfix BUG-002): re-declaring the
+// already-registered built-in Source type with only a new Optional
+// predicate, and no description/merge in the section, merges successfully
+// instead of being rejected as missing a mandatory field the existing
+// document already supplies.
+func TestApplySchemaMergesOptionalPredicateIntoExistingTypeOmittingDescription(t *testing.T) {
+	dir := newSchemaGraph(t)
+	patch := writeSchemaPatchFile(t, dir, "ext.schema.md", sourceOptionalOnlySchemaPatch)
+
+	out, err := sut(NewApplySchemaCmd(), []string{patch})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	content, rerr := os.ReadFile(filepath.Join(dir, "_schema", "types", "Source.md"))
+	it.Then(t).Should(it.Nil(rerr))
+	it.Then(t).
+		Should(it.String(string(content)).Contain("optional:: [[proposes]]")).
+		Should(it.String(string(content)).Contain("optional:: [[raises]]")).
+		Should(it.String(string(content)).Contain("provenance origin"))
 }
 
 // arc apply schema <patch.md>

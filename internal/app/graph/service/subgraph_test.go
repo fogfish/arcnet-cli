@@ -24,7 +24,7 @@ import (
 // entityNode builds a minimal on-disk entity node file, with an optional
 // bare-list Edges section (bullet per target, no predicate).
 func entityNode(id string, edges ...string) string {
-	body := "---\n\"@id\": " + id + "\n\"@type\": entity\n---\n# " + id + "\n"
+	body := "---\n\"@id\": " + id + "\n\"@type\": Entity\n---\n# " + id + "\n"
 	if len(edges) > 0 {
 		body += "\n"
 		for _, e := range edges {
@@ -35,11 +35,11 @@ func entityNode(id string, edges ...string) string {
 }
 
 func sourceNodeWithAttrs(id, tags, status string) string {
-	return "---\n\"@id\": " + id + "\n\"@type\": source\ntags: [" + tags + "]\nstatus: " + status + "\n---\n# " + id + "\n"
+	return "---\n\"@id\": " + id + "\n\"@type\": Source\ntags: [" + tags + "]\nstatus: " + status + "\n---\n# " + id + "\n"
 }
 
 func resourceNodeWithAttrs(id, tags, status string) string {
-	return "---\n\"@id\": " + id + "\n\"@type\": resource\ntags: [" + tags + "]\nstatus: " + status + "\n---\n# " + id + "\n"
+	return "---\n\"@id\": " + id + "\n\"@type\": Resource\ntags: [" + tags + "]\nstatus: " + status + "\n---\n# " + id + "\n"
 }
 
 func TestSubgraphGuardNotAGraph(t *testing.T) {
@@ -205,7 +205,7 @@ func TestSubgraphFilterExcludesNonSeedCandidatesOnlyNeverSeed(t *testing.T) {
 		"resources/RFC 8446.md":          resourceNodeWithAttrs("RFC 8446", "cryptography", "draft"),
 	})
 
-	filter := core.Filter{Types: []string{"source"}}
+	filter := core.Filter{Types: []string{"Source"}}
 	result, err := service.Subgraph(context.Background(), mounter, filter, "TLS", 1, configkernel.SubgraphConfig{}, "/graph", false)
 
 	it.Then(t).Should(it.Nil(err))
@@ -223,7 +223,7 @@ func TestSubgraphFilterMatchingZeroReachableNodesYieldsSeedAloneNoError(t *testi
 		"sources/rescorla-2026-tls13.md": sourceNodeWithAttrs("rescorla-2026-tls13", "cryptography", "mature"),
 	})
 
-	filter := core.Filter{Types: []string{"resource"}}
+	filter := core.Filter{Types: []string{"Resource"}}
 	result, err := service.Subgraph(context.Background(), mounter, filter, "TLS", 1, configkernel.SubgraphConfig{}, "/graph", false)
 
 	it.Then(t).
@@ -240,7 +240,7 @@ func TestSubgraphCombinedKindTagAttrFilterNarrowsToExactSubset(t *testing.T) {
 	})
 
 	filter := core.Filter{
-		Types: []string{"source"},
+		Types: []string{"Source"},
 		Tags:  []string{"cryptography"},
 		Attrs: map[string]string{"status": "mature"},
 	}
@@ -343,7 +343,7 @@ func TestSubgraphStubCarriesOnlyKindAndIDNoOtherContent(t *testing.T) {
 		}
 	}
 	it.Then(t).
-		Should(it.Equal("source", stub.Type)).
+		Should(it.Equal("Source", stub.Type)).
 		Should(it.Equal(0, len(stub.Attrs))).
 		Should(it.Equal(0, len(stub.Texts))).
 		Should(it.Equal(0, len(stub.Edges)))

@@ -33,7 +33,7 @@ func (m historyMockVCS) CommitsMatching(ctx context.Context, dir, needle string)
 
 func TestCheckIngestCommitExactlyOneMatch(t *testing.T) {
 	vcs := historyMockVCS{commits: map[string][]string{"Source-Id: foo-2026-x": {"abc123"}}}
-	node := core.Node{Type: "source", ID: "foo-2026-x"}
+	node := core.Node{Type: "Source", ID: "foo-2026-x"}
 
 	out, err := checkIngestCommit(context.Background(), vcs, "/graph", node, "sources/foo-2026-x.md")
 
@@ -43,7 +43,7 @@ func TestCheckIngestCommitExactlyOneMatch(t *testing.T) {
 
 func TestCheckIngestCommitZeroMatches(t *testing.T) {
 	vcs := historyMockVCS{commits: map[string][]string{}}
-	node := core.Node{Type: "source", ID: "foo-2026-x"}
+	node := core.Node{Type: "Source", ID: "foo-2026-x"}
 
 	out, err := checkIngestCommit(context.Background(), vcs, "/graph", node, "sources/foo-2026-x.md")
 
@@ -56,7 +56,7 @@ func TestCheckIngestCommitZeroMatches(t *testing.T) {
 
 func TestCheckIngestCommitMoreThanOneMatch(t *testing.T) {
 	vcs := historyMockVCS{commits: map[string][]string{"Source-Id: foo-2026-x": {"abc123", "def456"}}}
-	node := core.Node{Type: "source", ID: "foo-2026-x"}
+	node := core.Node{Type: "Source", ID: "foo-2026-x"}
 
 	out, err := checkIngestCommit(context.Background(), vcs, "/graph", node, "sources/foo-2026-x.md")
 
@@ -67,7 +67,7 @@ func TestCheckIngestCommitMoreThanOneMatch(t *testing.T) {
 
 func TestCheckIngestCommitNonSourceExempt(t *testing.T) {
 	vcs := historyMockVCS{}
-	node := core.Node{Type: "entity", ID: "Widget"}
+	node := core.Node{Type: "Entity", ID: "Widget"}
 
 	out, err := checkIngestCommit(context.Background(), vcs, "/graph", node, "entities/Widget.md")
 
@@ -78,7 +78,7 @@ func TestCheckIngestCommitNonSourceExempt(t *testing.T) {
 
 func TestCheckIngestCommitErrorPropagates(t *testing.T) {
 	vcs := historyMockVCS{err: errors.New("git log failed")}
-	node := core.Node{Type: "source", ID: "foo-2026-x"}
+	node := core.Node{Type: "Source", ID: "foo-2026-x"}
 
 	_, err := checkIngestCommit(context.Background(), vcs, "/graph", node, "sources/foo-2026-x.md")
 

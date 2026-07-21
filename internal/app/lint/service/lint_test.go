@@ -139,7 +139,7 @@ func (m memMounter) Mount(root string) (fsys.Store, error) { return m.store, nil
 
 const conformantSourceFixture = `---
 "@id": "foo-2026-x"
-"@type": source
+"@type": Source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -153,7 +153,7 @@ A test document.
 
 const conformantEntityFixture = `---
 "@id": "Widget"
-"@type": entity
+"@type": Entity
 category: [independent, abstract, occurrent, script]
 published: "2026-04-12"
 created: "2026-04-12"
@@ -193,10 +193,10 @@ func withNodeContract(def core.TypeDef) core.TypeDef {
 
 var coreIndexFixtureLint = core.Index{
 	Types: map[string]core.TypeDef{
-		"source":   withNodeContract(schemakernel.CoreTypeDefs["source"]),
-		"entity":   withNodeContract(schemakernel.CoreTypeDefs["entity"]),
-		"resource": withNodeContract(schemakernel.CoreTypeDefs["resource"]),
-		"timeline": withNodeContract(schemakernel.CoreTypeDefs["timeline"]),
+		"Source":   withNodeContract(schemakernel.CoreTypeDefs["Source"]),
+		"Entity":   withNodeContract(schemakernel.CoreTypeDefs["Entity"]),
+		"Resource": withNodeContract(schemakernel.CoreTypeDefs["Resource"]),
+		"Timeline": withNodeContract(schemakernel.CoreTypeDefs["Timeline"]),
 		"Node":     schemakernel.CoreTypeDefs["Node"],
 	},
 	Predicates: schemakernel.CorePredicateDefs,
@@ -235,7 +235,7 @@ func TestLintConformantGraphAllPass(t *testing.T) {
 func TestLintExcludesArcAndSchema(t *testing.T) {
 	s := newConformantStore()
 	s.files[".arc/config.yml"] = ""
-	s.files["_schema/types/entity.md"] = "---\n\"@id\": entity\n\"@type\": Class\nmerge: union\n---\n# entity\n\nA node for a subject occurring in sources.\n"
+	s.files["_schema/types/entity.md"] = "---\n\"@id\": Entity\n\"@type\": Class\nmerge: union\n---\n# entity\n\nA node for a subject occurring in sources.\n"
 	vcs := &lintmock.VCS{Commits: map[string][]string{"Source-Id: foo-2026-x": {"abc123"}}}
 
 	result, err := service.Lint(context.Background(), memMounter{s}, vcs, bios.NewReporter(true, true), coreIndexFixtureLint, "/graph")
@@ -249,10 +249,10 @@ func TestLintIncludesNodeInNonStandardFolder(t *testing.T) {
 	s.files["hypothesis/A Test Hypothesis.md"] = "---\n\"@id\": \"A Test Hypothesis\"\n\"@type\": hypothesis\ntitle: A Test Hypothesis\n---\n# A Test Hypothesis\n\nA conclusion.\n- mentions:: [[foo-2026-x]]\n"
 	index := core.Index{
 		Types: map[string]core.TypeDef{
-			"source":     {Merge: core.MergeImmutable},
-			"entity":     {Merge: core.MergeUnion},
-			"resource":   {Merge: core.MergeFirstWriteWin},
-			"timeline":   {Merge: core.MergeAppend},
+			"Source":     {Merge: core.MergeImmutable},
+			"Entity":     {Merge: core.MergeUnion},
+			"Resource":   {Merge: core.MergeFirstWriteWin},
+			"Timeline":   {Merge: core.MergeAppend},
 			"hypothesis": {Merge: core.MergeValidatedOverwrite},
 		},
 		Predicates: coreIndexFixtureLint.Predicates,

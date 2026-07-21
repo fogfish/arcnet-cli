@@ -38,6 +38,33 @@ func formatUnownedViolation(v kernel.Violation) string {
 	return fmt.Sprintf("%s[%s] %s\n", bios.SCHEMA.IconFail, v.Rule, v.Message)
 }
 
+// graphSpanningViolations returns r.Violations entries with no single
+// owning node (research.md D14) — RuleUniqueBasename (Path == "") and
+// RuleTypeCase's schema-level occurrence (a "_schema/types/<name>.md" Path
+// that never corresponds to one of r.Nodes, since schema documents are
+// excluded from that walk, spec.md Clarifications Q1/Q3).
+func graphSpanningViolations(r kernel.LintResult) []kernel.Violation {
+	nodePaths := make(map[string]bool, len(r.Nodes))
+	for _, n := range r.Nodes {
+		nodePaths[n.Path] = true
+	}
+
+	var out []kernel.Violation
+	for _, v := range r.Violations {
+		if !nodePaths[v.Path] {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func formatGraphSpanningViolation(v kernel.Violation) string {
+	if v.Path == "" {
+		return formatUnownedViolation(v)
+	}
+	return formatOwnedViolation(v)
+}
+
 func summaryLine(r kernel.LintResult) string {
 	icon := bios.SCHEMA.IconOK
 	if r.Failing > 0 {
@@ -53,10 +80,8 @@ type humanLintPrinter struct{}
 // (research.md D14).
 func (humanLintPrinter) Show(r kernel.LintResult) ([]byte, error) {
 	var buf []byte
-	for _, v := range r.Violations {
-		if v.Path == "" {
-			buf = append(buf, formatUnownedViolation(v)...)
-		}
+	for _, v := range graphSpanningViolations(r) {
+		buf = append(buf, formatGraphSpanningViolation(v)...)
 	}
 	for _, n := range r.Nodes {
 		for _, v := range n.Violations {
@@ -73,10 +98,8 @@ type verboseLintPrinter struct{}
 // order, followed by the identical overall summary line (research.md D14).
 func (verboseLintPrinter) Show(r kernel.LintResult) ([]byte, error) {
 	var buf []byte
-	for _, v := range r.Violations {
-		if v.Path == "" {
-			buf = append(buf, formatUnownedViolation(v)...)
-		}
+	for _, v := range graphSpanningViolations(r) {
+		buf = append(buf, formatGraphSpanningViolation(v)...)
 	}
 	for _, n := range r.Nodes {
 		if len(n.Violations) == 0 {

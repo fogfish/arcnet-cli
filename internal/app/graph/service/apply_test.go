@@ -42,10 +42,10 @@ func (r *fakeReporter) Error(string, error)        {}
 // listed here falls back to MergeUnion (research.md D6).
 var coreIndexFixture = core.Index{
 	Types: map[string]core.TypeDef{
-		"source":   {Merge: core.MergeImmutable},
-		"entity":   {Merge: core.MergeUnion},
-		"resource": {Merge: core.MergeFirstWriteWin},
-		"timeline": {Merge: core.MergeAppend},
+		"Source":   {Merge: core.MergeImmutable},
+		"Entity":   {Merge: core.MergeUnion},
+		"Resource": {Merge: core.MergeFirstWriteWin},
+		"Timeline": {Merge: core.MergeAppend},
 	},
 	Predicates: map[string]core.PredicateDef{
 		"ref":       {Merge: core.MergeImmutable},
@@ -80,8 +80,10 @@ func indexWithPredicate(name string) core.Index {
 // fakeSchema records every RegisterType/RegisterPredicate call, for
 // asserting graph.Apply's auto-discovery hook (spec.md US2).
 type fakeSchema struct {
-	registeredTypes      []string
-	registeredPredicates []string
+	registeredTypes          []string
+	registeredPredicates     []string
+	registeredPredicateRole  map[string]string
+	registeredPredicateLabel map[string]string
 }
 
 func (f *fakeSchema) RegisterType(store fsys.Store, typ string) (bool, error) {
@@ -89,8 +91,18 @@ func (f *fakeSchema) RegisterType(store fsys.Store, typ string) (bool, error) {
 	return true, nil
 }
 
-func (f *fakeSchema) RegisterPredicate(store fsys.Store, predicate string) (bool, error) {
+func (f *fakeSchema) RegisterPredicate(store fsys.Store, predicate, observedRole, label string) (bool, error) {
 	f.registeredPredicates = append(f.registeredPredicates, predicate)
+	if f.registeredPredicateRole == nil {
+		f.registeredPredicateRole = map[string]string{}
+	}
+	f.registeredPredicateRole[predicate] = observedRole
+	if label != "" {
+		if f.registeredPredicateLabel == nil {
+			f.registeredPredicateLabel = map[string]string{}
+		}
+		f.registeredPredicateLabel[predicate] = label
+	}
 	return true, nil
 }
 
@@ -186,7 +198,7 @@ title: "A Test Document"
 ## foo-2026-x
 ` + "```yaml" + `
 "@id": "foo-2026-x"
-"@type": source
+"@type": Source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -206,7 +218,7 @@ title: "A Test Document"
 ## foo-2026-x
 ` + "```yaml" + `
 "@id": "foo-2026-x"
-"@type": source
+"@type": Source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -219,7 +231,7 @@ A test document.
 ## Widget
 ` + "```yaml" + `
 "@id": "Widget"
-"@type": entity
+"@type": Entity
 category: [independent, abstract, occurrent, script]
 ` + "```" + `
 
@@ -229,7 +241,7 @@ A test entity.
 
 const existingWidgetEntity = `---
 "@id": "Widget"
-"@type": entity
+"@type": Entity
 title: Widget
 category: [independent, abstract, occurrent, script]
 ---
@@ -238,7 +250,7 @@ category: [independent, abstract, occurrent, script]
 A test entity.
 `
 
-// sourceResourcePatch/existingWidgetSpecResourceWithStatus: a "resource"
+// sourceResourcePatch/existingWidgetSpecResourceWithStatus: a "Resource"
 // node's leading prose (Texts["relevance"], firstWriteWin per
 // coreIndexFixture) genuinely diverges from what's already on disk, so it
 // is flagged — its "status" (lastWriteWin) diverges too but is never
@@ -255,7 +267,7 @@ title: "A Test Document"
 ## foo-2026-x
 ` + "```yaml" + `
 "@id": "foo-2026-x"
-"@type": source
+"@type": Source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -268,7 +280,7 @@ A test document.
 ## Widget Spec
 ` + "```yaml" + `
 "@id": "Widget Spec"
-"@type": resource
+"@type": Resource
 ref: standard
 status: backlog
 ` + "```" + `
@@ -278,7 +290,7 @@ An updated specification of Widget alignment.
 
 const existingWidgetSpecResourceWithStatus = `---
 "@id": "Widget Spec"
-"@type": resource
+"@type": Resource
 title: Widget Spec
 ref: standard
 status: read
@@ -299,7 +311,7 @@ title: "A Test Document"
 ## foo-2026-x
 ` + "```yaml" + `
 "@id": "foo-2026-x"
-"@type": source
+"@type": Source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -312,7 +324,7 @@ A test document.
 ## A Test Hypothesis
 ` + "```yaml" + `
 "@id": "A Test Hypothesis"
-"@type": hypothesis
+"@type": Hypothesis
 ` + "```" + `
 
 A conclusion.
@@ -359,7 +371,7 @@ func TestApplyCreatesNewNode(t *testing.T) {
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
-		Should(it.Equal(1, result.Created["source"])).
+		Should(it.Equal(1, result.Created["Source"])).
 		Should(it.Equal("abc123", result.CommitHash))
 	it.Then(t).Should(it.True(len(store.files["sources/foo-2026-x.md"]) > 0))
 	it.Then(t).
@@ -376,15 +388,15 @@ func TestApplyMergesExistingNode(t *testing.T) {
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
-		Should(it.Equal(1, result.Created["source"])).
-		Should(it.Equal(1, result.Merged["entity"])).
+		Should(it.Equal(1, result.Created["Source"])).
+		Should(it.Equal(1, result.Merged["Entity"])).
 		Should(it.Equal(0, len(result.Conflicts)))
 
 	content := string(store.files["entities/Widget.md"])
 	it.Then(t).Should(it.String(content).Contain("replaces:: [[Old Widget]]"))
 }
 
-// BUG-004: a "resource" node (MergeUnionFirstWriter) is unaffected by this
+// BUG-004: a "Resource" node (MergeUnionFirstWriter) is unaffected by this
 // bugfix — its already-populated scalar field is still flagged as a
 // conflict on divergence, exactly as before.
 func TestApplyFlagsConflict(t *testing.T) {
@@ -415,16 +427,16 @@ func TestApplyUnregisteredKindWarns(t *testing.T) {
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
-		Should(it.Equal(1, result.Created["hypothesis"])).
+		Should(it.Equal(1, result.Created["Hypothesis"])).
 		Should(it.Equal(1, len(result.Warnings))).
-		Should(it.String(result.Warnings[0]).Contain("hypothesis"))
+		Should(it.String(result.Warnings[0]).Contain("Hypothesis"))
 }
 
 func TestApplyRegisteredKindNoWarning(t *testing.T) {
 	store := newGraphStore()
 	store.files["patch.md"] = []byte(domainKindPatch)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
-	index := indexWithType("hypothesis", core.MergeValidatedOverwrite)
+	index := indexWithType("Hypothesis", core.MergeValidatedOverwrite)
 
 	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), index, &fakeSchema{}, "/graph", "/patch.md")
 
@@ -444,7 +456,7 @@ func TestApplyUnregisteredKindRegistersSchemaKind(t *testing.T) {
 	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, schema, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
-	it.Then(t).Should(it.Seq(schema.registeredTypes).Contain("hypothesis"))
+	it.Then(t).Should(it.Seq(schema.registeredTypes).Contain("Hypothesis"))
 }
 
 // arc apply — spec.md US2: a previously-unseen predicate declared in a
@@ -459,6 +471,95 @@ func TestApplyUnregisteredPredicateRegistersSchemaPredicate(t *testing.T) {
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Seq(schema.registeredPredicates).Contain("replaces"))
+}
+
+const unregisteredLabelTextPatch = `---
+kind: patch
+document: foo-2026-y
+published: 2026-04-12
+title: "A Test Document"
+---
+# Entity
+
+## Widget2
+` + "```yaml" + `
+"@id": "Widget2"
+"@type": Entity
+` + "```" + `
+
+A test entity.
+
+**Assumptions**
+- Ontologies are static once published
+- Users prefer YAML front matter over JSON
+`
+
+// BUG-002 (spec 010 FR-019): a "**Label**" block whose label resolves to no
+// registered predicate, and whose content isn't wikilink-shaped, is
+// auto-registered as role: text (not the edge/union default) — closing
+// spec 011 research.md's own flagged auto-discovery gap.
+func TestApplyUnregisteredLabelTextContentRegistersAsTextRole(t *testing.T) {
+	store := newGraphStore()
+	store.files["patch.md"] = []byte(unregisteredLabelTextPatch)
+	vcs := &graphmock.VCS{CommitHash: "abc123"}
+	schema := &fakeSchema{}
+
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, schema, "/graph", "/patch.md")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Seq(schema.registeredPredicates).Contain("assumptions"))
+	it.Then(t).Should(it.Equal("text", schema.registeredPredicateRole["assumptions"]))
+}
+
+const unregisteredLabeledEdgePatch = `---
+kind: patch
+document: foo-2026-z
+published: 2026-04-12
+title: "A Test Document"
+---
+# Entity
+
+## Widget3
+` + "```yaml" + `
+"@id": "Widget3"
+"@type": Entity
+` + "```" + `
+
+A test entity.
+- replaces:: [[Old Widget]]
+
+**Related Aporias**
+- [[Some Aporia]]
+`
+
+// BUG-003 (spec 010 FR-021/FR-022): an edge occurrence carried with its
+// own "**Label**" block auto-registers as role: link (not the flat
+// role: edge default), with its `label` attribute set to the block's
+// literal label text — so the block's original grouping/heading survive a
+// write, instead of collapsing into an undifferentiated flat bullet list.
+// The fixture also carries an unrelated bare edge-role occurrence
+// ("replaces"), so the single-link-role-predicate-body heading omission
+// (spec 013 FR-006 — legitimately elsewhere applicable when a link-role
+// predicate's occurrences are a node's *entire* edge content) does not
+// mask this assertion.
+func TestApplyUnregisteredLabeledEdgeRegistersAsLinkRoleWithLabel(t *testing.T) {
+	store := newGraphStore()
+	store.files["patch.md"] = []byte(unregisteredLabeledEdgePatch)
+	vcs := &graphmock.VCS{CommitHash: "abc123"}
+	schema := &fakeSchema{}
+
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, schema, "/graph", "/patch.md")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Seq(schema.registeredPredicates).Contain("relatedAporias"))
+	it.Then(t).Should(it.Equal("link", schema.registeredPredicateRole["relatedAporias"]))
+	it.Then(t).Should(it.Equal("Related Aporias", schema.registeredPredicateLabel["relatedAporias"]))
+
+	content := string(store.files["entities/Widget3.md"])
+	it.Then(t).
+		Should(it.String(content).Contain("## Related Aporias")).
+		Should(it.String(content).Contain("[[Some Aporia]]")).
+		Should(it.String(content).Contain("replaces:: [[Old Widget]]"))
 }
 
 // arc apply — spec.md US2 Acceptance Scenario 3: an already-registered
@@ -519,10 +620,10 @@ func TestApplyYearlyTimelinePeriodFileParsesViaCoreParseNode(t *testing.T) {
 	yearly := store.files["timeline/yearly/2026.md"]
 	it.Then(t).Should(it.True(len(yearly) > 0))
 
-	node, err := core.ParseNode(bytes.NewReader(yearly))
+	node, err := core.ParseNode(bytes.NewReader(yearly), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
-		Should(it.Equal("timeline", node.Type)).
+		Should(it.Equal("Timeline", node.Type)).
 		Should(it.Equal("2026", node.ID))
 }
 
@@ -566,7 +667,7 @@ title: "A Test Document"
 ## foo-2026-x
 ` + "```yaml" + `
 "@id": "foo-2026-x"
-"@type": source
+"@type": Source
 title: "A Test Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -579,7 +680,7 @@ A test document.
 ## StubEntity
 ` + "```yaml" + `
 "@id": "StubEntity"
-"@type": entity
+"@type": Entity
 ` + "```" + `
 `
 
@@ -594,7 +695,7 @@ func TestApplyStubCreatesNodeWithNeitherPublishedNorIndexed(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 
 	content := string(store.files["entities/StubEntity.md"])
-	node, err := core.ParseNode(bytes.NewReader([]byte(content)))
+	node, err := core.ParseNode(bytes.NewReader([]byte(content)), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
 		Should(it.True(node.Published.IsZero())).
@@ -616,7 +717,7 @@ func TestApplySchemaRegistrationCarriesNoTimestampAttrs(t *testing.T) {
 
 	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, schema, "/graph", "/patch.md")
 	it.Then(t).Should(it.Nil(err))
-	it.Then(t).Should(it.Seq(schema.registeredTypes).Contain("hypothesis"))
+	it.Then(t).Should(it.Seq(schema.registeredTypes).Contain("Hypothesis"))
 }
 
 // spec.md US1 Acceptance Scenario 1/2 / FR-001/FR-005: every node one
@@ -630,9 +731,9 @@ func TestApplyCreatedNodesCarryPublishedAndShareIndexed(t *testing.T) {
 	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 	it.Then(t).Should(it.Nil(err))
 
-	source, err := core.ParseNode(bytes.NewReader(store.files["sources/foo-2026-x.md"]))
+	source, err := core.ParseNode(bytes.NewReader(store.files["sources/foo-2026-x.md"]), core.Index{})
 	it.Then(t).Should(it.Nil(err))
-	entity, err := core.ParseNode(bytes.NewReader(store.files["entities/Widget.md"]))
+	entity, err := core.ParseNode(bytes.NewReader(store.files["entities/Widget.md"]), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 
 	sourceIndexedPreds := source.Attrs["indexed"]
@@ -658,9 +759,9 @@ func TestApplyMergedNodeGetsUpdatedMatchingIndexed(t *testing.T) {
 	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 	it.Then(t).Should(it.Nil(err))
 
-	source, err := core.ParseNode(bytes.NewReader(store.files["sources/foo-2026-x.md"]))
+	source, err := core.ParseNode(bytes.NewReader(store.files["sources/foo-2026-x.md"]), core.Index{})
 	it.Then(t).Should(it.Nil(err))
-	entity, err := core.ParseNode(bytes.NewReader(store.files["entities/Widget.md"]))
+	entity, err := core.ParseNode(bytes.NewReader(store.files["entities/Widget.md"]), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 
 	sourceIndexedPreds := source.Attrs["indexed"]
@@ -684,7 +785,7 @@ title: "A Second Document"
 ## foo-2026-x2
 ` + "```yaml" + `
 "@id": "foo-2026-x2"
-"@type": source
+"@type": Source
 title: "A Second Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -705,7 +806,7 @@ func TestApplyNoneKindMergeAddsNoUpdated(t *testing.T) {
 	store.files["patch.md"] = []byte(sourceOnlyReContributionPatch)
 	store.files["sources/foo-2026-x2.md"] = []byte(`---
 "@id": "foo-2026-x2"
-"@type": source
+"@type": Source
 title: "A Second Document"
 authors: [Test Author]
 published: "2026-04-12"
@@ -724,7 +825,7 @@ A test document.
 }
 
 // BUG-004: uses the same resource-kind conflict fixture as
-// TestApplyFlagsConflict above, since an "entity" (MergeUnion) node no
+// TestApplyFlagsConflict above, since an "Entity" (MergeUnion) node no
 // longer ever flags a conflict.
 func TestApplyReportsStepConflictFlagged(t *testing.T) {
 	store := newGraphStore()
@@ -751,7 +852,7 @@ func TestApplyExistingNodeIdMismatchedBasenameAbortsWithNoWrites(t *testing.T) {
 	store.files["patch.md"] = []byte(sourceEntityPatch)
 	mismatched := `---
 "@id": "Some Other Id"
-"@type": entity
+"@type": Entity
 category: [independent, abstract, occurrent, script]
 ---
 # Widget

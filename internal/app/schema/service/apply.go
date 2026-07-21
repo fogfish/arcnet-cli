@@ -81,7 +81,7 @@ func readPatchSource(ctx context.Context, mounter fsys.Mounter, fetcher port.Fet
 		}
 		defer body.Close()
 
-		patch, err := core.ParsePatch(body)
+		patch, err := core.ParsePatch(body, core.Index{})
 		if err != nil {
 			return core.Patch{}, ErrPatchRead.With(err, source)
 		}
@@ -99,7 +99,7 @@ func readPatchSource(ctx context.Context, mounter fsys.Mounter, fetcher port.Fet
 	}
 	defer f.Close()
 
-	patch, err := core.ParsePatch(f)
+	patch, err := core.ParsePatch(f, core.Index{})
 	if err != nil {
 		return core.Patch{}, ErrPatchRead.With(err, source)
 	}
@@ -141,14 +141,8 @@ func planSchemaNode(store fsys.Store, node core.Node, sourceID string) (schemaNo
 	switch node.Type {
 	case propertyType:
 		kind, dir = "predicate", kernel.PredicatesDir
-		if _, invalid := decodePredicateDef(node); invalid != "" {
-			return schemaNodePlan{}, ErrSchemaInvalid.With(errNoCause, node.ID, invalid)
-		}
 	case classType:
 		kind, dir = "type", kernel.TypesDir
-		if _, invalid := decodeTypeDef(node); invalid != "" {
-			return schemaNodePlan{}, ErrSchemaInvalid.With(errNoCause, node.ID, invalid)
-		}
 	}
 	path := dir + "/" + node.ID + ".md"
 
@@ -164,6 +158,23 @@ func planSchemaNode(store fsys.Store, node core.Node, sourceID string) (schemaNo
 			return schemaNodePlan{}, ErrSchemaWrite.With(merr, path)
 		}
 		final = merged
+	}
+
+	// Validated against final (spec 018 FR-013, Bugfix BUG-002): a section
+	// merging into an already-existing definition is a delta, not a full
+	// restatement — a mandatory field it omits (e.g. description, role,
+	// merge) may already be supplied by the existing document. When nothing
+	// existed beforehand, final equals node unchanged, so a brand-new
+	// definition still independently requires every mandatory field.
+	switch node.Type {
+	case propertyType:
+		if _, invalid := decodePredicateDef(final); invalid != "" {
+			return schemaNodePlan{}, ErrSchemaInvalid.With(errNoCause, node.ID, invalid)
+		}
+	case classType:
+		if _, invalid := decodeTypeDef(final); invalid != "" {
+			return schemaNodePlan{}, ErrSchemaInvalid.With(errNoCause, node.ID, invalid)
+		}
 	}
 
 	raw, err := core.RenderNode(final, metaIndex)
@@ -193,7 +204,7 @@ func readExistingSchemaNode(store fsys.Store, path string) (core.Node, bool, err
 	}
 	defer f.Close()
 
-	node, err := core.ParseNode(f)
+	node, err := core.ParseNode(f, core.Index{})
 	if err != nil {
 		return core.Node{}, false, ErrSchemaInvalid.With(err, path, "document")
 	}

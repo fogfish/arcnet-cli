@@ -56,6 +56,7 @@ An extension the maintainer previously imported publishes an update — a revise
 
 1. **Given** a predicate definition already present in the schema from a prior import, **When** a patch re-declaring that predicate (with an added or changed field) is applied, **Then** the existing definition is updated according to its declared merge behavior rather than duplicated.
 2. **Given** a type definition already present in the schema, **When** a patch re-declaring that type with no actual changes is applied, **Then** the command completes without reporting any created or merged changes for it.
+3. **Given** a type definition already present in the schema (e.g. a built-in `Source`), **When** a patch re-declares that type with only an added `Optional` predicate and no `description` (or other field the existing document already supplies), **Then** the command merges the new predicate into the existing definition and succeeds — the section is validated as a delta against the existing document, not rejected as incomplete on its own. *(Bugfix BUG-002, 2026-07-19)*
 
 ---
 
@@ -83,11 +84,12 @@ An extension the maintainer previously imported publishes an update — a revise
 - **FR-005**: If the patch document contains any node section whose type is not `Property` or `Class`, the command MUST fail the entire operation and MUST NOT write any of the patch's definitions to the schema, including otherwise-valid `Property`/`Class` sections in the same document.
 - **FR-006**: When a failure occurs per FR-005, the command MUST report the id and type of at least one disallowed node so the maintainer can identify the offending section.
 - **FR-007**: For each valid `Property` node section, the command MUST create a new predicate definition in the schema if none exists for that name, or merge into the existing one if it does, following that definition's declared merge behavior.
-- **FR-008**: For each valid `Class` node section, the command MUST create a new type definition in the schema if none exists for that name, or merge into the existing one if it does, following that definition's declared merge behavior.
+- **FR-008**: For each valid `Class` node section, the command MUST create a new type definition in the schema if none exists for that name, or merge into the existing one if it does. ~~following that definition's declared merge behavior~~ A `Class` section's own whole-node `merge` field, if present, is honored for continuity; if absent, the command MUST NOT reject the section on that basis — the field has no effect on reconciliation (spec 012 FR-015/FR-020) and MUST NOT be required. *(Bugfix BUG-001, 2026-07-19)*
 - **FR-009**: The command MUST report a summary of how many predicate and type definitions were created versus merged by the run.
 - **FR-010**: The command MUST require an initialized graph to run against and MUST fail with a clear message if none is present.
 - **FR-011**: Re-applying an identical, previously-imported patch document MUST leave the schema unchanged and MUST be reported as having made no changes.
 - **FR-012**: The command MUST leave the schema fully unchanged if any step of applying the patch fails partway through.
+- **FR-013**: When a `Property`/`Class` node section is merging into an already-existing definition (FR-007/FR-008), a mandatory field the incoming section omits (e.g. `description`, `role`, `merge`) MUST be validated against the definition that would result *after* merging with the existing document, not against the incoming section in isolation — the section is a delta, not a full restatement (User Story 3's own intent: "without needing to be told which specific definitions changed"). A section creating a brand-new definition (no existing document to merge with) MUST still independently satisfy every mandatory field, unchanged from FR-007/FR-008's original guarantee. *(Bugfix BUG-002, 2026-07-19)*
 
 ### Key Entities
 
@@ -104,6 +106,7 @@ An extension the maintainer previously imported publishes an update — a revise
 - **SC-003**: Re-applying an unchanged, previously-imported schema patch reports zero created or merged definitions.
 - **SC-004**: After a failed import, the schema directory's contents are byte-for-byte identical to their state before the command ran.
 - **SC-005**: A maintainer can import any officially cataloged arcnet extension using only its short name, with identical results to supplying that extension's full download URL by hand.
+- **SC-006** *(BUG-002)*: Re-applying a patch that adds a new `Optional`/`Required` predicate to an already-registered `Property`/`Class` definition succeeds in 100% of tested cases, even when the section omits a mandatory field (`description`, `role`, `merge`) the existing document already supplies.
 
 ## Assumptions
 
@@ -111,5 +114,10 @@ An extension the maintainer previously imported publishes an update — a revise
 - A URL input is fetched as a plain, unauthenticated HTTP(S) request; no credential handling is in scope for this feature.
 - The `arcnet:` prefix resolves to a fixed, built-in base location — `https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/schema/` — with the remainder of the input appended verbatim as the path suffix (e.g. `arcnet:media.schema.md` → `https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/schema/media.schema.md`). This base is not user-configurable in this feature's scope.
 - "Entire process fails" means the operation is all-or-nothing: if any disallowed node section is present anywhere in the patch, none of the patch's `Property`/`Class` definitions are written, even the valid ones.
-- Merge behavior for re-imported `Property`/`Class` definitions follows each definition's own declared merge policy, consistent with how the graph's patch-apply command merges other node kinds.
+- ~~Merge behavior for re-imported `Property`/`Class` definitions follows each definition's own declared merge policy, consistent with how the graph's patch-apply command merges other node kinds.~~ Refined (Bugfix BUG-001, 2026-07-19): this holds for `Property` definitions as originally stated. A `Class` definition's own `merge` field has no effect on reconciliation (spec 012 FR-015) and is optional on import — its presence or absence never determines whether the section is accepted (FR-008).
 - This command targets the local schema only; it does not create or modify any graph content nodes (sources, entities, resources).
+- A "valid" `Property`/`Class` node section (FR-007/FR-008) means independently complete only when it creates a brand-new definition; when it merges into an already-existing one, completeness is judged against the merged result, since the section is a delta a maintainer authors without needing to restate fields the existing document already supplies (FR-013, Bugfix BUG-002, 2026-07-19).
+
+**Bugfix**: 2026-07-19 — BUG-001 amended FR-008 and the merge-behavior assumption: a `Class` section's `merge` field is optional (the field has no effect on reconciliation per spec 012 FR-015/FR-020) and its absence MUST NOT reject an otherwise well-formed section — previously the command rejected a real, published extension's `Class` definitions (e.g. a `Hypothesis` type) for lacking this now-vestigial field. `Property`-level merge validation (FR-007) is unaffected.
+
+**Bugfix**: 2026-07-19 — BUG-002 added FR-013, SC-006, User Story 3's Acceptance Scenario 3, and an Assumptions bullet clarifying what "valid" means for a merging section: `arc apply schema` rejected a patch adding a new `Optional` predicate to the already-registered built-in `Source` type because the section omitted `description`, even though `Source`'s existing schema document already had one — mandatory-field validation ran against the raw incoming section instead of the merged result. This generalizes 018/BUG-001's own finding (there for `merge`) to every mandatory field on both `Property` and `Class` sections.
