@@ -551,6 +551,58 @@ func decodeYAMLBlock(fence *ast.FencedCodeBlock, source []byte) (map[string]any,
 	return attrs, nil
 }
 
+// bodyBlockKind classifies a node-body top-level block by structural shape
+// alone (BUG-004, pass 1 of walkNodeBody's two-pass split) — no schema/role
+// decision is made here, only "what shape is this".
+type bodyBlockKind int
+
+const (
+	bodyBlockProse  bodyBlockKind = iota // a plain paragraph, not a recognized title
+	bodyBlockList                        // a list with no immediately preceding title
+	bodyBlockTitled                      // a "**Label**"/"## Label" title paired with the list right after it
+)
+
+// bodyBlock is one classified top-level child of a node body, as produced
+// by classifyNodeBody (BUG-004).
+type bodyBlock struct {
+	kind  bodyBlockKind
+	para  *ast.Paragraph // set for bodyBlockProse
+	list  *ast.List      // set for bodyBlockList and bodyBlockTitled
+	label string         // set for bodyBlockTitled: the title's literal label text
+}
+
+// classifyNodeBody is walkNodeBody's pass 1 (BUG-004, FR-023): a single
+// forward scan over the body's top-level children that decides, for every
+// list in the body — not only the first one encountered — whether it is
+// paired with an immediately preceding title (blockTitle) or stands alone.
+// Earlier versions of this parser gave up on title+list pairing for good
+// the moment a list wasn't preceded by a title, silently stranding every
+// later `**Label**`/`## Label` block's title from its own list content;
+// this pass never "gives up" — each position is classified independently
+// of what came before it, so a title anywhere in the body still pairs with
+// its list.
+func classifyNodeBody(children []ast.Node, source []byte) []bodyBlock {
+	var blocks []bodyBlock
+	idx := 0
+	for idx < len(children) {
+		if label, matched := blockTitle(children[idx], source); matched && idx+1 < len(children) {
+			if list, ok := children[idx+1].(*ast.List); ok {
+				blocks = append(blocks, bodyBlock{kind: bodyBlockTitled, list: list, label: label})
+				idx += 2
+				continue
+			}
+		}
+		switch v := children[idx].(type) {
+		case *ast.Paragraph:
+			blocks = append(blocks, bodyBlock{kind: bodyBlockProse, para: v})
+		case *ast.List:
+			blocks = append(blocks, bodyBlock{kind: bodyBlockList, list: v})
+		}
+		idx++
+	}
+	return blocks
+}
+
 // walkNodeBody parses a node's body span (everything after its identity
 // heading/yaml-fence, for a patch; everything after the derived H1 title,
 // for an on-disk node file) into Texts/HRefs/Edges per AST §6: leading
@@ -587,97 +639,95 @@ func decodeYAMLBlock(fence *ast.FencedCodeBlock, source []byte) (map[string]any,
 // predicate id, rather than staying anonymous — so a later auto-
 // registration step can recover the block's original heading/bold-label
 // text and its per-block grouping (role: link) on write.
+//
+// Bugfix BUG-004 (spec 010 FR-023): the earlier three-loop structure (one
+// leading-list slot, then a title+list loop that permanently `break`s the
+// moment a list isn't preceded by a title, then a type-blind trailing
+// scan) assumed at most one untitled list per body — a second untitled
+// plain list anywhere in the body stopped the title+list loop for good,
+// stranding every later `**Label**`/`## Label` block's title from its own
+// list. Replaced with the two-pass split below: pass 1 (classifyNodeBody)
+// classifies every top-level child structurally, pairing a title with its
+// list wherever the pairing occurs in the body — never permanently
+// giving up the way the old single forward pass did. Pass 2 (this
+// function) keeps the original leading/trailing boundary rule unchanged
+// (contiguous leading prose, plus at most one immediately-following bare
+// list, forms the leading slot; everything else that isn't itself a
+// titled pair falls to the trailing slot) — generalizing only the
+// resumability of title+list pairing, not the two-slot physical layout
+// research.md 003 D3/AST §6 and this function's own renderNodeBody
+// counterpart already depend on. A plain list's items also now keep their
+// bulleted shape (renderTextListLines) wherever they land in Texts, not
+// only via the named-block text-role path that already used it.
 func walkNodeBody(children []ast.Node, source []byte, nodeType string, index Index) (texts map[string]string, hrefs, edges []Link, labels map[string]string) {
-	idx := 0
 	labelIndex := buildLabelIndex(index)
 	namedTexts := map[string][]string{}
 	namedLabels := map[string]string{}
 
-	var leading []string
-	for idx < len(children) {
-		p, ok := children[idx].(*ast.Paragraph)
-		if !ok {
-			break
-		}
-		// A bold-label paragraph (BUG-003) immediately followed by a list
-		// opens a predicate-grouped block, not more leading prose — leave
-		// it for the headed/labeled-blocks loop below to claim, so its
-		// list is captured as Edges entries rather than swept into Texts
-		// or misclassified as the ungrouped bare-edges list.
-		if _, isLabel := boldLabel(p, source); isLabel && idx+1 < len(children) {
-			if _, isList := children[idx+1].(*ast.List); isList {
-				break
-			}
-		}
-		leading = append(leading, linesText(p, source))
-		idx++
-	}
-	if idx < len(children) {
-		if list, ok := children[idx].(*ast.List); ok {
-			links, textLines := classifyListItems(list, source)
-			edges = append(edges, links...)
-			leading = append(leading, textLines...)
-			idx++
-		}
-	}
-	rawText := strings.Join(leading, "\n\n")
+	blocks := classifyNodeBody(children, source)
 
-	for idx < len(children) {
-		label, matched := blockTitle(children[idx], source)
-		if !matched || idx+1 >= len(children) {
-			break
+	var leading, trailing []string
+	i := 0
+	for i < len(blocks) && blocks[i].kind == bodyBlockProse {
+		leading = append(leading, linesText(blocks[i].para, source))
+		i++
+	}
+	if i < len(blocks) && blocks[i].kind == bodyBlockList {
+		links, textLines := classifyListItems(blocks[i].list, source)
+		edges = append(edges, links...)
+		if rendered := renderBareTextListLines(textLines); rendered != "" {
+			leading = append(leading, rendered)
 		}
-		list, ok := children[idx+1].(*ast.List)
-		if !ok {
-			break
-		}
+		i++
+	}
 
-		if predicate, role, resolved := resolveLabelPredicate(index, labelIndex, label); resolved && role == "text" {
-			if lines := listItemLines(list, source); len(lines) > 0 {
-				namedTexts[predicate] = append(namedTexts[predicate], lines...)
-			}
-		} else if resolved {
-			edges = append(edges, collectListLinks(list, source)...)
-		} else {
-			links, textLines := classifyListItems(list, source)
-			derivedPredicate := camelizeLabel(label)
-			// A bare, untagged wikilink line has no predicate of its own
-			// (BUG-003, FR-022) — promote it to the block's own
-			// label-derived id, so its grouping/label survive a write
-			// instead of it rendering as an anonymous, ungrouped bullet.
-			for i := range links {
-				if links[i].Predicate == "" {
-					links[i].Predicate = derivedPredicate
+	for ; i < len(blocks); i++ {
+		b := blocks[i]
+		switch b.kind {
+		case bodyBlockTitled:
+			if predicate, role, resolved := resolveLabelPredicate(index, labelIndex, b.label); resolved && role == "text" {
+				if lines := listItemLines(b.list, source); len(lines) > 0 {
+					namedTexts[predicate] = append(namedTexts[predicate], lines...)
 				}
-				namedLabels[links[i].Predicate] = label
+			} else if resolved {
+				edges = append(edges, collectListLinks(b.list, source)...)
+			} else {
+				links, textLines := classifyListItems(b.list, source)
+				derivedPredicate := camelizeLabel(b.label)
+				// A bare, untagged wikilink line has no predicate of its own
+				// (BUG-003, FR-022) — promote it to the block's own
+				// label-derived id, so its grouping/label survive a write
+				// instead of it rendering as an anonymous, ungrouped bullet.
+				for i := range links {
+					if links[i].Predicate == "" {
+						links[i].Predicate = derivedPredicate
+					}
+					namedLabels[links[i].Predicate] = b.label
+				}
+				edges = append(edges, links...)
+				if len(textLines) > 0 {
+					namedTexts[derivedPredicate] = append(namedTexts[derivedPredicate], textLines...)
+					namedLabels[derivedPredicate] = b.label
+				}
 			}
+		case bodyBlockList:
+			// An untitled list past the leading slot (BUG-002/BUG-004):
+			// classify per line rather than silently discarding
+			// non-matching content, and — unlike the earlier flattening —
+			// reconstruct any surviving plain lines as a bulleted list
+			// (FR-023) instead of blank-line-separated paragraphs
+			// indistinguishable from free prose.
+			links, textLines := classifyListItems(b.list, source)
 			edges = append(edges, links...)
-			if len(textLines) > 0 {
-				namedTexts[derivedPredicate] = append(namedTexts[derivedPredicate], textLines...)
-				namedLabels[derivedPredicate] = label
+			if rendered := renderBareTextListLines(textLines); rendered != "" {
+				trailing = append(trailing, rendered)
 			}
+		case bodyBlockProse:
+			trailing = append(trailing, linesText(b.para, source))
 		}
-		idx += 2
 	}
 
-	// A List reaching this point (BUG-003) means the patch's body did not
-	// pair a heading/bold-label title with it the way the loop above
-	// expects (e.g. a bare list with no title at all, following an
-	// already-matched block) — classify it per line rather than silently
-	// discarding non-matching content (BUG-002), so no declared relation or
-	// prose is ever lost.
-	var trailing []string
-	for idx < len(children) {
-		switch v := children[idx].(type) {
-		case *ast.Paragraph:
-			trailing = append(trailing, linesText(v, source))
-		case *ast.List:
-			links, textLines := classifyListItems(v, source)
-			edges = append(edges, links...)
-			trailing = append(trailing, textLines...)
-		}
-		idx++
-	}
+	rawText := strings.Join(leading, "\n\n")
 	rawNotes := strings.Join(trailing, "\n\n")
 
 	strippedText, textHRefs := extractInlineLinks(rawText)
@@ -724,8 +774,30 @@ func walkNodeBody(children []ast.Node, source []byte, nodeType string, index Ind
 // a text-role block's raw per-item lines (BUG-003, FR-020) — each line is
 // already the item's own unmodified source text (listItemLines/
 // classifyListItems never strip or rewrite it), so no inline-link
-// extraction/reconstruction round-trip is needed or performed.
+// extraction/reconstruction round-trip is needed or performed. Always uses
+// "-", matching every existing test fixture and RenderNode's own edge-list
+// marker; safe here because a named text-role block is always preceded by
+// its own rendered heading (T097), which itself prevents CommonMark from
+// merging it into an adjacent list regardless of marker.
 func renderTextListLines(lines []string) string {
+	return renderMarkedListLines(lines, "-")
+}
+
+// renderBareTextListLines is renderTextListLines' counterpart for an
+// untitled list's plain-text lines (BUG-004, FR-023) — used only by
+// walkNodeBody's leading-prefix and trailing-remainder handling, neither of
+// which is preceded by a heading. Deliberately uses "*" instead of "-":
+// CommonMark starts a new list whenever the bullet marker changes, even
+// across a blank line with nothing else between — the only way, short of a
+// heading, to guarantee this list isn't silently re-merged on a later parse
+// with an adjacent bare "-" Edges list (or bare/grouped Edges block), which
+// would otherwise happen purely because Markdown itself cannot distinguish
+// "two same-marker lists separated by a blank line" from "one loose list".
+func renderBareTextListLines(lines []string) string {
+	return renderMarkedListLines(lines, "*")
+}
+
+func renderMarkedListLines(lines []string, marker string) string {
 	var b strings.Builder
 	for _, line := range lines {
 		if line == "" {
@@ -734,7 +806,7 @@ func renderTextListLines(lines []string) string {
 		if b.Len() > 0 {
 			b.WriteString("\n")
 		}
-		b.WriteString("- " + line)
+		b.WriteString(marker + " " + line)
 	}
 	return b.String()
 }

@@ -1722,3 +1722,131 @@ Some text.
 		Should(it.String(flatOut).Contain("## Mentions")).
 		Should(it.String(flatOut).Contain("mentions:: [[A]]"))
 }
+
+// BUG-004 (spec 010 FR-023): the exact reported reproduction — a body with
+// two untitled, non-wikilink plain lists (a short one, then a longer one of
+// full-sentence bullets) before any `**Label**` block. The earlier
+// single-forward-pass parser permanently gave up on title+list pairing the
+// moment it met the second untitled list, stranding **Mentions** from its
+// own list. Both defects are asserted here: the plain lists keep their
+// bulleted shape instead of being flattened into bare paragraphs, and
+// **Mentions** still resolves and pairs with its own list rather than
+// appearing as an orphaned, empty label.
+const multipleUntitledListsPatch = `---
+kind: patch
+document: dmitry-2026-article
+published: 2026-01-01
+---
+# Source
+
+## kolesnikov-2026-graph-metadata
+
+` + "```yaml\n\"@id\": kolesnikov-2026-graph-metadata\n\"@type\": Source\n```" + `
+
+The session examined durable schema metadata for a knowledge graph.
+
+- xxx
+- yyy
+- zzz
+
+* A graph requires schema metadata independent of its content.
+* Node types may define merge algorithms as schema metadata.
+
+**Mentions**
+- mentions:: [[Knowledge Graph Schema]]
+
+**Cites**
+- cites:: [[Obsidian]]
+`
+
+func TestParsePatchMultipleUntitledListsPreserveBulletShapeAndTitlePairing(t *testing.T) {
+	patch, err := core.ParsePatch(strings.NewReader(multipleUntitledListsPatch), core.Index{})
+	it.Then(t).Should(it.Nil(err))
+
+	node := patch.Nodes[0]
+
+	// The leading-slot list ("xxx"/"yyy"/"zzz") keeps its bulleted shape.
+	// Untitled lists are reconstructed with "*" (renderBareTextListLines,
+	// BUG-004), not "-", regardless of the marker the source used — "-" is
+	// reserved for Edges bullets so an untitled text list can never
+	// silently merge with an adjacent bare/headed Edges list on a later
+	// parse (CommonMark starts a new list on any marker change).
+	it.Then(t).
+		Should(it.String(node.Texts["abstract"]).Contain("* xxx")).
+		Should(it.String(node.Texts["abstract"]).Contain("* yyy")).
+		Should(it.String(node.Texts["abstract"]).Contain("* zzz"))
+
+	// The second, untitled list's plain-sentence items also keep their
+	// bulleted shape instead of being flattened into bare paragraphs
+	// indistinguishable from free prose.
+	it.Then(t).
+		Should(it.String(node.Texts["notes"]).Contain("* A graph requires schema metadata independent of its content.")).
+		Should(it.String(node.Texts["notes"]).Contain("* Node types may define merge algorithms as schema metadata."))
+
+	// BUG-004's core defect: **Mentions** and **Cites** must still resolve
+	// and stay paired with their own lists, not split into orphaned labels
+	// plus separately-captured edges.
+	it.Then(t).
+		Should(it.Equal(2, len(node.Edges))).
+		Should(it.Equal("mentions", node.Edges[0].Predicate)).
+		Should(it.Equal("Knowledge Graph Schema", node.Edges[0].Target)).
+		Should(it.Equal("cites", node.Edges[1].Predicate)).
+		Should(it.Equal("Obsidian", node.Edges[1].Target))
+	it.Then(t).
+		ShouldNot(it.String(node.Texts["notes"]).Contain("**Mentions**")).
+		ShouldNot(it.String(node.Texts["notes"]).Contain("**Cites**"))
+}
+
+// BUG-004: a `**Label**` block occurring after two untitled plain lists
+// still resolves against a registered schema predicate exactly as if it
+// were the first block in the body.
+func TestParsePatchLabeledBlockAfterMultipleUntitledListsStillResolvesAgainstSchema(t *testing.T) {
+	index := core.Index{Predicates: map[string]core.PredicateDef{
+		"mentions": {Role: "edge"},
+		"cites":    {Role: "edge"},
+	}}
+
+	patch, err := core.ParsePatch(strings.NewReader(multipleUntitledListsPatch), index)
+	it.Then(t).Should(it.Nil(err))
+
+	node := patch.Nodes[0]
+	it.Then(t).
+		Should(it.Equal(0, len(node.Texts["mentions"]))).
+		Should(it.Equal(2, len(node.Edges))).
+		Should(it.Equal("mentions", node.Edges[0].Predicate)).
+		Should(it.Equal("Knowledge Graph Schema", node.Edges[0].Target)).
+		Should(it.Equal("cites", node.Edges[1].Predicate)).
+		Should(it.Equal("Obsidian", node.Edges[1].Target))
+}
+
+// BUG-004 (FR-014/FR-015): a body with two untitled plain lists followed by
+// two labeled edge blocks round-trips and re-round-trips byte-stable.
+// Renders with "mentions"/"cites" already registered role:link (mirroring
+// the schema state after apply.go's auto-registration has run in the real
+// pipeline) so their headings survive a render — without registration, a
+// single-distinct-predicate group renders as a bare bullet line
+// (TestRenderNodeSingleLinkRolePredicateBodyOmitsHeading, research.md D5),
+// indistinguishable, on re-parse, from an adjacent untitled dash-list (a
+// separate, pre-existing Markdown-grammar limitation of the bare-list
+// representation, not a BUG-004 regression).
+func TestRoundTripMultipleUntitledListsIdempotent(t *testing.T) {
+	index := core.Index{Predicates: map[string]core.PredicateDef{
+		"mentions": {Role: "link", Label: "Mentions"},
+		"cites":    {Role: "link", Label: "Cites"},
+	}}
+
+	patch, err := core.ParsePatch(strings.NewReader(multipleUntitledListsPatch), index)
+	it.Then(t).Should(it.Nil(err))
+	node := patch.Nodes[0]
+
+	first, err := core.RenderNode(node, index)
+	it.Then(t).Should(it.Nil(err))
+
+	parsed, err := core.ParseNode(strings.NewReader(string(first)), index)
+	it.Then(t).Should(it.Nil(err))
+
+	second, err := core.RenderNode(parsed, index)
+	it.Then(t).Should(it.Nil(err))
+
+	it.Then(t).Should(it.Equal(string(first), string(second)))
+}
