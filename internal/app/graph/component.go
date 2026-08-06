@@ -28,6 +28,13 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 	return service.Apply(ctx, mounter, vcs, reporter, index, schema, dir, patchPath)
 }
 
+// ApplyBatch ingests every patch found beneath patchDir into the graph
+// rooted at dir, in publication order. It is a thin delegator into
+// service.ApplyBatch.
+func ApplyBatch(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, batchReporter bios.Reporter, index core.Index, schema port.SchemaRegistry, dir, patchDir string, failFast bool) (kernel.BatchResult, error) {
+	return service.ApplyBatch(ctx, mounter, vcs, reporter, batchReporter, index, schema, dir, patchDir, failFast)
+}
+
 // Revert retracts sourceID's patch contribution from the graph rooted at
 // dir. It is a thin delegator into service.Revert.
 func Revert(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, index core.Index, dir, sourceID string) (kernel.RevertResult, error) {

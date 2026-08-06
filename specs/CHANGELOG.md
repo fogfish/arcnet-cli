@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-06
+
+/speckit-specify `arc apply batch <dir>` — apply every `*.md` patch in a directory recursively in published-date order, skipping already-ingested sources; each patch is still exactly one commit
+
+/speckit-plan Use `fogfish/stream` and `fs.FS` abstraction to mount and traverse the directory. It allows to support local file system and S3 out of the box. Use `s3://` prefix in the dir name to identify the desired connector. Re-use existing patching algorithm as-is. The batching changes are only cmd level concern.
+
 ## 2026-07-14
 
 /speckit-specify The app uses mixture of upper and lower cases for node classes. In the patch parser the type names are converted into the lower case. The lower-case names for type contradicts with RDFS and other type systems. The app MUST always treat types as CamelCase.

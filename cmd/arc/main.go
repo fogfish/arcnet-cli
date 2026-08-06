@@ -11,27 +11,17 @@ package main
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
 
-// bracketPrefix strips the "[pkg.Func line]" source-location prefix that
-// github.com/fogfish/faults injects at every wrapping layer — useful for
-// debugging, not for the single human-readable line this is the sole site
-// (DS-07) responsible for printing. Anchored to end in " <digits>]" (the
-// line number faults always appends) rather than matching any "[...]"
-// span — otherwise a wrapped error whose own text contains a bracket pair
-// (e.g. an invalid regexp's "missing closing ]" message echoing the
-// offending pattern) gets its real message silently eaten instead of just
-// the debug prefix (BUG discovered by specs/006-arc-grep-content-search).
-var bracketPrefix = regexp.MustCompile(`\[[^\[\]]*\s\d+\]\s*`)
-
-func humanize(err error) string {
-	msg := bracketPrefix.ReplaceAllString(err.Error(), "")
-	return strings.TrimSuffix(msg, ": ")
-}
+// humanize renders err as the single human-readable line this is the sole
+// site (DS-07) responsible for printing. The stripping rules themselves now
+// live in internal/bios, because arc apply batch also needs them for the
+// per-patch failure reasons it carries as data rather than raising
+// (specs/020-apply-batch FR-013).
+func humanize(err error) string { return bios.Humanize(err) }
 
 func main() {
 	cmd, err := newRootCmd().ExecuteC()

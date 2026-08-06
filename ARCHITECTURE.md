@@ -18,6 +18,12 @@ cmd/arc/                    # sole primary (driving) adapter: Cobra command tree
 ├── graph/                  # Cobra wiring for the graph (graph I/O) domain
 │   ├── apply.go             # `arc apply` command: flag/arg parsing, calls
 │   │                         #   internal/app/schema.Resolve then internal/app/graph.Apply
+│   ├── batch.go             # `arc apply batch <dir> [--fail-fast]` command: attached as a
+│   │                         #   child of graph.NewApplyCmd() in cmd/arc/root.go; builds the two
+│   │                         #   reporters (batch progress on by default, per-node detail
+│   │                         #   --verbose-gated), calls internal/app/graph.ApplyBatch, renders
+│   │                         #   the summary via bios.Registry, and returns bios.ErrSilent when
+│   │                         #   any patch failed (specs/020-apply-batch)
 │   ├── revert.go            # `arc revert <source-id> [--force|-f]` command:
 │   │                         #   destructive-operation confirmation gate
 │   │                         #   (internal/bios.Confirm, unless --force) then
@@ -183,6 +189,11 @@ internal/
     │                              #   the core.Index internal/app/schema.Resolve returns
     │                              #   (specs/011-machine-readable-schema, replacing the earlier
     │                              #   (core.MergeRuleSet, map[string]bool) pair);
+    │                              #   ApplyBatch(ctx, mounter, vcs, reporter, batchReporter, index,
+    │                              #   schema, dir, patchDir, failFast) (kernel.BatchResult, error) —
+    │                              #   discovers/classifies/orders a directory of patches and calls
+    │                              #   the unchanged service.Apply once per patch, collecting each
+    │                              #   outcome as data rather than raising it (specs/020-apply-batch);
     │                              #   Revert(ctx, mounter, vcs, reporter, index, dir, sourceID)
     │                              #   (kernel.RevertResult, error) (specs/016-arc-revert);
     │                              #   Grep(ctx, mounter, filter, pattern, cfg, dir) (kernel.GrepResult, error);
@@ -259,3 +270,6 @@ This project uses **bare top-level verbs** (`arc init`, `arc apply`, `arc list`,
 | **Ingest Commit** (`arc revert`) | The same commit `arc apply` produces (see the earlier **Ingest Commit** entry), located for a given `source-id` via `CommitsMatching(dir, "Source-Id: "+sourceID)` — `arc revert`'s own starting point, reusing the identical `Source-Id:` trailer identity `arc lint`'s `RuleIngestCommit` already relies on rather than a second lookup convention. `internal/app/graph/service.Revert`, research.md D1, `specs/016-arc-revert`. |
 | **`arcnet:` Catalog Reference** | A single positional input to `arc apply schema` beginning with the literal prefix `arcnet:` — the remainder is a path within the official arcnet extensions catalog, resolved against the fixed base `kernel.ArcnetCatalogBaseURL` (`https://raw.githubusercontent.com/fogfish/arcnet-spec/refs/heads/main/schema/`) and fetched exactly like a directly supplied `http(s)://` URL. A bare `arcnet:` with nothing after the prefix is rejected before any fetch attempt. `internal/app/schema/service.classifySource`, research.md D1/D1a, `specs/018-apply-schema-patch`. |
 | **`kernel.ApplySchemaResult`** | The value `internal/app/schema/service.ApplyPatch` returns: `Source` (the resolved local path or URL the patch was read from), `Created`/`Merged` (counts keyed `"predicate"`/`"type"`), and `CommitHash` (empty on a no-op re-apply — no `Skipped` boolean, unlike `graph.kernel.ApplyResult`, since a schema patch carries no source-tracking idempotency concept). `internal/app/schema/kernel.ApplySchemaResult`, `specs/018-apply-schema-patch`. |
+| **Batch Plan** | The ordered sequence in which `arc apply batch` will apply the applicable Patches it discovered beneath one patch directory: publication date (`core.Patch.Published`) ascending, ties broken by the file's slash-separated path relative to that directory, with candidates that declare `kind: patch` but fail to parse — and therefore carry no usable date — appended last. Computed in full and fixed **before the first Ingest Commit**, so files added mid-run cannot perturb the order and repeated runs over unchanged input produce identical history. A Markdown file that declares no patch manifest never enters the plan at all; it is counted separately as passed over. `internal/app/graph/service`'s unexported `plan`, `specs/020-apply-batch` (research.md D5/D5b). |
+| **Patch Outcome** | The terminal state recorded for one Patch in a Batch Plan, together with what that patch produced: `applied` (carrying its Ingest Commit hash and per-type created/merged counts), `skipped` (its Source Node was already tracked — no filesystem or git change), `failed` (carrying a human-readable reason), or `unprocessed` (never reached, because `--fail-fast` halted the run earlier). Exactly one is assigned per planned patch; a flagged merge conflict is `applied`, not a failure. `internal/app/graph/kernel.PatchOutcome`/`.Outcome`, `specs/020-apply-batch`. |
+| **Batch Summary** | The run-level result of one `arc apply batch` invocation: the Batch Plan's Patch Outcomes in application order, the counts by outcome plus the passed-over (`not_a_patch`) count that sits deliberately outside that sum, and the de-duplicated union of every merge conflict and unregistered-type warning raised anywhere in the run — surfaced once at the end so a conflict flagged early in a long batch is not lost in scrollback. It is a domain value, not rendered text: `cmd/arc/graph` renders it for humans and `--json` serializes it directly. A non-zero `failed` count is what makes the process exit `1`. `internal/app/graph/kernel.BatchResult`, `specs/020-apply-batch`. |
