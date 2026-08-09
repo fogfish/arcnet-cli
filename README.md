@@ -16,6 +16,7 @@ go build -o arc ./cmd/arc
 ./arc --version
 ./arc init
 ./arc apply rescorla-2026-tls13.patch.md
+./arc apply batch ./patches
 ./arc apply schema arcnet:media.schema.md
 ./arc revert rescorla-2026-tls13
 ./arc lint
@@ -27,6 +28,8 @@ go build -o arc ./cmd/arc
 `arc init` bootstraps a new, empty knowledge graph in the current directory (or an optional target directory): the canonical folder layout, a first-class, versioned `_schema/` seeded with every ARCNET-CORE node kind and predicate, the `.arc/` local state directory, a `.gitignore`, and a single initial git commit. Initialization is fully offline — no network access required.
 
 `arc apply` ingests a document patch into an already-initialized graph: it creates or merges every node the patch carries, derives and appends timeline entries, auto-registers any previously-unseen node kind or predicate into `_schema/` in the same commit, and produces exactly one commit. Re-applying an already-tracked document is a safe no-op.
+
+`arc apply batch <dir>` ingests a whole directory of patches in one invocation: it walks `<dir>` recursively, passes over Markdown that declares no patch manifest, never descends into hidden directories, and applies every applicable patch through that same single-patch algorithm — oldest publication date first (ties broken by relative path), one commit per patch. Documents already tracked in the graph are skipped, so re-running over a growing directory, or resuming an interrupted run, is safe. A patch that cannot be applied is recorded with its reason and the run continues; `--fail-fast` halts at the first failure instead, leaving the remainder unprocessed. The closing summary reports every count plus each failure and every merge conflict flagged across the whole run, `--json` emits the same result machine-readably, and the command exits non-zero if any patch failed. The patch directory itself is never modified.
 
 `arc apply schema <patch.md> | <url> | arcnet:<name>` imports Property/Class schema definitions from a patch document — a local file, a URL, or a short `arcnet:<name>` reference into the official arcnet extensions catalog — creating or merging each one into `_schema/`. Any non-Property/Class node anywhere in the patch fails the whole operation before any write happens.
 
