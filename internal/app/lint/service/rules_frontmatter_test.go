@@ -20,10 +20,10 @@ import (
 
 var coreIndexFixture = core.Index{
 	Types: map[string]core.TypeDef{
-		"Source":   {Merge: core.MergeImmutable},
-		"Entity":   {Merge: core.MergeUnion},
-		"Resource": {Merge: core.MergeFirstWriteWin},
-		"Timeline": {Merge: core.MergeAppend},
+		"Source":   {},
+		"Entity":   {},
+		"Resource": {},
+		"Timeline": {},
 	},
 }
 
@@ -76,11 +76,11 @@ func TestCheckUnrecognizedKindUnrecognized(t *testing.T) {
 
 func TestCheckUnrecognizedKindConfigRegistered(t *testing.T) {
 	index := core.Index{Types: map[string]core.TypeDef{
-		"Source":     {Merge: core.MergeImmutable},
-		"Entity":     {Merge: core.MergeUnion},
-		"Resource":   {Merge: core.MergeFirstWriteWin},
-		"Timeline":   {Merge: core.MergeAppend},
-		"hypothesis": {Merge: core.MergeValidatedOverwrite},
+		"Source":     {},
+		"Entity":     {},
+		"Resource":   {},
+		"Timeline":   {},
+		"hypothesis": {},
 	}}
 	node := core.Node{Type: "hypothesis"}
 	out := checkUnrecognizedKind(node, "hypothesis/foo.md", index)

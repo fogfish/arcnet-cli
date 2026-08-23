@@ -22,6 +22,7 @@ import (
 
 const (
 	initCommitMessage = "graph(init): empty knowledge graph"
+	arcDir            = ".arc"
 	arcStateMarker    = ".arc/.gitkeep"
 	gitignorePath     = ".gitignore"
 )

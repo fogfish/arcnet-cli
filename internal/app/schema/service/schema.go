@@ -38,15 +38,27 @@ const (
 
 var validRoles = map[string]bool{"meta": true, "text": true, "href": true, "edge": true, "link": true}
 
-var validMergeOps = map[core.MergeOp]bool{
-	core.MergeImmutable:          true,
-	core.MergeUnion:              true,
-	core.MergeFirstWriteWin:      true,
-	core.MergeFillIfEmpty:        true,
-	core.MergeLastWriteWin:       true,
-	core.MergeAppend:             true,
-	core.MergeValidatedOverwrite: true,
+// mergeMenu is CORE §9.3's closed set of six, in the order the rejection
+// message lists them. It is the single source of truth for both the
+// validation gate and that message — deriving one from the other is what
+// keeps the error from naming a menu the gate does not actually enforce
+// (contract C1.1, C1.2).
+var mergeMenu = []core.MergeOp{
+	core.MergeImmutable,
+	core.MergeUnion,
+	core.MergeFirstWriteWin,
+	core.MergeFillIfEmpty,
+	core.MergeLastWriteWin,
+	core.MergeAppend,
 }
+
+var validMergeOps = func() map[core.MergeOp]bool {
+	out := make(map[core.MergeOp]bool, len(mergeMenu))
+	for _, op := range mergeMenu {
+		out[op] = true
+	}
+	return out
+}()
 
 // Seed renders every CorePredicateDefs/CoreTypeDefs entry as a conformant
 // Property/Class schema document, keyed by on-disk path. Pure: no I/O, no
@@ -107,15 +119,48 @@ func typeNode(name string, def core.TypeDef) core.Node {
 	for _, base := range bases {
 		edges = append(edges, core.Link{Predicate: "subClassOf", Target: base})
 	}
+	// No "merge" attribute: CORE §9.3 retired type-level merge, and §10.8
+	// registers "merge" as a predicate Property alone uses (FR-005). A
+	// Class document written by this release carries none.
 	return core.Node{
-		ID:   name,
-		Type: classType,
-		Attrs: map[string][]core.Predicate{
-			"merge": {{Value: string(def.Merge)}},
-		},
+		ID:    name,
+		Type:  classType,
 		Texts: map[string]string{descriptionKey: def.Description},
 		Edges: edges,
 	}
+}
+
+// SeedIndex resolves the built-in vocabulary ALONE into an effective
+// core.Index — the same inheritance-flattened shape Resolve produces, but
+// computed from CorePredicateDefs/CoreTypeDefs directly, with no graph to
+// read.
+//
+// It exists for arc upgrade's --dry-run (contract C3.5): a graph that has
+// not been upgraded yet cannot be Resolved at all, since its own scoreZ.md
+// declares the retired seventh merge value. Without this, --dry-run on
+// exactly the graphs the command targets would silently report no
+// prose-drift candidates, and then the real run would report several.
+//
+// Pure, like Seed(). A failure here would mean the built-in tables
+// themselves are inconsistent — a programming error, not a runtime
+// condition — so it panics for the same reason Seed() does.
+func SeedIndex() core.Index {
+	raw := make(map[string]rawType, len(kernel.CoreTypeDefs))
+	for name, def := range kernel.CoreTypeDefs {
+		raw[name] = rawType{
+			required:    def.Required,
+			optional:    def.Optional,
+			subClassOf:  kernel.CoreTypeBases[name],
+			description: def.Description,
+		}
+	}
+
+	types, err := resolveEffectiveTypes(raw)
+	if err != nil {
+		panic(err)
+	}
+
+	return core.Index{Predicates: kernel.CorePredicateDefs, Types: types}
 }
 
 // Resolve checks .arc/ presence first (research.md D2), returning
@@ -156,7 +201,10 @@ func resolvePredicates(store fsys.Store) (map[string]core.PredicateDef, error) {
 			return nil, ErrSchemaInvalid.With(perr, path, "document")
 		}
 
-		def, invalid := decodePredicateDef(node)
+		def, invalid, badMerge := decodePredicateDef(node)
+		if badMerge != "" {
+			return nil, ErrSchemaMergeInvalid.With(errNoCause, path, badMerge)
+		}
 		if invalid != "" {
 			return nil, ErrSchemaInvalid.With(errNoCause, path, invalid)
 		}
@@ -192,7 +240,6 @@ func resolveTypes(store fsys.Store) (map[string]core.TypeDef, error) {
 // type schema document — never exported through core.TypeDef/core.Index
 // (data-model.md "Raw type record").
 type rawType struct {
-	merge       core.MergeOp
 	required    []string
 	optional    []string
 	subClassOf  []string
@@ -257,7 +304,7 @@ func resolveEffectiveTypes(raw map[string]rawType) (map[string]core.TypeDef, err
 		}
 		optional = removeAny(optional, required)
 
-		def := core.TypeDef{Merge: rt.merge, Required: required, Optional: optional, Description: rt.description}
+		def := core.TypeDef{Required: required, Optional: optional, Description: rt.description}
 		resolved[name] = def
 		return def, nil
 	}
@@ -307,18 +354,26 @@ func removeAny(list, exclude []string) []string {
 	return out
 }
 
-func decodePredicateDef(node core.Node) (core.PredicateDef, string) {
+// decodePredicateDef validates a Property node's shape. invalid names the
+// first mandatory field that is missing or unacceptable; badMerge carries
+// the offending merge value when — and only when — a merge value was
+// present but outside the menu of six, so resolvePredicates can raise the
+// specific rejection contract C1.2 requires rather than a generic one.
+func decodePredicateDef(node core.Node) (def core.PredicateDef, invalid, badMerge string) {
 	role, ok := attrString(node, "role")
 	if !ok || !validRoles[role] {
-		return core.PredicateDef{}, "role"
+		return core.PredicateDef{}, "role", ""
 	}
 	merge, ok := attrString(node, "merge")
-	if !ok || !validMergeOps[core.MergeOp(merge)] {
-		return core.PredicateDef{}, "merge"
+	if !ok {
+		return core.PredicateDef{}, "merge", ""
+	}
+	if !validMergeOps[core.MergeOp(merge)] {
+		return core.PredicateDef{}, "merge", merge
 	}
 	description := node.Texts[descriptionKey]
 	if description == "" {
-		return core.PredicateDef{}, "description"
+		return core.PredicateDef{}, "description", ""
 	}
 
 	label, _ := attrString(node, "label")
@@ -329,21 +384,22 @@ func decodePredicateDef(node core.Node) (core.PredicateDef, string) {
 		Label:       label,
 		Aligned:     aligned,
 		Description: description,
-	}, ""
+	}, "", ""
 }
 
-// decodeTypeDef validates a Class node's shape. Unlike decodePredicateDef,
-// it does not require "merge" to be present or valid (spec 012 FR-020,
-// Bugfix 018/BUG-001): the whole-node merge field is no longer consulted by
-// reconciliation (FR-015), so an absent or unrecognized value resolves to
-// the zero-value MergeOp ("no whole-node merge declared") rather than
-// failing validation — a real, CORE-conformant Class definition has no
-// reason to carry a functionally inert field.
+// decodeTypeDef validates a Class node's shape. It reads no "merge"
+// attribute at all — CORE §9.3 retired type-level merge and core.TypeDef
+// carries no field for one (FR-005).
+//
+// The asymmetry with typeNode is deliberate and load-bearing (FR-006,
+// contract C1.3): typeNode never WRITES the attribute, while decodeTypeDef
+// keeps READING PAST one that an earlier release wrote. Any value — legal,
+// illegal, or malformed — is ignored, never rejected, and never linted. A
+// graph seeded before specs/023-core-vocabulary-conformance carries the
+// attribute on all eight seeded type documents, where it is inert;
+// reporting it would produce eight actionable-looking violations with no
+// user-visible consequence.
 func decodeTypeDef(node core.Node) (rawType, string) {
-	var merge core.MergeOp
-	if raw, ok := attrString(node, "merge"); ok && validMergeOps[core.MergeOp(raw)] {
-		merge = core.MergeOp(raw)
-	}
 	description := node.Texts[descriptionKey]
 	if description == "" {
 		return rawType{}, "description"
@@ -362,7 +418,6 @@ func decodeTypeDef(node core.Node) (rawType, string) {
 	}
 
 	return rawType{
-		merge:       merge,
 		required:    required,
 		optional:    optional,
 		subClassOf:  subClassOf,
@@ -379,18 +434,19 @@ func attrString(node core.Node, key string) (string, bool) {
 	return s, ok
 }
 
-// RegisterType creates typ's type schema document — merge: union, empty
+// RegisterType creates typ's type schema document — empty
 // Required/Optional, a placeholder description (research.md D5) — if one
 // is not already present. created is false and no write happens when the
 // file already exists (spec FR-011 — never overwrite).
+//
+// Like typeNode, it writes no "merge" attribute (FR-005): the previous
+// release stamped merge: union onto every auto-created Class document, a
+// field CORE §9.3 retired and nothing has consulted since spec 012.
 func RegisterType(store fsys.Store, typ string) (created bool, err error) {
 	path := kernel.TypesDir + "/" + typ + ".md"
 	return registerIfAbsent(store, path, core.Node{
-		ID:   typ,
-		Type: classType,
-		Attrs: map[string][]core.Predicate{
-			"merge": {{Value: string(core.MergeUnion)}},
-		},
+		ID:    typ,
+		Type:  classType,
 		Texts: map[string]string{descriptionKey: autoRegisteredTypeDescription},
 	})
 }

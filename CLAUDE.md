@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/022-reference-type-folders/plan.md`
+`specs/023-core-vocabulary-conformance/plan.md`
 <!-- SPECKIT END -->
 
 ## Go file license header

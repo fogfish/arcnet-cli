@@ -611,3 +611,40 @@ func schemaDirEntryNames(t *testing.T, dir, child string) []string {
 	}
 	return names
 }
+
+// arc apply schema acme.schema.md (twice)
+// Scenario 5 from spec.md US1 (specs/023-core-vocabulary-conformance): a
+// predicate or type definition's own descriptive prose is byte-identical
+// after two applies (FR-013, FR-015).
+//
+// This scenario lives here rather than in cmd/arc/graph/apply_test.go with
+// the rest of US1 because "a patch carrying a predicate or type definition"
+// is precisely what `arc apply schema` ingests — the other five scenarios
+// are about content nodes.
+//
+// Note which predicate is actually under test: a Property/Class document's
+// description decodes into the Texts key "text", not "description" (the
+// parser has no Property/Class case of its own — schema/service's own
+// descriptionKey names that fact). "text" declares append, so the guarantee
+// here comes from mergeText's near-duplicate guard rather than from
+// firstWriteWin. The assertion is the same either way, and it is the one
+// the user actually observes.
+func TestApplySchemaTwiceLeavesDescriptionByteIdentical(t *testing.T) {
+	dir := newSchemaGraph(t)
+
+	first := writeSchemaPatchFile(t, dir, "acme.schema.md", propertyOnlySchemaPatch)
+	out, err := sut(NewApplySchemaCmd(), []string{first})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	path := filepath.Join(dir, "_schema", "Property", "acmeWeight.md")
+	before := readGraphFile(t, path)
+	it.Then(t).Should(it.True(strings.TrimSpace(before) != ""))
+
+	// A second patch file carrying the same definition — a re-import of the
+	// same extension vocabulary, which is how this reaches the merge path.
+	second := writeSchemaPatchFile(t, dir, "acme-again.schema.md", propertyOnlySchemaPatch)
+	out, err = sut(NewApplySchemaCmd(), []string{second})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	it.Then(t).Should(it.Equal(before, readGraphFile(t, path)))
+}

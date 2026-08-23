@@ -37,16 +37,17 @@ func (r *fakeReporter) Done(string, time.Duration) {}
 func (r *fakeReporter) Error(string, error)        {}
 
 // coreIndexFixture declares Predicates for spec.md 012's per-predicate
-// dispatch (Types entries are kept for continuity/documentation only —
-// TypeDef.Merge is no longer consulted by core.Merge). Every predicate not
-// listed here falls back to MergeUnion (research.md D6).
+// dispatch. A Types entry only needs to EXIST for its type to be
+// recognized — core.TypeDef carries no merge field at all since
+// specs/023-core-vocabulary-conformance FR-005. Every predicate not listed
+// here falls back to MergeUnion (research.md D6).
 var coreIndexFixture = core.Index{
 	Types: map[string]core.TypeDef{
-		"Source":    {Merge: core.MergeImmutable},
-		"Entity":    {Merge: core.MergeUnion},
-		"Resource":  {Merge: core.MergeFirstWriteWin},
-		"Timeline":  {Merge: core.MergeAppend},
-		"Reference": {Merge: core.MergeFirstWriteWin},
+		"Source":    {},
+		"Entity":    {},
+		"Resource":  {},
+		"Timeline":  {},
+		"Reference": {},
 	},
 	Predicates: map[string]core.PredicateDef{
 		"ref":       {Merge: core.MergeImmutable},
@@ -56,14 +57,16 @@ var coreIndexFixture = core.Index{
 }
 
 // indexWithType returns coreIndexFixture plus one additional registered
-// type, for tests exercising a domain type's own registered merge
-// behavior.
-func indexWithType(name string, op core.MergeOp) core.Index {
+// type, for tests exercising the already-registered path. It takes no
+// MergeOp: core.TypeDef carries no merge field since
+// specs/023-core-vocabulary-conformance FR-005, and registration — not a
+// declared behaviour — is all these tests ever needed from it.
+func indexWithType(name string) core.Index {
 	types := make(map[string]core.TypeDef, len(coreIndexFixture.Types)+1)
 	for k, v := range coreIndexFixture.Types {
 		types[k] = v
 	}
-	types[name] = core.TypeDef{Merge: op}
+	types[name] = core.TypeDef{}
 	return core.Index{Types: types, Predicates: coreIndexFixture.Predicates}
 }
 
@@ -445,7 +448,7 @@ func TestApplyRegisteredKindNoWarning(t *testing.T) {
 	store := newGraphStore()
 	store.files["patch.md"] = []byte(domainKindPatch)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
-	index := indexWithType("Hypothesis", core.MergeValidatedOverwrite)
+	index := indexWithType("Hypothesis")
 
 	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), index, &fakeSchema{}, "/graph", "/patch.md")
 

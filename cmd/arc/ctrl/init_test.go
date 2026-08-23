@@ -229,7 +229,8 @@ func TestInitSeedsAllCoreKindsAndPredicates(t *testing.T) {
 		it.Then(t).Should(it.Nil(rerr))
 		it.Then(t).
 			Should(it.String(string(content)).Contain(`"@type": Class`)).
-			Should(it.String(string(content)).Contain("merge: " + string(def.Merge)))
+			// FR-005: a seeded Class document declares no merge at all.
+			ShouldNot(it.String(string(content)).Contain("merge:"))
 		for _, required := range def.Required {
 			it.Then(t).Should(it.String(string(content)).Contain("required:: [[" + required + "]]"))
 		}
@@ -266,10 +267,10 @@ func TestInitSeedsNodeTypeAndWiresContentTypesToIt(t *testing.T) {
 
 	nodeContent, rerr := os.ReadFile(nodePath)
 	it.Then(t).Should(it.Nil(rerr))
-	for _, required := range []string{"published", "created"} {
-		it.Then(t).Should(it.String(string(nodeContent)).Contain("required:: [[" + required + "]]"))
-	}
-	for _, optional := range []string{"tags", "text", "updated", "scoreZ", "scoreC"} {
+	// specs/023 FR-007: §11.1's universal base requires NOTHING;
+	// published/created are merely declarable on every type.
+	it.Then(t).ShouldNot(it.String(string(nodeContent)).Contain("required:: [["))
+	for _, optional := range []string{"published", "created", "tags", "text", "updated", "scoreZ", "scoreC"} {
 		it.Then(t).Should(it.String(string(nodeContent)).Contain("optional:: [[" + optional + "]]"))
 	}
 
@@ -607,8 +608,10 @@ func TestInitSeedsReferenceType(t *testing.T) {
 
 	it.Then(t).
 		Should(it.String(content).Contain(`"@type": Class`)).
-		Should(it.Seq(schemaBullets(t, content, "required")).Equal("title", "ref", "relevance")).
-		Should(it.Seq(schemaBullets(t, content, "optional")).Equal("url", "authors", "year", "doi", "status", "isCitedBy", "notes", "indexed")).
+		// specs/023 FR-028 supersedes spec 022's Clarification: §11.6 v0.11
+		// requires "title" alone (plan.md F3).
+		Should(it.Seq(schemaBullets(t, content, "required")).Equal("title")).
+		Should(it.Seq(schemaBullets(t, content, "optional")).Equal("url", "authors", "year", "doi", "isCitedBy", "ref", "relevance", "status", "notes", "indexed")).
 		Should(it.String(content).Contain("subClassOf:: [[Node]]"))
 
 	// FR-006: every predicate Reference declares must itself be seeded,
@@ -668,4 +671,204 @@ func TestInitCreatesExactlyTheTypeNamedFolders(t *testing.T) {
 			it.Then(t).Should(it.True(name != retired))
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// specs/023-core-vocabulary-conformance — User Story 2
+//
+// A newly initialized graph declares only conformant merge behaviour: every
+// seeded predicate draws its merge from CORE §9.3's closed set of six, and
+// no seeded Class document carries a merge declaration at all.
+// ---------------------------------------------------------------------------
+
+// conformantMergeOps is CORE §9.3's closed set of six, written out as a
+// literal rather than derived from internal/core — a test that enumerated
+// the constants would agree with the code by construction and could never
+// catch a seventh being reintroduced (contract C1.1).
+var conformantMergeOps = []string{
+	"immutable", "union", "firstWriteWin", "fillIfEmpty", "lastWriteWin", "append",
+}
+
+// frontMatterField returns the value of a top-level front-matter key in a
+// rendered schema document, and whether the key is present at all.
+func frontMatterField(content, key string) (string, bool) {
+	m := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(key) + `: (.+)$`).FindStringSubmatch(content)
+	if m == nil {
+		return "", false
+	}
+	return strings.TrimSpace(m[1]), true
+}
+
+func schemaDocuments(t *testing.T, dir, folder string) map[string]string {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(dir, "_schema", folder))
+	it.Then(t).Should(it.Nil(err))
+
+	out := make(map[string]string, len(entries))
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		out[e.Name()] = readGraphFile(t, filepath.Join(dir, "_schema", folder, e.Name()))
+	}
+	return out
+}
+
+// arc init
+// Scenario 1 from spec.md US2 (023): every seeded predicate definition
+// declares a merge drawn from exactly the six legal values (FR-001,
+// SC-002; contract C2.2a).
+func TestInitSeedsOnlyConformantPredicateMergeValues(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	documents := schemaDocuments(t, dir, "Property")
+	it.Then(t).Should(it.True(len(documents) > 0))
+
+	for name, content := range documents {
+		merge, ok := frontMatterField(content, "merge")
+		it.Then(t).Should(it.True(ok))
+
+		legal := false
+		for _, op := range conformantMergeOps {
+			if merge == op {
+				legal = true
+			}
+		}
+		if !legal {
+			t.Errorf("_schema/Property/%s declares merge %q, outside the closed set %v", name, merge, conformantMergeOps)
+		}
+	}
+}
+
+// arc init
+// Scenario 2 from spec.md US2 (023): no seeded type definition carries a
+// merge declaration — CORE §9.3 retired type-level merge (FR-005, SC-002;
+// contract C2.2b).
+func TestInitSeedsNoTypeLevelMerge(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	documents := schemaDocuments(t, dir, "Class")
+	it.Then(t).Should(it.True(len(documents) > 0))
+
+	for name, content := range documents {
+		if _, ok := frontMatterField(content, "merge"); ok {
+			t.Errorf("_schema/Class/%s carries a merge declaration; CORE §9.3 retired type-level merge", name)
+		}
+	}
+}
+
+// arc init
+// Scenario 3 from spec.md US2 (023): the two analytics score predicates
+// declare a conformant merge and neither declares the retired seventh one
+// (FR-003; research.md D7).
+func TestInitSeedsConformantScorePredicates(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	for _, name := range []string{"scoreZ", "scoreC"} {
+		content := readGraphFile(t, filepath.Join(dir, "_schema", "Property", name+".md"))
+		merge, ok := frontMatterField(content, "merge")
+
+		it.Then(t).
+			Should(it.True(ok)).
+			Should(it.Equal("lastWriteWin", merge)).
+			ShouldNot(it.String(content).Contain("validatedOverwrite"))
+	}
+}
+
+// arc init, then hand-edit _schema/Property/scoreZ.md, then arc lint
+// Scenario 4 from spec.md US2 (023): a hand-written predicate definition
+// declaring an out-of-menu merge value is rejected by any command that
+// reads the vocabulary, with an error naming the offending value, the
+// document it appears in, and the six legal values (FR-002; contract C1.2).
+//
+// Delivered by Phase 8, not Phase 4 — tightening validMergeOps is the
+// breaking half of US2 and is deliberately sequenced after arc upgrade
+// exists to remedy it.
+func TestInitOutOfMenuMergeValueIsRejected(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	path := filepath.Join(dir, "_schema", "Property", "scoreZ.md")
+	content := readGraphFile(t, path)
+	content = strings.Replace(content, "merge: lastWriteWin", "merge: validatedOverwrite", 1)
+	it.Then(t).Should(it.Nil(os.WriteFile(path, []byte(content), 0o644)))
+
+	_, lintErr := sut(lint.NewLintCmd(), nil)
+	if lintErr == nil {
+		t.Fatal("reading a graph whose scoreZ.md declares an out-of-menu merge value must fail")
+	}
+
+	message := lintErr.Error()
+	it.Then(t).
+		Should(it.String(message).Contain("scoreZ.md")).
+		Should(it.String(message).Contain("validatedOverwrite"))
+	for _, op := range conformantMergeOps {
+		it.Then(t).Should(it.String(message).Contain(op))
+	}
+
+	// contract C1.2 item 4: naming the remedy is mandatory. This error is
+	// the FIRST thing an existing user sees after upgrading the binary, so
+	// without it the failure is a dead end.
+	it.Then(t).Should(it.String(message).Contain("arc upgrade"))
+}
+
+// arc init, then hand-add a legacy merge attribute to a Class document
+// Scenario 5 from spec.md US2 (023): a graph whose type definitions predate
+// this feature and still carry a merge declaration keeps loading, the stale
+// declaration is ignored, and no diagnostic is produced (FR-006; contract
+// C1.3).
+func TestInitLegacyTypeLevelMergeToleratedWithoutDiagnostic(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	for _, name := range []string{"Source", "Entity", "Timeline"} {
+		path := filepath.Join(dir, "_schema", "Class", name+".md")
+		content := readGraphFile(t, path)
+		content = strings.Replace(content, `"@type": Class`, `"@type": Class`+"\nmerge: union", 1)
+		it.Then(t).Should(it.Nil(os.WriteFile(path, []byte(content), 0o644)))
+	}
+
+	out, lintErr := sut(lint.NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(lintErr)).
+		Should(it.String(out).Contain("0 failing")).
+		ShouldNot(it.String(out).Contain("merge"))
+}
+
+// arc init, then arc lint
+// Scenario 6 from spec.md US2 (023): a freshly initialized graph lints
+// clean (SC-003). Distinct from TestInitSeededGraphLintsClean, which
+// records the same guarantee for spec 022 — kept separate so a regression
+// is attributed to the feature that broke it.
+func TestInitConformantGraphLintsClean(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	out, lintErr := sut(lint.NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(lintErr)).
+		Should(it.String(out).Contain("0 failing"))
 }

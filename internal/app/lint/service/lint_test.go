@@ -249,11 +249,11 @@ func TestLintIncludesNodeInNonStandardFolder(t *testing.T) {
 	s.files["hypothesis/A Test Hypothesis.md"] = "---\n\"@id\": \"A Test Hypothesis\"\n\"@type\": hypothesis\ntitle: A Test Hypothesis\n---\n# A Test Hypothesis\n\nA conclusion.\n- mentions:: [[foo-2026-x]]\n"
 	index := core.Index{
 		Types: map[string]core.TypeDef{
-			"Source":     {Merge: core.MergeImmutable},
-			"Entity":     {Merge: core.MergeUnion},
-			"Resource":   {Merge: core.MergeFirstWriteWin},
-			"Timeline":   {Merge: core.MergeAppend},
-			"hypothesis": {Merge: core.MergeValidatedOverwrite},
+			"Source":     {},
+			"Entity":     {},
+			"Resource":   {},
+			"Timeline":   {},
+			"hypothesis": {},
 		},
 		Predicates: coreIndexFixtureLint.Predicates,
 	}

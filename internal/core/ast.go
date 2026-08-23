@@ -14,18 +14,28 @@ package core
 
 import "time"
 
-// MergeOp is one of CORE §9.3's fixed, seven-value menu of merge
-// operations a predicate's own schema document declares itself against.
+// MergeOp is one of CORE §9.3's fixed, SIX-value menu of merge operations a
+// predicate's own schema document declares itself against.
+//
+// The menu is closed: a schema document declaring anything else is rejected
+// outright (specs/023-core-vocabulary-conformance FR-001/FR-004, contract
+// C1.1). The tool's earlier seventh operation, "validatedOverwrite", was
+// deleted rather than deprecated — §9.3 fixes the menu at six and §14
+// requires profile predicates to draw from it, so keeping a seventh is the
+// violation, not a workaround for one.
+//
+// Deleting it is a compile-time break at every dispatch site, which is the
+// point: let the compiler enumerate them rather than grep-and-replacing
+// (CORE-FIX.md §5.7).
 type MergeOp string
 
 const (
-	MergeImmutable          MergeOp = "immutable"
-	MergeUnion              MergeOp = "union"
-	MergeFirstWriteWin      MergeOp = "firstWriteWin"
-	MergeFillIfEmpty        MergeOp = "fillIfEmpty"
-	MergeLastWriteWin       MergeOp = "lastWriteWin"
-	MergeAppend             MergeOp = "append"
-	MergeValidatedOverwrite MergeOp = "validatedOverwrite"
+	MergeImmutable     MergeOp = "immutable"
+	MergeUnion         MergeOp = "union"
+	MergeFirstWriteWin MergeOp = "firstWriteWin"
+	MergeFillIfEmpty   MergeOp = "fillIfEmpty"
+	MergeLastWriteWin  MergeOp = "lastWriteWin"
+	MergeAppend        MergeOp = "append"
 )
 
 // Link is a single reference from one node to another (AST §6.3/§6.5), used

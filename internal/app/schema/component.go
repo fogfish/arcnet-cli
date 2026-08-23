@@ -70,3 +70,16 @@ func (Component) RegisterType(store fsys.Store, typ string) (created bool, err e
 func (Component) RegisterPredicate(store fsys.Store, predicate, observedRole, label string) (created bool, err error) {
 	return RegisterPredicate(store, predicate, observedRole, label)
 }
+
+// Resolve and SeedIndex let Component additionally satisfy
+// internal/app/ctrl/port's SchemaResolver: arc upgrade reads back the
+// corrected vocabulary it has just written (contract C3.2 step 5), and
+// falls back to the built-in index when the graph on disk cannot be read
+// at all — which is the normal state of an un-upgraded graph.
+func (Component) Resolve(store fsys.Store) (core.Index, error) {
+	return Resolve(store)
+}
+
+func (Component) SeedIndex() core.Index {
+	return service.SeedIndex()
+}

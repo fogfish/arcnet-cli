@@ -210,6 +210,11 @@ First document.
 category: [independent, abstract, occurrent, script]
 ` + "```" + `
 
+A cryptographic protocol securing traffic between two endpoints.
+
+## MentionedIn
+- mentionedIn:: [[doc-2026-a]]
+
 Introduced in RFC 8446.
 `
 
@@ -244,6 +249,11 @@ Second document.
 category: [independent, abstract, occurrent, script]
 tags: [deployed]
 ` + "```" + `
+
+A cryptographic protocol securing traffic between two endpoints.
+
+## MentionedIn
+- mentionedIn:: [[doc-2026-b]]
 
 Widely deployed by 2026.
 `
@@ -655,7 +665,8 @@ title: "The TLS 1.3 Protocol"
 ref: RFC 8446
 ` + "```" + `
 
-Doc B's reason for keeping this pointer.
+## IsCitedBy
+- isCitedBy:: [[doc-2026-b]]
 `
 
 // arc apply docA; arc apply docB; arc revert doc-2026-a --force
@@ -664,6 +675,16 @@ Doc B's reason for keeping this pointer.
 // with, and leaves nothing orphaned. Read-side (revertLeadingKey) and
 // write-side (core.TextPredicateFor) must agree, or A's paragraph survives
 // the revert under a key revert never looked at.
+//
+// The two halves are deliberately asymmetric. "text" (Resource's leading
+// key) declares append, so both documents' accounts accumulate and revert
+// must strip exactly A's. "relevance" (Reference's leading key) declares
+// firstWriteWin since specs/023-core-vocabulary-conformance FR-013, so two
+// documents contributing DIFFERENT relevance notes is a flagged conflict
+// for the author to resolve rather than an accumulation revert could
+// unpick — docA is therefore its sole contributor, and the assertion is
+// that reverting docA removes its note entirely instead of leaving it
+// behind under a key revert never read.
 func TestRevertReconstructsResourceAndReferenceProseFromTheirOwnKeys(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
@@ -685,8 +706,7 @@ func TestRevertReconstructsResourceAndReferenceProseFromTheirOwnKeys(t *testing.
 	it.Then(t).
 		Should(it.String(beforeResource).Contain("Doc A's account of the handshake fragment.")).
 		Should(it.String(beforeResource).Contain("Doc B's account of the handshake fragment.")).
-		Should(it.String(beforeReference).Contain("Doc A's reason for keeping this pointer.")).
-		Should(it.String(beforeReference).Contain("Doc B's reason for keeping this pointer."))
+		Should(it.String(beforeReference).Contain("Doc A's reason for keeping this pointer."))
 
 	out, err := sut(forcedRevertCmd(t), []string{"doc-2026-a"})
 	it.Then(t).ShouldNot(it.Error(out, err))
@@ -698,7 +718,7 @@ func TestRevertReconstructsResourceAndReferenceProseFromTheirOwnKeys(t *testing.
 		ShouldNot(it.String(afterResource).Contain("Doc A's account of the handshake fragment.")).
 		Should(it.String(afterResource).Contain("Doc B's account of the handshake fragment.")).
 		ShouldNot(it.String(afterReference).Contain("Doc A's reason for keeping this pointer.")).
-		Should(it.String(afterReference).Contain("Doc B's reason for keeping this pointer."))
+		Should(it.String(afterReference).Contain("doc-2026-b"))
 }
 
 // arc apply docA; arc apply docB; arc revert doc-2026-a --force

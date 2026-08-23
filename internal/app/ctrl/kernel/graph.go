@@ -61,3 +61,27 @@ type InitResult struct {
 	CommitHash     string    `json:"commit"`
 	FoldersCreated []string  `json:"foldersCreated"`
 }
+
+// UpgradeResult is the domain value component.go's Upgrade returns to
+// cmd/arc/ctrl, rendered by the bios.Registry[UpgradeResult]. It mirrors
+// InitResult's shape and JSON tag conventions — Root under "path",
+// CommitHash under "commit" — so the two control-plane commands present
+// the same vocabulary to a --json consumer
+// (specs/023-core-vocabulary-conformance data-model.md §6).
+type UpgradeResult struct {
+	Root       GraphRoot `json:"path"`
+	CommitHash string    `json:"commit"`
+	// Replaced/Added/Removed are built-in schema document paths relative
+	// to the graph root, sorted. Removed covers a built-in document that
+	// exists on disk under a name this release no longer seeds.
+	Replaced []string `json:"replaced"`
+	Added    []string `json:"added"`
+	Removed  []string `json:"removed"`
+	// NeedsReview lists content-node paths whose firstWriteWin-declared
+	// text predicate holds more than one paragraph — the shape only the
+	// previous append behaviour could have produced (research.md D12).
+	// Advisory: it never affects the exit code and is never repaired.
+	NeedsReview []string `json:"needsReview"`
+	// DryRun records that the run reported without writing.
+	DryRun bool `json:"dryRun"`
+}
