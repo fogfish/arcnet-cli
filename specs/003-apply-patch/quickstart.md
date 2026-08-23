@@ -26,7 +26,7 @@ mergeRules:
 ```sh
 $ cat > tls13.patch.md <<'EOF'
 ---
-kind: patch
+"@type": patch
 document: rescorla-2026-tls13
 published: 2026-04-12
 title: "TLS 1.3: Design and Rationale"
@@ -65,7 +65,7 @@ $ arc apply tls13.patch.md
 ```sh
 $ cat > pqkex.patch.md <<'EOF'
 ---
-kind: patch
+"@type": patch
 document: chen-2026-pqkex
 published: 2026-04-28
 title: "Post-Quantum Key Exchange in Practice"
@@ -105,7 +105,7 @@ EOF
 
 $ cat > note.patch.md <<'EOF'
 ---
-kind: patch
+"@type": patch
 document: kolesnikov-2026-note
 published: 2026-05-01
 title: "A Working Note"

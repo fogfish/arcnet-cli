@@ -1,5 +1,5 @@
 ---
-kind: patch
+"@type": patch
 document: beta-2025-blocker
 published: 2025-03-14
 title: "Blocker — parses cleanly, fails during application"

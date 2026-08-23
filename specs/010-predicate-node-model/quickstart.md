@@ -22,7 +22,7 @@ $ arc init ./demo-graph && cd demo-graph
 ```sh
 $ cat > tls13.patch.md <<'EOF'
 ---
-kind: patch
+"@type": patch
 document: rescorla-2026-tls13
 published: 2026-04-12
 title: "TLS 1.3: Design and Rationale"

@@ -34,10 +34,17 @@ Unlike `arc grep`/`arc lint`, `arc subgraph` has no `bios.ErrSilent` "ran, found
 
 ## stdout / stderr contract
 
+> **Superseded manifest grammar.** The manifest shape shown below is normative
+> for `arc subgraph`'s output as of `specs/021-patch-type-manifest`, whose
+> [contracts/patch-manifest.md](../../021-patch-type-manifest/contracts/patch-manifest.md)
+> is the governing grammar: the identity key is `"@type": patch`, quoted and
+> first, and no `kind` key is ever emitted. This document previously showed the
+> retired pre-0.5 identity key and has been corrected in place.
+
 - **stdout (human mode, default — `Human` renderer)**: the exact bytes of `core.RenderPatch(result.Patch)` — a `---`-delimited manifest, then `# <Kind>` / `## <basename>` sections with fenced `yaml` front-matter and verbatim body, no color/styling of any kind (research.md D10), suitable to redirect straight into a file for `arc apply` or paste into an LLM prompt:
   ```text
   ---
-  kind: patch
+  "@type": patch
   document: subgraph:transport-layer-security@2026-07-04T12:00:00Z
   published: 2026-07-04
   title: "Subgraph: Transport Layer Security"

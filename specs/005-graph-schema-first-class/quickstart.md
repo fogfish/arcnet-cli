@@ -65,7 +65,7 @@ $ HTTP_PROXY=http://localhost:1 HTTPS_PROXY=http://localhost:1 arc init graph2
 ```sh
 $ cat > note.md <<'EOF'
 ---
-kind: patch
+"@type": patch
 document: first-note
 published: 2026-07-04
 title: A note that introduces a new kind
@@ -105,7 +105,7 @@ $ git show --stat d4e5f6a | grep hypothesis
 ```sh
 $ cat > note2.md <<'EOF'
 ---
-kind: patch
+"@type": patch
 document: second-note
 published: 2026-07-05
 title: A second hypothesis, no warning this time

@@ -1,5 +1,5 @@
 ---
-kind: patch
+"@type": patch
 document: chen-2026-pqkex
 published: 2026-01-20
 title: "Post-Quantum Key Exchange in Practice"

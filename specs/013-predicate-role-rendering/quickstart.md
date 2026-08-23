@@ -91,7 +91,7 @@ path reads the existing node (`ParseNode`) and writes it back (`RenderNode`) eve
 cp entities/TLS.md /tmp/TLS.before.md
 cat > patch-2.md << 'EOF'
 ---
-kind: patch
+"@type": patch
 document: patch-doc-2
 published: 2026-07-02
 title: "Patch Two"

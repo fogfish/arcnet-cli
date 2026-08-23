@@ -12,7 +12,7 @@ Validates spec.md's three user stories end-to-end against a real local graph. `a
 ```sh
 $ arc subgraph "Transport Layer Security"
 ---
-kind: patch
+"@type": patch
 document: subgraph:transport-layer-security@2026-07-04T12:00:00Z
 published: 2026-07-04
 title: "Subgraph: Transport Layer Security"
@@ -46,7 +46,7 @@ A seed node with no connections at all:
 ```sh
 $ arc subgraph "Isolated Note"
 ---
-kind: patch
+"@type": patch
 document: subgraph:isolated-note@2026-07-04T12:00:05Z
 published: 2026-07-04
 title: "Subgraph: Isolated Note"
@@ -91,7 +91,7 @@ $ arc subgraph "Transport Layer Security" --depth 2
 ```sh
 $ arc subgraph "Transport Layer Security" --depth 0
 ---
-kind: patch
+"@type": patch
 document: subgraph:transport-layer-security@2026-07-04T12:01:00Z
 published: 2026-07-04
 title: "Subgraph: Transport Layer Security"
@@ -121,7 +121,7 @@ $ arc subgraph "Transport Layer Security" --kind source
 ```sh
 $ arc subgraph "Transport Layer Security" --kind resource
 ---
-kind: patch
+"@type": patch
 document: subgraph:transport-layer-security@2026-07-04T12:02:00Z
 published: 2026-07-04
 title: "Subgraph: Transport Layer Security"

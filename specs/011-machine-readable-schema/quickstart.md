@@ -48,7 +48,7 @@ ls _schema/nodes 2>&1
 ```sh
 cat > note.patch.md <<'EOF'
 ---
-kind: patch
+"@type": patch
 document: acme-2026-widget
 published: 2026-07-07
 ---

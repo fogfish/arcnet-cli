@@ -188,7 +188,7 @@ type memMounter struct{ store *memStore }
 func (m memMounter) Mount(root string) (fsys.Store, error) { return m.store, nil }
 
 const minimalSourcePatch = `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 title: "A Test Document"
@@ -208,7 +208,7 @@ A test document.
 `
 
 const sourceEntityPatch = `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 title: "A Test Document"
@@ -257,7 +257,7 @@ A test entity.
 // flagged (spec.md FR-012), and "ref" (immutable) is unchanged on both
 // sides so it doesn't interact with this scenario.
 const sourceResourcePatch = `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 title: "A Test Document"
@@ -301,7 +301,7 @@ The normative specification of Widget.
 `
 
 const domainKindPatch = `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 title: "A Test Document"
@@ -474,7 +474,7 @@ func TestApplyUnregisteredPredicateRegistersSchemaPredicate(t *testing.T) {
 }
 
 const unregisteredLabelTextPatch = `---
-kind: patch
+"@type": patch
 document: foo-2026-y
 published: 2026-04-12
 title: "A Test Document"
@@ -512,7 +512,7 @@ func TestApplyUnregisteredLabelTextContentRegistersAsTextRole(t *testing.T) {
 }
 
 const unregisteredLabeledEdgePatch = `---
-kind: patch
+"@type": patch
 document: foo-2026-z
 published: 2026-04-12
 title: "A Test Document"
@@ -657,7 +657,7 @@ func TestApplyReportsStepPerNode(t *testing.T) {
 }
 
 const stubSectionPatch = `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 title: "A Test Document"
@@ -775,7 +775,7 @@ func TestApplyMergedNodeGetsUpdatedMatchingIndexed(t *testing.T) {
 }
 
 const sourceOnlyReContributionPatch = `---
-kind: patch
+"@type": patch
 document: foo-2026-x2
 published: 2026-04-12
 title: "A Second Document"

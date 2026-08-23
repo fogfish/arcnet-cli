@@ -9,6 +9,7 @@
 package service
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/fogfish/it/v2"
@@ -119,4 +120,23 @@ func TestCheckIdentityKeyQuotingMissingKeyDistinctMessage(t *testing.T) {
 		Should(it.Equal(kernel.RuleIdentityQuoting, out[0].Rule)).
 		Should(it.String(out[0].Message).Contain("missing")).
 		Should(it.String(out[0].Message).Contain("@type"))
+}
+
+// TestCheckBareIdentityKeysWordingMatchesCoreConstant is the spec 021 D3
+// pairing guard: arc lint and internal/core are independent implementations
+// of one sentence about a bare identity key, and a user must meet identical
+// wording whichever command surfaces the defect. core owns the format string
+// (core.ErrIdentityQuoting); this asserts lint's own message is that string
+// applied to the offending key.
+func TestCheckBareIdentityKeysWordingMatchesCoreConstant(t *testing.T) {
+	raw := []byte("---\n@id: foo\n@type: Source\n---\n")
+	out := checkBareIdentityKeys("sources/foo.md", raw)
+
+	it.Then(t).Must(it.Equal(2, len(out)))
+	for i, key := range []string{"@id", "@type"} {
+		it.Then(t).Should(it.Equal(
+			fmt.Sprintf(string(core.ErrIdentityQuoting), key),
+			out[i].Message,
+		))
+	}
 }

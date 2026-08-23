@@ -33,6 +33,64 @@ import (
 // "%!s(<nil>)" artifact.
 var errNoCause = errors.New("")
 
+// patchManifestTypeValue is the literal, lowercase document-kind ARCNET-CORE
+// §14.2.1 fixes for a document patch. It is deliberately not CamelCase: a
+// node's "@type" names a class in the graph (spec 019), a manifest's names a
+// document kind, and a patch is never a node.
+const patchManifestTypeValue = "patch"
+
+// bareIdentityKeyPattern matches an "@id"/"@type" front-matter key written
+// without quotes. A leading "@" is a reserved YAML plain-scalar indicator, so
+// such a line is a hard syntax error rather than a mis-styled one
+// (research.md D1).
+var bareIdentityKeyPattern = regexp.MustCompile(`^(@id|@type)\s*:`)
+
+// frontMatterLines returns the raw lines between a document's opening and
+// closing "---" delimiters, or nil when it carries no front matter at all.
+// Working on the raw text is the only option available here: the caller
+// reaches this code precisely because the YAML failed to decode.
+func frontMatterLines(raw []byte) []string {
+	lines := strings.Split(string(raw), "\n")
+
+	start := -1
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "---" {
+			start = i
+			break
+		}
+		if trimmed != "" {
+			return nil
+		}
+	}
+	if start < 0 {
+		return nil
+	}
+
+	for i := start + 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "---" {
+			return lines[start+1 : i]
+		}
+	}
+	return lines[start+1:]
+}
+
+// bareIdentityKey returns the first "@id"/"@type" front-matter key written
+// unquoted, or "" when both are absent or correctly quoted. It answers one
+// boolean-shaped question for ParsePatch's own error branch — which error to
+// return from a parse that has already failed — and deliberately does not
+// duplicate arc lint's locateUnquotedIdentityKey, which answers a different
+// question (which line to report a violation on) for a different consumer
+// (research.md D3).
+func bareIdentityKey(raw []byte) string {
+	for _, line := range frontMatterLines(raw) {
+		if match := bareIdentityKeyPattern.FindStringSubmatch(strings.TrimSpace(line)); match != nil {
+			return match[1]
+		}
+	}
+	return ""
+}
+
 func newMarkdownParser() goldmark.Markdown {
 	return goldmark.New(goldmark.WithExtensions(meta.Meta))
 }
@@ -68,6 +126,13 @@ func ParsePatch(r io.Reader, index Index) (Patch, error) {
 
 	doc, manifest, err := parseDocument(source)
 	if err != nil {
+		if key := bareIdentityKey(source); key != "" {
+			// The raw yaml lexer error ("found character that cannot start
+			// any token") is deliberately dropped rather than wrapped: it is
+			// unactionable, and FR-015 exists precisely to replace it with a
+			// sentence the reader can act on.
+			return Patch{}, ErrIdentityQuoting.With(errNoCause, key)
+		}
 		return Patch{}, ErrManifestInvalid.With(err)
 	}
 
@@ -85,20 +150,28 @@ func ParsePatch(r io.Reader, index Index) (Patch, error) {
 	return patch, nil
 }
 
-// LooksLikePatch reports whether raw's front-matter manifest declares
-// itself as a patch document ("kind: patch"), independent of whether the
-// rest of the document is otherwise well-formed — used by a caller that
+// LooksLikePatch reports whether raw's front-matter manifest declares itself
+// as a patch document under *either* identity key — the current
+// '"@type": patch' or the retired "kind: patch" — independent of whether the
+// rest of the document is otherwise well-formed. It is used by a caller that
 // must distinguish a broken patch-in-progress (e.g. one ParsePatch rejects
-// for a spec 019 CamelCase violation) from a genuinely old-format
-// standalone node file before choosing which parse error to surface
-// (quickstart.md Scenario 2).
+// for a spec 019 CamelCase violation) from a genuinely old-format standalone
+// node file before choosing which parse error to surface (quickstart.md
+// Scenario 2).
+//
+// Recognizing the retired key here is error routing, not acceptance:
+// decodePatchManifest remains the sole gate, and every retired-key document
+// is still rejected (spec 021 data-model.md §3). What this buys is that such
+// a file is reported against its own name rather than silently passed over as
+// ordinary Markdown (FR-008).
 func LooksLikePatch(raw []byte) bool {
 	_, manifest, err := parseDocument(raw)
 	if err != nil {
 		return false
 	}
+	typ, _ := manifest["@type"].(string)
 	kind, _ := manifest["kind"].(string)
-	return kind == "patch"
+	return typ == patchManifestTypeValue || kind == patchManifestTypeValue
 }
 
 // ParseNode parses one on-disk graph node file (front-matter + body) into a
@@ -324,9 +397,39 @@ func textPredicateFor(nodeType string, leading bool) string {
 	}
 }
 
+// patchManifestType applies the manifest recognition rule — spec 021's
+// contracts/patch-manifest.md §2, a decision that is total over the
+// ("@type", kind) pair — returning nil when the manifest declares itself a
+// document patch and the row's own error otherwise. The conflict row is
+// evaluated first deliberately: a self-contradictory manifest must be
+// reported as a contradiction, not as whichever half was read first
+// (research.md D4). "kind" is never an accepting key; it is read solely to
+// produce an accurate refusal, or ignored when an agreeing "@type" is
+// present.
+func patchManifestType(manifest map[string]any) error {
+	typ, _ := manifest["@type"].(string)
+	kind, _ := manifest["kind"].(string)
+
+	switch {
+	case typ != "" && kind != "" && typ != kind:
+		return ErrManifestTypeConflict.With(errNoCause, typ, kind)
+	case typ == patchManifestTypeValue:
+		return nil
+	case typ != "":
+		return ErrManifestNotAPatch.With(errNoCause, typ)
+	case kind == patchManifestTypeValue:
+		return ErrManifestLegacyKind.With(errNoCause)
+	default:
+		return ErrManifestInvalid.With(errNoCause)
+	}
+}
+
+// decodePatchManifest turns a patch's front-matter map into a Patch. Identity
+// is decided by patchManifestType; the remaining mandatory (document,
+// published) and optional (title, stats) fields are unchanged by spec 021.
 func decodePatchManifest(manifest map[string]any) (Patch, error) {
-	if kindValue, _ := manifest["kind"].(string); kindValue != "patch" {
-		return Patch{}, ErrManifestInvalid.With(errNoCause)
+	if err := patchManifestType(manifest); err != nil {
+		return Patch{}, err
 	}
 
 	document, _ := manifest["document"].(string)
@@ -1254,7 +1357,7 @@ func renderEdges(buf *bytes.Buffer, n Node, index Index, patchFormat bool) {
 }
 
 // RenderPatch is the structural inverse of ParsePatch (research.md D2): a
-// `---`-delimited manifest (kind: patch, document, published, title,
+// `---`-delimited manifest ("@type": patch, document, published, title,
 // stats), then p.Nodes grouped by Type (sorted alphabetically) under
 // "# <Type>" headings, each node (sorted alphabetically by ID within its
 // type — research.md D9) under a "## <ID>" heading with a fenced yaml block
@@ -1345,13 +1448,15 @@ func titleCaseType(t string) string {
 }
 
 // renderPatchManifest renders p's document-level manifest as a mapping:
-// kind: patch, document, published (date-only, "2006-01-02"), title (when
+// "@type": patch, document, published (date-only, "2006-01-02"), title (when
 // non-empty), and stats (when non-empty, flow-style — "{a: 1, b: 2}") to
-// match cli-contract.md's example shape.
+// match contracts/patch-manifest.md §4's example shape. The identity key is
+// always first and always double-quoted, and no "kind" key is ever emitted
+// (spec 021 FR-002).
 func renderPatchManifest(p Patch) ([]byte, error) {
 	root := &yaml.Node{Kind: yaml.MappingNode}
 
-	if err := appendYAMLPair(root, "kind", "patch"); err != nil {
+	if err := appendQuotedKeyYAMLPair(root, "@type", patchManifestTypeValue); err != nil {
 		return nil, err
 	}
 	if err := appendYAMLPair(root, "document", p.Document); err != nil {

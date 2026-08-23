@@ -34,6 +34,10 @@ Several commands accept a filter to narrow the set of nodes they operate on. Fil
 
 The `--attr` flag is repeatable with AND semantics — all specified attribute conditions must hold simultaneously.
 
+**Datalog query as a filter**
+
+TBD
+
 **MCP filter object**
 
 MCP tools that accept a filter receive it as a single JSON object parameter `filter`. The schema mirrors the CLI flags:
@@ -66,7 +70,7 @@ A new or cloned graph is ready to receive patches. Graph as git repository is in
 
 The central operation: ingest a patch produced by the proprietary tool into the graph. Retraction is the clean inverse — it removes a document's entire contribution so a new patch for the same document can be applied from scratch.
 
-- [x] `arc apply <patch.md>` — apply a patch file to the graph (CORE §12.3): parse the patch manifest (`kind: patch`, `document`, `published`, `stats`); check idempotency and skip with a clear message if `sources/<id>.md` is already tracked (CORE §11.2); for each H1/H2 node section reconstruct the node object (ARCNET-AST §4); **create** new node files when the basename does not exist; **merge** into existing files per the kind's declared merge operation — `none` for `source`, `union` for `entity`, `union first-writer` for `resource`, and per-profile operation for domain/extension kinds (CORE §10); derive and append timeline entries from the source's `published` date (CORE §9.4); produce exactly one git commit with the mandatory subject, stats, and `Source-Id:` trailer (CORE §11.3); update the local index cache (Phase 4) atomically within the same filesystem transaction
+- [x] `arc apply <patch.md>` — apply a patch file to the graph (CORE §12.3): parse the patch manifest (`"@type": patch`, `document`, `published`, `stats`); check idempotency and skip with a clear message if `sources/<id>.md` is already tracked (CORE §11.2); for each H1/H2 node section reconstruct the node object (ARCNET-AST §4); **create** new node files when the basename does not exist; **merge** into existing files per the kind's declared merge operation — `none` for `source`, `union` for `entity`, `union first-writer` for `resource`, and per-profile operation for domain/extension kinds (CORE §10); derive and append timeline entries from the source's `published` date (CORE §9.4); produce exactly one git commit with the mandatory subject, stats, and `Source-Id:` trailer (CORE §11.3); update the local index cache (Phase 4) atomically within the same filesystem transaction
 - [x] `arc apply schema <patch.md> | <url>` - sub-command to apply schema 
 - [ ] `arc apply --dry-run <patch.md>` — parse and validate the patch; print the full diff of what would be created or merged; make no writes and no git operations
 - [x] `arc apply batch <dir>` — apply every `*.md` patch in a directory recursively in published-date order, skipping already-ingested sources; each patch is still exactly one commit

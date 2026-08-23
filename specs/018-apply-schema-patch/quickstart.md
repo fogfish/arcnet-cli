@@ -12,7 +12,7 @@ shape.
 
   ```markdown
   ---
-  kind: patch
+  "@type": patch
   document: acme-extension-schema
   published: 2026-07-15
   title: Acme extension vocabulary

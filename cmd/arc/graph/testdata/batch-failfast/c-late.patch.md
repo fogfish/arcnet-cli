@@ -1,5 +1,5 @@
 ---
-kind: patch
+"@type": patch
 document: gamma-2025-late
 published: 2025-06-01
 title: "Late — never reached under --fail-fast"

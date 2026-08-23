@@ -1,5 +1,5 @@
 ---
-kind: patch
+"@type": patch
 document: mccarthy-2023-legacy
 published: 2023-08-05
 title: "Legacy Key Agreement Revisited"

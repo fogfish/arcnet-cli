@@ -1,5 +1,5 @@
 ---
-kind: patch
+"@type": patch
 document: rescorla-2024-tls13
 published: 2024-03-11
 title: "TLS 1.3: Design and Rationale"

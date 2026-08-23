@@ -278,7 +278,7 @@ func revertPerNode(ctx context.Context, store fsys.Store, vcs port.VCS, reporter
 	return result, nil
 }
 
-// isPatchDocument reports whether path parses as a core.Patch exchange
+// isPatchDocument reports whether path declares itself a patch exchange
 // document rather than a graph node — mirroring apply.go's own
 // guardNoOldFormatNodes tolerance (a patch/exchange file left sitting
 // inside the graph tree, e.g. still touched by its own ingest commit, is
@@ -286,6 +286,13 @@ func revertPerNode(ctx context.Context, store fsys.Store, vcs port.VCS, reporter
 // remove or reconcile). A path that no longer exists or fails to read is
 // treated as false (not a patch), letting the caller's own existing
 // not-found handling apply.
+//
+// It asks core.LooksLikePatch — the single recognition rule spec 021 FR-009
+// requires every patch-reading command to share — rather than "ParsePatch
+// succeeds". Under the old test a patch whose body is malformed stopped being
+// recognized as an exchange file and became eligible for node handling by a
+// destructive command; skipping it instead is the safe direction for revert's
+// blast radius (research.md D6).
 func isPatchDocument(store fsys.Store, path string) bool {
 	f, err := store.Open(path)
 	if err != nil {
@@ -296,8 +303,7 @@ func isPatchDocument(store fsys.Store, path string) bool {
 	if err != nil {
 		return false
 	}
-	_, perr := core.ParsePatch(bytes.NewReader(raw), core.Index{})
-	return perr == nil
+	return core.LooksLikePatch(raw)
 }
 
 // referrerPath is nodePath's own generic per-kind folder derivation,

@@ -55,7 +55,7 @@ var testIndex = core.Index{
 }
 
 const patchFixture = `---
-kind: patch
+"@type": patch
 document: rescorla-2026-tls13
 published: 2026-04-12
 title: "TLS 1.3: Design and Rationale"
@@ -117,7 +117,7 @@ func TestParsePatchManifestAndNodes(t *testing.T) {
 
 func TestParsePatchManifestMissingDocument(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 published: 2026-04-12
 ---
 # Source
@@ -132,7 +132,7 @@ text.
 
 func TestParsePatchManifestMissingPublished(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 ---
 # Source
@@ -147,7 +147,7 @@ text.
 
 func TestParsePatchBodyMalformedNoHeading(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 ---
@@ -159,7 +159,7 @@ Just some prose, no H1/H2 structure at all.
 
 func TestParsePatchBodyMalformedMissingYAMLFence(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 ---
@@ -180,7 +180,7 @@ No fenced yaml block here.
 // rather than writing it as a generic node file (research.md D8b revised).
 func TestParsePatchTimelineTypeSectionParsesAsOrdinaryNode(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-07-12
 ---
@@ -208,7 +208,7 @@ text.
 
 func TestParsePatchInlineWikilinkStrippedIntoHRefs(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 ---
@@ -330,7 +330,7 @@ text.
 
 func TestParsePatchNodeLegacyKindFieldInFenceRejected(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 ---
@@ -355,7 +355,7 @@ text.
 // fogfish/bots), already use.
 func TestParsePatchNodeHeadingOnlyNoExplicitIdentitySucceeds(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 ---
@@ -379,7 +379,7 @@ text.
 // from the "# <Type>" heading.
 func TestParsePatchNodeExplicitIdAgreeingNoExplicitTypeSucceeds(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 ---
@@ -403,7 +403,7 @@ text.
 // output) is accepted even with no explicit "@id" present.
 func TestParsePatchNodeExplicitTypeAgreeingNoExplicitIdSucceeds(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 ---
@@ -427,7 +427,7 @@ text.
 // disagreeing explicit "@id" already was.
 func TestParsePatchNodeExplicitTypeDisagreeingHeadingRejected(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 ---
@@ -448,7 +448,7 @@ text.
 // since the heading text lives in the same document being parsed.
 func TestParsePatchNodeIDMismatchHeadingRejected(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 ---
@@ -467,7 +467,7 @@ text.
 // lowercasing) in the parsed node's Type.
 func TestParsePatchCamelCaseHeadingPreservedVerbatim(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 ---
@@ -486,7 +486,7 @@ text.
 // spec 019 FR-005: a lowercase H1 heading returns ErrTypeCasing.
 func TestParsePatchLowercaseHeadingReturnsErrTypeCasing(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 ---
@@ -506,7 +506,7 @@ text.
 // heading's own casing.
 func TestParsePatchCamelCaseHeadingLowercaseExplicitTypeReturnsErrTypeCasing(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 ---
@@ -527,7 +527,7 @@ text.
 // lowercase still fails the whole parse — no partial acceptance.
 func TestParsePatchSecondOfTwoH1SectionsLowercaseFailsWholeParse(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 ---
@@ -896,7 +896,7 @@ TLS 1.3 handshakes provide forward secrecy by default.
 // Edges slice (research.md D5), not a Links map. Fixture is this bug's own
 // reported example.
 const boldLabelThreeBlocksPatch = `---
-kind: patch
+"@type": patch
 document: dmitry-2026-graph
 published: 2026-01-01
 ---
@@ -937,7 +937,7 @@ func TestParsePatchBoldLabelBlocksNoDataLoss(t *testing.T) {
 }
 
 const mixedBoldAndHeadingPatch = `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-01-01
 ---
@@ -975,7 +975,7 @@ func TestParsePatchMixedBoldLabelAndHeadingBlocks(t *testing.T) {
 // looks like a wikilink — instead of running it through the wikilink-only
 // extraction a role: edge/link block still uses.
 const labeledTextRolePatch = `---
-kind: patch
+"@type": patch
 document: dmitry-2026-article
 published: 2026-01-01
 ---
@@ -1009,7 +1009,7 @@ func TestParsePatchLabeledTextRoleBlockRoundTrips(t *testing.T) {
 // role: edge predicate is unaffected by this fix — wikilink extraction into
 // Edges still works exactly as before.
 const labeledEdgeRolePatch = `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-01-01
 ---
@@ -1043,7 +1043,7 @@ func TestParsePatchLabeledEdgeRoleBlockUnaffected(t *testing.T) {
 // links, not [[wikilinks]]) is preserved as text under a predicate id
 // derived from the label, instead of being silently dropped.
 const unregisteredLabelReferencesPatch = `---
-kind: patch
+"@type": patch
 document: dmitry-2026-article
 published: 2026-01-01
 ---
@@ -1074,7 +1074,7 @@ func TestParsePatchUnregisteredLabelNonWikilinkContentPreservedAsText(t *testing
 // exactly as collectListLinks would, and the rest is preserved as text
 // rather than dropped.
 const mixedUnresolvedLabelPatch = `---
-kind: patch
+"@type": patch
 document: dmitry-2026-article
 published: 2026-01-01
 ---
@@ -1110,7 +1110,7 @@ func TestParsePatchMixedListPreservesBothEdgesAndText(t *testing.T) {
 // markers, recovered headings, and separate per-block grouping — not just
 // the words.
 const fullReproductionPatch = `---
-kind: patch
+"@type": patch
 document: dmitry-2026-article
 published: 2026-01-01
 title: "A Test Article"
@@ -1249,6 +1249,16 @@ func TestRenderPatchRoundTripsSingleNode(t *testing.T) {
 
 	raw, err := core.RenderPatch(p, testIndex)
 	it.Then(t).Should(it.Nil(err))
+
+	// spec 021 FR-002/FR-010/SC-003: the manifest identity survives the round
+	// trip, is the first key of the emitted manifest, and no retired "kind"
+	// key appears anywhere in the output.
+	lines := strings.Split(string(raw), "\n")
+	it.Then(t).Must(it.True(len(lines) > 1))
+	it.Then(t).
+		Should(it.Equal("---", lines[0])).
+		Should(it.Equal(`"@type": patch`, lines[1]))
+	it.Then(t).ShouldNot(it.String(string(raw)).Contain("kind:"))
 
 	back, err := core.ParsePatch(strings.NewReader(string(raw)), core.Index{})
 	it.Then(t).
@@ -1500,7 +1510,7 @@ Some text.
 // section is likewise decoded into Node.Published, not left in Attrs.
 func TestParsePatchBodyExtractsPublishedNeverLeftInAttrs(t *testing.T) {
 	fixture := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 ---
@@ -1602,10 +1612,10 @@ func TestRenderPatchNoLegacyKindFieldInsidePerNodeFence(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 
 	// The per-node fence must never declare a bare "kind:" field (research.md
-	// D1/D2) — a node's type is declared via its own quoted "@type" key; the
-	// top-level manifest's own "kind: patch" line is the only permitted
-	// "kind:" occurrence in the whole document.
-	it.Then(t).Should(it.Equal(1, strings.Count(string(raw), "kind:")))
+	// D1/D2) — a node's type is declared via its own quoted "@type" key. Since
+	// spec 021 the top-level manifest declares itself with "@type": patch too,
+	// so "kind:" no longer appears anywhere in a rendered patch.
+	it.Then(t).Should(it.Equal(0, strings.Count(string(raw), "kind:")))
 	it.Then(t).Should(it.Equal(1, strings.Count(string(raw), `"@type": Entity`)))
 }
 
@@ -1733,7 +1743,7 @@ Some text.
 // **Mentions** still resolves and pairs with its own list rather than
 // appearing as an orphaned, empty label.
 const multipleUntitledListsPatch = `---
-kind: patch
+"@type": patch
 document: dmitry-2026-article
 published: 2026-01-01
 ---
@@ -1849,4 +1859,157 @@ func TestRoundTripMultipleUntitledListsIdempotent(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 
 	it.Then(t).Should(it.Equal(string(first), string(second)))
+}
+
+// ---------------------------------------------------------------------------
+// spec 021 — patch manifest identity ("@type": patch)
+// ---------------------------------------------------------------------------
+
+// manifestFixture builds a minimal, otherwise-valid patch whose front matter
+// carries exactly the identity lines given — the only variable across the
+// recognition table below.
+func manifestFixture(identity string) string {
+	return "---\n" + identity + `
+document: foo-2026-x
+published: 2026-04-12
+---
+# Source
+
+## foo-2026-x
+` + "```yaml\n\"@id\": foo-2026-x\n\"@type\": Source\n```\n" + `
+text.
+`
+}
+
+// TestParsePatchManifestRecognitionTable is the complete unit proof of the
+// recognition rule (contracts/patch-manifest.md §2, data-model.md §2). The
+// decision is total over the ("@type", kind) pair, so every row below lands
+// in exactly one outcome and the table exhausts the rule.
+func TestParsePatchManifestRecognitionTable(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		identity string
+		wantErr  error
+	}{
+		{"@type only", `"@type": patch`, nil},
+		{"kind only", `kind: patch`, core.ErrManifestLegacyKind},
+		{"both agreeing", "\"@type\": patch\nkind: patch", nil},
+		{"both conflicting, @type is the patch", "\"@type\": patch\nkind: source", core.ErrManifestTypeConflict},
+		{"both conflicting, kind is the patch", "\"@type\": source\nkind: patch", core.ErrManifestTypeConflict},
+		{"neither key", `title: not an identity`, core.ErrManifestInvalid},
+		{"@type capitalized", `"@type": Patch`, core.ErrManifestNotAPatch},
+		{"@type is another document kind", `"@type": source`, core.ErrManifestNotAPatch},
+		{"kind: source alone", `kind: source`, core.ErrManifestInvalid},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			patch, err := core.ParsePatch(strings.NewReader(manifestFixture(tt.identity)), core.Index{})
+
+			if tt.wantErr == nil {
+				it.Then(t).Must(it.Nil(err))
+				it.Then(t).
+					Should(it.Equal("foo-2026-x", patch.Document)).
+					Should(it.Equal(1, len(patch.Nodes)))
+				return
+			}
+
+			it.Then(t).Should(it.True(errors.Is(err, tt.wantErr)))
+		})
+	}
+}
+
+// TestParsePatchManifestConflictNamesBothValues pins FR-005's requirement
+// that a self-contradictory manifest reports the conflict itself, naming both
+// disagreeing values rather than describing only the half read first.
+func TestParsePatchManifestConflictNamesBothValues(t *testing.T) {
+	_, err := core.ParsePatch(strings.NewReader(manifestFixture("\"@type\": patch\nkind: source")), core.Index{})
+
+	it.Then(t).Must(it.True(errors.Is(err, core.ErrManifestTypeConflict)))
+	it.Then(t).
+		Should(it.String(err.Error()).Contain("patch")).
+		Should(it.String(err.Error()).Contain("source"))
+}
+
+// TestParsePatchManifestNotAPatchNamesOffendingValue pins FR-016/SC-007: a
+// casing error is shown, not merely asserted.
+func TestParsePatchManifestNotAPatchNamesOffendingValue(t *testing.T) {
+	_, err := core.ParsePatch(strings.NewReader(manifestFixture(`"@type": Patch`)), core.Index{})
+
+	it.Then(t).Must(it.True(errors.Is(err, core.ErrManifestNotAPatch)))
+	it.Then(t).Should(it.String(err.Error()).Contain("Patch"))
+}
+
+// TestParsePatchManifestLegacyKindNamesReplacement pins FR-003: the refusal
+// names both the retired key and what to write instead, so the file is
+// correctable without consulting ARCNET-CORE.
+func TestParsePatchManifestLegacyKindNamesReplacement(t *testing.T) {
+	_, err := core.ParsePatch(strings.NewReader(manifestFixture(`kind: patch`)), core.Index{})
+
+	it.Then(t).Must(it.True(errors.Is(err, core.ErrManifestLegacyKind)))
+	it.Then(t).
+		Should(it.String(err.Error()).Contain("kind: patch")).
+		Should(it.String(err.Error()).Contain(`"@type": patch`))
+}
+
+// TestParsePatchBareIdentityKeyReportsQuoting covers FR-015: a bare "@type"
+// is a hard YAML syntax error that fails inside parseDocument, before
+// recognition is ever reached (research.md D1) — the user must still meet an
+// actionable sentence rather than the raw lexer error.
+func TestParsePatchBareIdentityKeyReportsQuoting(t *testing.T) {
+	_, err := core.ParsePatch(strings.NewReader(manifestFixture(`@type: patch`)), core.Index{})
+
+	it.Then(t).Must(it.True(errors.Is(err, core.ErrIdentityQuoting)))
+	it.Then(t).
+		Should(it.String(err.Error()).Contain(`"@type"`)).
+		Should(it.String(err.Error()).Contain("quoted YAML string key"))
+	it.Then(t).ShouldNot(it.String(err.Error()).Contain("cannot start any token"))
+}
+
+// TestParsePatchBareIdentityKeyMessageMatchesLintWording is the D3 pairing
+// assertion: core and arc lint are independent implementations of one
+// sentence, so a user meets identical wording whichever command surfaces the
+// bare key. The literal below is arc lint's own RuleIdentityQuoting message
+// (internal/app/lint/service/rules_frontmatter.go checkBareIdentityKeys);
+// the matching guard on lint's side lives in that package's own test.
+func TestParsePatchBareIdentityKeyMessageMatchesLintWording(t *testing.T) {
+	_, err := core.ParsePatch(strings.NewReader(manifestFixture(`@type: patch`)), core.Index{})
+
+	it.Then(t).Must(it.True(errors.Is(err, core.ErrIdentityQuoting)))
+	it.Then(t).Should(it.String(err.Error()).
+		Contain(`"@type" must be a quoted YAML string key, found it unquoted`))
+}
+
+// TestLooksLikePatchRecognizesBothIdentityKeys pins the recognition-vs-
+// acceptance split (data-model.md §3): LooksLikePatch answers "was this
+// meant as a patch?", which is broader than acceptance and is what stops a
+// retired-key file from being silently passed over (FR-008).
+func TestLooksLikePatchRecognizesBothIdentityKeys(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		identity string
+		want     bool
+	}{
+		{"@type patch", `"@type": patch`, true},
+		{"retired kind patch", `kind: patch`, true},
+		{"both agreeing", "\"@type\": patch\nkind: patch", true},
+		{"conflicting", "\"@type\": patch\nkind: source", true},
+		{"no identity at all", `title: notes`, false},
+		{"kind: source alone", `kind: source`, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			it.Then(t).Should(it.Equal(tt.want, core.LooksLikePatch([]byte(manifestFixture(tt.identity)))))
+		})
+	}
+}
+
+// TestParsePatchManifestTypeDoesNotLeakIntoNodeTypes guards the edge case
+// where the manifest's lowercase "@type": patch sits in the same document as
+// per-node CamelCase "@type" values in body fences: the two are read from
+// different places and must not interfere (contracts/cli-contract.md edge
+// cases).
+func TestParsePatchManifestTypeDoesNotLeakIntoNodeTypes(t *testing.T) {
+	patch, err := core.ParsePatch(strings.NewReader(manifestFixture(`"@type": patch`)), core.Index{})
+
+	it.Then(t).Must(it.Nil(err))
+	it.Then(t).Must(it.Equal(1, len(patch.Nodes)))
+	it.Then(t).Should(it.Equal("Source", patch.Nodes[0].Type))
 }

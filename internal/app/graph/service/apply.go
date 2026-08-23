@@ -423,7 +423,7 @@ func validateNodeBasename(node core.Node, path string) error {
 // (internal/app/lint/service.Lint). A well-formed patch/exchange document
 // (e.g. one written into the graph root before being applied, this
 // package's own writePatchFile-style convention) is not a graph node and
-// is skipped — its own "kind: patch" manifest is a distinct, still-valid
+// is skipped — its own '"@type": patch' manifest is a distinct, still-valid
 // concept unaffected by this feature (data-model.md's Patch section).
 func guardNoOldFormatNodes(store fsys.Store, index core.Index) error {
 	paths, err := walkNodeFiles(store)
@@ -444,7 +444,8 @@ func guardNoOldFormatNodes(store fsys.Store, index core.Index) error {
 		if _, perr := core.ParsePatch(bytes.NewReader(raw), index); perr == nil {
 			continue
 		} else if core.LooksLikePatch(raw) {
-			// A "kind: patch" document that fails to parse is a broken
+			// A patch document (either identity key — see core.LooksLikePatch)
+			// that fails to parse is a broken
 			// patch-in-progress, not an old-format node — surfacing perr
 			// here (e.g. spec 019's ErrTypeCasing) instead of misreporting
 			// it via ParseNode's own "legacy kind field" heuristic below,
@@ -484,7 +485,13 @@ func readPatch(mounter fsys.Mounter, patchPath string, index core.Index) (core.P
 
 	patch, err := core.ParsePatch(f, index)
 	if err != nil {
-		return core.Patch{}, err
+		// A parse failure is wrapped with the path exactly like the mount and
+		// open failures above: core.ParsePatch receives a reader, never a
+		// filename, so only this caller can name the offending file — which
+		// spec 021 FR-003/SC-007 require of every rejection. This is the same
+		// convention schema/service.readPatchSource already follows
+		// (research.md D5).
+		return core.Patch{}, ErrPatchRead.With(err, patchPath)
 	}
 	return patch, nil
 }
