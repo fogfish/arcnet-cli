@@ -52,9 +52,9 @@ func TestRevertNoIngestCommitRefuses(t *testing.T) {
 func TestRevertUsesNewestIngestCommitWhenMultipleMatchesExist(t *testing.T) {
 	store := newGraphStore()
 	vcs := &graphmock.VCS{
-		Tracked:           map[string]bool{"sources/foo-2026-x.md": true},
+		Tracked:           map[string]bool{"Source/foo-2026-x.md": true},
 		CommitsMatchingFn: func(dir, needle string) ([]string, error) { return []string{"newer456", "older123"}, nil },
-		ChangedPathsFn:    func(dir, hash string) ([]string, error) { return []string{"sources/foo-2026-x.md"}, nil },
+		ChangedPathsFn:    func(dir, hash string) ([]string, error) { return []string{"Source/foo-2026-x.md"}, nil },
 		CommitsTouchingFn: func(dir, path string) ([]string, error) { return []string{"newer456"}, nil },
 		RevertCommitFn:    func(dir, hash string) (string, error) { return "rev789", nil },
 	}
@@ -94,15 +94,15 @@ func TestRevertSkipsWhenSourceNodeAlreadyRemoved(t *testing.T) {
 // discarded or partially reported as success.
 func TestRevertCommitFailurePropagatesWithoutFabricatingResult(t *testing.T) {
 	store := newGraphStore()
-	store.files["sources/foo-2026-x.md"] = []byte("---\n\"@id\": foo-2026-x\n\"@type\": Source\n---\n# foo-2026-x\n")
+	store.files["Source/foo-2026-x.md"] = []byte("---\n\"@id\": foo-2026-x\n\"@type\": Source\n---\n# foo-2026-x\n")
 	vcs := &graphmock.VCS{
-		Tracked:           map[string]bool{"sources/foo-2026-x.md": true},
+		Tracked:           map[string]bool{"Source/foo-2026-x.md": true},
 		CommitsMatchingFn: func(dir, needle string) ([]string, error) { return []string{"ingest123"}, nil },
 		ChangedPathsFn: func(dir, hash string) ([]string, error) {
-			return []string{"sources/foo-2026-x.md", "entities/Widget.md"}, nil
+			return []string{"Source/foo-2026-x.md", "Entity/Widget.md"}, nil
 		},
 		CommitsTouchingFn: func(dir, path string) ([]string, error) {
-			if path == "sources/foo-2026-x.md" {
+			if path == "Source/foo-2026-x.md" {
 				return []string{"ingest123"}, nil
 			}
 			return []string{"later999", "ingest123"}, nil
@@ -122,9 +122,9 @@ func TestRevertCommitFailurePropagatesWithoutFabricatingResult(t *testing.T) {
 func TestRevertWholeCommitPathWhenNothingTouchedSince(t *testing.T) {
 	store := newGraphStore()
 	vcs := &graphmock.VCS{
-		Tracked:           map[string]bool{"sources/foo-2026-x.md": true},
+		Tracked:           map[string]bool{"Source/foo-2026-x.md": true},
 		CommitsMatchingFn: func(dir, needle string) ([]string, error) { return []string{"ingest123"}, nil },
-		ChangedPathsFn:    func(dir, hash string) ([]string, error) { return []string{"sources/foo-2026-x.md"}, nil },
+		ChangedPathsFn:    func(dir, hash string) ([]string, error) { return []string{"Source/foo-2026-x.md"}, nil },
 		CommitsTouchingFn: func(dir, path string) ([]string, error) { return []string{"ingest123"}, nil },
 		RevertCommitFn:    func(dir, hash string) (string, error) { return "rev456", nil },
 	}
@@ -144,15 +144,15 @@ func TestRevertWholeCommitPathWhenNothingTouchedSince(t *testing.T) {
 // exclusively owned (invariant: it is always removed).
 func TestRevertDispatchesToPerNodeWhenLaterCommitTouchedAPath(t *testing.T) {
 	store := newGraphStore()
-	store.files["sources/foo-2026-x.md"] = []byte("---\n\"@id\": foo-2026-x\n\"@type\": Source\n---\n# foo-2026-x\n")
+	store.files["Source/foo-2026-x.md"] = []byte("---\n\"@id\": foo-2026-x\n\"@type\": Source\n---\n# foo-2026-x\n")
 	vcs := &graphmock.VCS{
-		Tracked:           map[string]bool{"sources/foo-2026-x.md": true},
+		Tracked:           map[string]bool{"Source/foo-2026-x.md": true},
 		CommitsMatchingFn: func(dir, needle string) ([]string, error) { return []string{"ingest123"}, nil },
 		ChangedPathsFn: func(dir, hash string) ([]string, error) {
-			return []string{"sources/foo-2026-x.md", "entities/Widget.md"}, nil
+			return []string{"Source/foo-2026-x.md", "Entity/Widget.md"}, nil
 		},
 		CommitsTouchingFn: func(dir, path string) ([]string, error) {
-			if path == "sources/foo-2026-x.md" {
+			if path == "Source/foo-2026-x.md" {
 				return []string{"ingest123"}, nil
 			}
 			return []string{"later999", "ingest123"}, nil
@@ -167,7 +167,7 @@ func TestRevertDispatchesToPerNodeWhenLaterCommitTouchedAPath(t *testing.T) {
 		Should(it.Equal("per-node", result.Approach)).
 		Should(it.Equal(1, result.Removed["Source"])).
 		Should(it.Equal("commitABC", result.CommitHash))
-	it.Then(t).Should(it.Seq(store.removed).Contain("sources/foo-2026-x.md"))
+	it.Then(t).Should(it.Seq(store.removed).Contain("Source/foo-2026-x.md"))
 	it.Then(t).Should(it.Seq(vcs.Calls).Contain("Commit:/graph:graph(revert): foo-2026-x — per-node reconciliation\n\nRemoved: 1 nodes (Source: 1)\nReconciled: 0 nodes ()\nLinks removed: 0\nReverted-Document: foo-2026-x\n"))
 }
 
@@ -185,7 +185,7 @@ func TestRevertReconcilesSharedNodeStrippingOnlyBlamedParagraph(t *testing.T) {
 	}
 	rendered, err := core.RenderNode(node, coreIndexFixture)
 	it.Then(t).Should(it.Nil(err))
-	store.files["entities/Widget.md"] = rendered
+	store.files["Entity/Widget.md"] = rendered
 
 	lines := strings.Split(strings.TrimSuffix(string(rendered), "\n"), "\n")
 	firstLine := -1
@@ -197,13 +197,13 @@ func TestRevertReconcilesSharedNodeStrippingOnlyBlamedParagraph(t *testing.T) {
 	it.Then(t).ShouldNot(it.Equal(-1, firstLine))
 
 	vcs := &graphmock.VCS{
-		Tracked:           map[string]bool{"sources/foo-2026-x.md": true},
+		Tracked:           map[string]bool{"Source/foo-2026-x.md": true},
 		CommitsMatchingFn: func(dir, needle string) ([]string, error) { return []string{"ingest123"}, nil },
 		ChangedPathsFn: func(dir, hash string) ([]string, error) {
-			return []string{"sources/foo-2026-x.md", "entities/Widget.md"}, nil
+			return []string{"Source/foo-2026-x.md", "Entity/Widget.md"}, nil
 		},
 		CommitsTouchingFn: func(dir, path string) ([]string, error) {
-			if path == "sources/foo-2026-x.md" {
+			if path == "Source/foo-2026-x.md" {
 				return []string{"ingest123"}, nil
 			}
 			return []string{"later999", "ingest123"}, nil
@@ -213,14 +213,14 @@ func TestRevertReconcilesSharedNodeStrippingOnlyBlamedParagraph(t *testing.T) {
 		},
 		CommitHash: "commitDEF",
 	}
-	store.files["sources/foo-2026-x.md"] = []byte("---\n\"@id\": foo-2026-x\n\"@type\": Source\n---\n# foo-2026-x\n")
+	store.files["Source/foo-2026-x.md"] = []byte("---\n\"@id\": foo-2026-x\n\"@type\": Source\n---\n# foo-2026-x\n")
 
 	result, err := service.Revert(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, "/graph", "foo-2026-x")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, result.Reconciled["Entity"]))
 
-	content := string(store.files["entities/Widget.md"])
+	content := string(store.files["Entity/Widget.md"])
 	it.Then(t).
 		ShouldNot(it.String(content).Contain("First paragraph from foo-2026-x.")).
 		Should(it.String(content).Contain("Second paragraph from later patch."))
@@ -237,17 +237,17 @@ func TestRevertLeavesSharedNodeUnchangedWhenNoAttribution(t *testing.T) {
 	}
 	rendered, err := core.RenderNode(node, coreIndexFixture)
 	it.Then(t).Should(it.Nil(err))
-	store.files["entities/Widget.md"] = rendered
-	store.files["sources/foo-2026-x.md"] = []byte("---\n\"@id\": foo-2026-x\n\"@type\": Source\n---\n# foo-2026-x\n")
+	store.files["Entity/Widget.md"] = rendered
+	store.files["Source/foo-2026-x.md"] = []byte("---\n\"@id\": foo-2026-x\n\"@type\": Source\n---\n# foo-2026-x\n")
 
 	vcs := &graphmock.VCS{
-		Tracked:           map[string]bool{"sources/foo-2026-x.md": true},
+		Tracked:           map[string]bool{"Source/foo-2026-x.md": true},
 		CommitsMatchingFn: func(dir, needle string) ([]string, error) { return []string{"ingest123"}, nil },
 		ChangedPathsFn: func(dir, hash string) ([]string, error) {
-			return []string{"sources/foo-2026-x.md", "entities/Widget.md"}, nil
+			return []string{"Source/foo-2026-x.md", "Entity/Widget.md"}, nil
 		},
 		CommitsTouchingFn: func(dir, path string) ([]string, error) {
-			if path == "sources/foo-2026-x.md" {
+			if path == "Source/foo-2026-x.md" {
 				return []string{"ingest123"}, nil
 			}
 			return []string{"later999", "ingest123"}, nil
@@ -260,11 +260,11 @@ func TestRevertLeavesSharedNodeUnchangedWhenNoAttribution(t *testing.T) {
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(0, result.Reconciled["Entity"]))
-	it.Then(t).Should(it.Equal(string(rendered), string(store.files["entities/Widget.md"])))
+	it.Then(t).Should(it.Equal(string(rendered), string(store.files["Entity/Widget.md"])))
 
 	var outcome string
 	for _, n := range result.Nodes {
-		if n.Path == "entities/Widget.md" {
+		if n.Path == "Entity/Widget.md" {
 			outcome = n.Kind
 		}
 	}
@@ -306,23 +306,23 @@ func writeGraphFile(t *testing.T, dir, relPath, content string) {
 func TestRevertRemovesExclusiveNodeAndSweepsBacklinksIncludingTimeline(t *testing.T) {
 	dir := t.TempDir()
 	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, ".arc"), 0o755)))
-	writeGraphFile(t, dir, "sources/foo-2026-x.md", "---\n\"@id\": foo-2026-x\n\"@type\": Source\n---\n# foo-2026-x\n")
-	writeGraphFile(t, dir, "entities/OldWidget.md", "---\n\"@id\": OldWidget\n\"@type\": Entity\n---\n# OldWidget\n")
-	writeGraphFile(t, dir, "entities/Gadget.md", "---\n\"@id\": Gadget\n\"@type\": Entity\n---\n# Gadget\n\n- relatesTo:: [[OldWidget]]\n")
+	writeGraphFile(t, dir, "Source/foo-2026-x.md", "---\n\"@id\": foo-2026-x\n\"@type\": Source\n---\n# foo-2026-x\n")
+	writeGraphFile(t, dir, "Entity/OldWidget.md", "---\n\"@id\": OldWidget\n\"@type\": Entity\n---\n# OldWidget\n")
+	writeGraphFile(t, dir, "Entity/Gadget.md", "---\n\"@id\": Gadget\n\"@type\": Entity\n---\n# Gadget\n\n- relatesTo:: [[OldWidget]]\n")
 	writeGraphFile(t, dir, "timeline/yearly/2026.md", "---\n\"@id\": \"2026\"\n\"@type\": Timeline\nperiod: \"2026\"\ngranularity: yearly\n---\n# 2026\n\n- cites:: [[OldWidget]] — OldWidget — 2026-01-01\n")
 
 	vcs := &graphmock.VCS{
-		Tracked:           map[string]bool{"sources/foo-2026-x.md": true},
+		Tracked:           map[string]bool{"Source/foo-2026-x.md": true},
 		CommitsMatchingFn: func(dir, needle string) ([]string, error) { return []string{"ingest123"}, nil },
 		ChangedPathsFn: func(dir, hash string) ([]string, error) {
-			// entities/DummyOther.md never existed on disk in this fixture
+			// Entity/DummyOther.md never existed on disk in this fixture
 			// — it exists purely to make the whole-operation eligibility
 			// test (D3) fail, forcing the per-node path (D5/D6) even
 			// though both real paths below remain individually exclusive.
-			return []string{"sources/foo-2026-x.md", "entities/OldWidget.md", "entities/DummyOther.md"}, nil
+			return []string{"Source/foo-2026-x.md", "Entity/OldWidget.md", "Entity/DummyOther.md"}, nil
 		},
 		CommitsTouchingFn: func(dir, path string) ([]string, error) {
-			if path == "entities/DummyOther.md" {
+			if path == "Entity/DummyOther.md" {
 				return []string{"later999", "ingest123"}, nil
 			}
 			return []string{"ingest123"}, nil
@@ -338,10 +338,10 @@ func TestRevertRemovesExclusiveNodeAndSweepsBacklinksIncludingTimeline(t *testin
 		Should(it.Equal(1, result.Removed["Entity"])).
 		Should(it.Equal(2, result.LinksRemoved))
 
-	_, statErr := os.Stat(filepath.Join(dir, "entities", "OldWidget.md"))
+	_, statErr := os.Stat(filepath.Join(dir, "Entity", "OldWidget.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 
-	gadget, err := os.ReadFile(filepath.Join(dir, "entities", "Gadget.md"))
+	gadget, err := os.ReadFile(filepath.Join(dir, "Entity", "Gadget.md"))
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).ShouldNot(it.String(string(gadget)).Contain("OldWidget"))
 

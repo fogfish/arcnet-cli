@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/fogfish/arcnet-cli/internal/app/lint/kernel"
+	schemakernel "github.com/fogfish/arcnet-cli/internal/app/schema/kernel"
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
@@ -81,7 +82,7 @@ func checkPredicateRegistered(node core.Node, path string, raw []byte, registry 
 				Rule:    kernel.RulePredicateRegistered,
 				Path:    path,
 				Line:    occ.line,
-				Message: fmt.Sprintf("predicate %q is not registered in %s", occ.predicate, "_schema/predicates/"),
+				Message: fmt.Sprintf("predicate %q is not registered in %s", occ.predicate, schemakernel.PredicatesDir+"/"),
 			})
 		}
 	}

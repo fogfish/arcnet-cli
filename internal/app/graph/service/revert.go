@@ -399,6 +399,21 @@ func pluralSuffix(n int) string {
 // public equivalent. Both tables are explicitly documented as a temporary
 // stopgap pending spec 011's Schema Index; keep them in sync if core's
 // table ever changes.
+//
+// The duplicate is kept in sync for the five ARCNET-CORE content types
+// only, and that half is enforced by test — revert_internal_test.go's
+// TestRevertLeadingKeyAgreesWithCoreForCoreTypes asserts this function
+// equals core.TextPredicateFor(t, true) for Source, Entity, Resource,
+// Timeline, and Reference.
+//
+// The three domain-profile entries below are a known divergence from core's
+// table, which has no case for any of them and falls through to "text":
+// apply writes a hypothesis's prose under "text" while revert looks for it
+// under "claim". That is a live, pre-existing defect this feature does not
+// fix, because fixing it changes behaviour for domain-profile graphs and
+// needs its own spec — recorded as follow-up 1 in
+// specs/022-reference-type-folders/research.md §7, whose real remedy is to
+// delete this duplicate outright and call core.TextPredicateFor.
 func revertLeadingKey(nodeType string) string {
 	switch nodeType {
 	case "Source":
@@ -406,6 +421,8 @@ func revertLeadingKey(nodeType string) string {
 	case "Entity":
 		return "definition"
 	case "Resource":
+		return "text"
+	case "Reference":
 		return "relevance"
 	case "hypothesis":
 		return "claim"

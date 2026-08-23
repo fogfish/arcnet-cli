@@ -9,7 +9,7 @@
 package core
 
 // PredicateDef is the decoded, in-memory shape of one
-// _schema/predicates/<name>.md document (CORE §9.1): Role is one of
+// _schema/Property/<name>.md document (CORE §9.1): Role is one of
 // meta/text/href/edge/link, Merge is the MergeOp arc apply uses when the
 // predicate's own value participates in a node merge, Label/Aligned are
 // optional, and Description is the document's mandatory descriptive body.
@@ -21,7 +21,7 @@ type PredicateDef struct {
 	Description string
 }
 
-// TypeDef is the decoded, in-memory shape of one _schema/types/<name>.md
+// TypeDef is the decoded, in-memory shape of one _schema/Class/<name>.md
 // document (CORE §9.2 plus the arc apply-specific merge bridge field):
 // Merge is the MergeOp arc apply uses to reconcile an incoming contribution
 // of this type with an existing node, Required/Optional name the

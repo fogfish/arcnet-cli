@@ -372,6 +372,20 @@ func isCamelCase(s string) bool {
 // stopgap superseded by spec 011's Schema Index, which will derive text
 // predicate names from a graph's actual schema instead of a hardcoded
 // table.
+//
+// Leading prose keys by the predicate its own type declares, across the five
+// ARCNET-CORE v0.11 content types: "abstract" for Source, "definition" for
+// Entity, "text" for Resource, "relevance" for Reference, and "text" for
+// anything else. Trailing prose is "notes" unconditionally, for every type.
+// Resource means a fragment of an *ingested* document and Reference an
+// un-ingested external work, so the leading key each takes is the one that
+// type actually requires — storing a Resource's body under "relevance" would
+// put it under a predicate the type no longer declares at all
+// (specs/022-reference-type-folders, contract C4).
+//
+// Parse and render both route through this one function
+// (walkNodeBody/renderNodeBody), so the write side and the read side cannot
+// disagree about a key: one edit here moves both.
 // TextPredicateFor exposes textPredicateFor's leading/trailing structural
 // slot-key convention to other internal packages (BUG-002) — e.g.
 // internal/app/graph/service's auto-discovery hook, which must recognize
@@ -391,6 +405,8 @@ func textPredicateFor(nodeType string, leading bool) string {
 	case "Entity":
 		return "definition"
 	case "Resource":
+		return "text"
+	case "Reference":
 		return "relevance"
 	default:
 		return "text"

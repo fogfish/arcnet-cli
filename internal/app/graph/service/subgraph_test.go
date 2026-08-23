@@ -52,7 +52,7 @@ func TestSubgraphGuardNotAGraph(t *testing.T) {
 
 func TestSubgraphUnknownSeedReturnsErrSeedNotFound(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"entities/A.md": entityNode("A"),
+		"Entity/A.md": entityNode("A"),
 	})
 
 	_, err := service.Subgraph(context.Background(), mounter, core.Filter{}, "No Such Node", 1, configkernel.SubgraphConfig{}, "/graph", false)
@@ -62,8 +62,8 @@ func TestSubgraphUnknownSeedReturnsErrSeedNotFound(t *testing.T) {
 
 func TestSubgraphDepthZeroYieldsSeedAlone(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"entities/A.md": entityNode("A", "B"),
-		"entities/B.md": entityNode("B"),
+		"Entity/A.md": entityNode("A", "B"),
+		"Entity/B.md": entityNode("B"),
 	})
 
 	result, err := service.Subgraph(context.Background(), mounter, core.Filter{}, "A", 0, configkernel.SubgraphConfig{}, "/graph", false)
@@ -78,7 +78,7 @@ func TestSubgraphDepthZeroYieldsSeedAlone(t *testing.T) {
 
 func TestSubgraphSeedWithNoConnectionsYieldsOneNodePatch(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"entities/Lonely.md": entityNode("Lonely"),
+		"Entity/Lonely.md": entityNode("Lonely"),
 	})
 
 	result, err := service.Subgraph(context.Background(), mounter, core.Filter{}, "Lonely", 1, configkernel.SubgraphConfig{}, "/graph", false)
@@ -94,10 +94,10 @@ func TestSubgraphSeedWithNoConnectionsYieldsOneNodePatch(t *testing.T) {
 // connected node (in either direction) is included exactly once.
 func TestSubgraphDefaultDepthIncludesEveryDirectlyConnectedNodeGroupedByKind(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"entities/TLS.md":                entityNode("TLS", "rescorla-2026-tls13", "RFC 8446"),
-		"entities/SSL.md":                entityNode("SSL", "TLS"),
-		"sources/rescorla-2026-tls13.md": sourceNodeWithAttrs("rescorla-2026-tls13", "cryptography", "mature"),
-		"resources/RFC 8446.md":          resourceNodeWithAttrs("RFC 8446", "cryptography", "draft"),
+		"Entity/TLS.md":                 entityNode("TLS", "rescorla-2026-tls13", "RFC 8446"),
+		"Entity/SSL.md":                 entityNode("SSL", "TLS"),
+		"Source/rescorla-2026-tls13.md": sourceNodeWithAttrs("rescorla-2026-tls13", "cryptography", "mature"),
+		"Resource/RFC 8446.md":          resourceNodeWithAttrs("RFC 8446", "cryptography", "draft"),
 	})
 
 	result, err := service.Subgraph(context.Background(), mounter, core.Filter{}, "TLS", 1, configkernel.SubgraphConfig{}, "/graph", false)
@@ -121,8 +121,8 @@ func TestSubgraphDefaultDepthIncludesEveryDirectlyConnectedNodeGroupedByKind(t *
 
 func TestSubgraphCycleDoesNotLoopOrDuplicateNodes(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"entities/CycleA.md": entityNode("CycleA", "CycleB"),
-		"entities/CycleB.md": entityNode("CycleB", "CycleA"),
+		"Entity/CycleA.md": entityNode("CycleA", "CycleB"),
+		"Entity/CycleB.md": entityNode("CycleB", "CycleA"),
 	})
 
 	result, err := service.Subgraph(context.Background(), mounter, core.Filter{}, "CycleA", 5, configkernel.SubgraphConfig{}, "/graph", false)
@@ -134,7 +134,7 @@ func TestSubgraphCycleDoesNotLoopOrDuplicateNodes(t *testing.T) {
 
 func TestSubgraphDanglingLinkTargetExcluded(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"entities/Dangling.md": entityNode("Dangling", "No Such Target"),
+		"Entity/Dangling.md": entityNode("Dangling", "No Such Target"),
 	})
 
 	result, err := service.Subgraph(context.Background(), mounter, core.Filter{}, "Dangling", 1, configkernel.SubgraphConfig{}, "/graph", false)
@@ -147,12 +147,12 @@ func TestSubgraphDanglingLinkTargetExcluded(t *testing.T) {
 
 func TestSubgraphMultiHopChainRespectsDepthBoundaries(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"entities/A.md": entityNode("A", "B", "F"),
-		"entities/B.md": entityNode("B", "C"),
-		"entities/C.md": entityNode("C", "D", "E"),
-		"entities/D.md": entityNode("D"),
-		"entities/E.md": entityNode("E"),
-		"entities/F.md": entityNode("F", "E"),
+		"Entity/A.md": entityNode("A", "B", "F"),
+		"Entity/B.md": entityNode("B", "C"),
+		"Entity/C.md": entityNode("C", "D", "E"),
+		"Entity/D.md": entityNode("D"),
+		"Entity/E.md": entityNode("E"),
+		"Entity/F.md": entityNode("F", "E"),
 	})
 
 	depth0, err := service.Subgraph(context.Background(), mounter, core.Filter{}, "A", 0, configkernel.SubgraphConfig{}, "/graph", false)
@@ -200,9 +200,9 @@ func nodeIDSet(nodes []core.Node) map[string]bool {
 
 func TestSubgraphFilterExcludesNonSeedCandidatesOnlyNeverSeed(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"entities/TLS.md":                entityNode("TLS", "rescorla-2026-tls13", "RFC 8446"),
-		"sources/rescorla-2026-tls13.md": sourceNodeWithAttrs("rescorla-2026-tls13", "cryptography", "mature"),
-		"resources/RFC 8446.md":          resourceNodeWithAttrs("RFC 8446", "cryptography", "draft"),
+		"Entity/TLS.md":                 entityNode("TLS", "rescorla-2026-tls13", "RFC 8446"),
+		"Source/rescorla-2026-tls13.md": sourceNodeWithAttrs("rescorla-2026-tls13", "cryptography", "mature"),
+		"Resource/RFC 8446.md":          resourceNodeWithAttrs("RFC 8446", "cryptography", "draft"),
 	})
 
 	filter := core.Filter{Types: []string{"Source"}}
@@ -219,8 +219,8 @@ func TestSubgraphFilterExcludesNonSeedCandidatesOnlyNeverSeed(t *testing.T) {
 
 func TestSubgraphFilterMatchingZeroReachableNodesYieldsSeedAloneNoError(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"entities/TLS.md":                entityNode("TLS", "rescorla-2026-tls13"),
-		"sources/rescorla-2026-tls13.md": sourceNodeWithAttrs("rescorla-2026-tls13", "cryptography", "mature"),
+		"Entity/TLS.md":                 entityNode("TLS", "rescorla-2026-tls13"),
+		"Source/rescorla-2026-tls13.md": sourceNodeWithAttrs("rescorla-2026-tls13", "cryptography", "mature"),
 	})
 
 	filter := core.Filter{Types: []string{"Resource"}}
@@ -234,9 +234,9 @@ func TestSubgraphFilterMatchingZeroReachableNodesYieldsSeedAloneNoError(t *testi
 
 func TestSubgraphCombinedKindTagAttrFilterNarrowsToExactSubset(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"entities/TLS.md":                entityNode("TLS", "rescorla-2026-tls13", "other-2026"),
-		"sources/rescorla-2026-tls13.md": sourceNodeWithAttrs("rescorla-2026-tls13", "cryptography", "mature"),
-		"sources/other-2026.md":          sourceNodeWithAttrs("other-2026", "cryptography", "draft"),
+		"Entity/TLS.md":                 entityNode("TLS", "rescorla-2026-tls13", "other-2026"),
+		"Source/rescorla-2026-tls13.md": sourceNodeWithAttrs("rescorla-2026-tls13", "cryptography", "mature"),
+		"Source/other-2026.md":          sourceNodeWithAttrs("other-2026", "cryptography", "draft"),
 	})
 
 	filter := core.Filter{
@@ -260,12 +260,12 @@ func TestSubgraphCombinedKindTagAttrFilterNarrowsToExactSubset(t *testing.T) {
 // the highest-degree candidates, deterministic across repeated runs.
 func TestSubgraphCapRetainsExactlyHighestDegreeCandidates(t *testing.T) {
 	files := map[string]string{
-		"entities/Hub.md": entityNode("Hub"),
-		"entities/P1.md":  entityNode("P1", "Hub", "DummyA", "DummyB"),
-		"entities/P2.md":  entityNode("P2", "Hub", "DummyC"),
-		"entities/P3.md":  entityNode("P3", "Hub"),
-		"entities/P4.md":  entityNode("P4", "Hub"),
-		"entities/P5.md":  entityNode("P5", "Hub"),
+		"Entity/Hub.md": entityNode("Hub"),
+		"Entity/P1.md":  entityNode("P1", "Hub", "DummyA", "DummyB"),
+		"Entity/P2.md":  entityNode("P2", "Hub", "DummyC"),
+		"Entity/P3.md":  entityNode("P3", "Hub"),
+		"Entity/P4.md":  entityNode("P4", "Hub"),
+		"Entity/P5.md":  entityNode("P5", "Hub"),
 	}
 	mounter := newGrepGraph(files)
 	cfg := configkernel.SubgraphConfig{BacklinkCap: 2}
@@ -296,10 +296,10 @@ func TestSubgraphCapRetainsExactlyHighestDegreeCandidates(t *testing.T) {
 // not pull D into the output (no recursive stub expansion).
 func TestSubgraphStubsEmittedOnlyWhenRequested(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"entities/A.md": entityNode("A", "B"),
-		"entities/B.md": entityNode("B", "C"),
-		"entities/C.md": entityNode("C", "D"),
-		"entities/D.md": entityNode("D"),
+		"Entity/A.md": entityNode("A", "B"),
+		"Entity/B.md": entityNode("B", "C"),
+		"Entity/C.md": entityNode("C", "D"),
+		"Entity/D.md": entityNode("D"),
 	})
 
 	withoutStubs, err := service.Subgraph(context.Background(), mounter, core.Filter{}, "A", 1, configkernel.SubgraphConfig{}, "/graph", false)
@@ -325,8 +325,8 @@ func TestSubgraphStubsEmittedOnlyWhenRequested(t *testing.T) {
 // plenty of both.
 func TestSubgraphStubCarriesOnlyKindAndIDNoOtherContent(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"entities/A.md":                  entityNode("A", "rescorla-2026-tls13"),
-		"sources/rescorla-2026-tls13.md": sourceNodeWithAttrs("rescorla-2026-tls13", "cryptography", "mature"),
+		"Entity/A.md":                   entityNode("A", "rescorla-2026-tls13"),
+		"Source/rescorla-2026-tls13.md": sourceNodeWithAttrs("rescorla-2026-tls13", "cryptography", "mature"),
 	})
 
 	// depth 0: the seed's own direct edge to rescorla-2026-tls13 is itself

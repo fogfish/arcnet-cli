@@ -54,9 +54,9 @@ func TestCorePredicateDefNamesAreCamelCase(t *testing.T) {
 }
 
 func TestCoreTypeDefsContainsCoreTypesAndSchemaTypesThemselves(t *testing.T) {
-	it.Then(t).Should(it.Equal(7, len(kernel.CoreTypeDefs)))
+	it.Then(t).Should(it.Equal(8, len(kernel.CoreTypeDefs)))
 
-	for _, name := range []string{"Source", "Entity", "Resource", "Timeline", "Node", "Property", "Class"} {
+	for _, name := range []string{"Source", "Entity", "Resource", "Timeline", "Reference", "Node", "Property", "Class"} {
 		def, ok := kernel.CoreTypeDefs[name]
 		it.Then(t).Should(it.True(ok))
 		it.Then(t).ShouldNot(it.Equal("", def.Description))
@@ -73,8 +73,17 @@ func TestCoreTypeDefsRequiredListsMatchCoreSection11(t *testing.T) {
 	entity := kernel.CoreTypeDefs["Entity"]
 	it.Then(t).Should(it.Seq(entity.Required).Equal("category", "definition", "mentionedIn"))
 
+	// CORE §11.4 v0.11: Resource is a fragment of an *ingested* document,
+	// so it requires its own prose, its tag classification, and a backlink
+	// to the document it was drawn from. The external-work predicates it
+	// used to require moved to Reference (specs/022-reference-type-folders).
 	resource := kernel.CoreTypeDefs["Resource"]
-	it.Then(t).Should(it.Seq(resource.Required).Equal("ref", "relevance"))
+	it.Then(t).Should(it.Seq(resource.Required).Equal("text", "tags", "mentionedIn"))
+
+	// CORE §11.6 v0.11: Reference records only enough to identify, locate,
+	// and justify keeping a pointer to a work the graph has not ingested.
+	reference := kernel.CoreTypeDefs["Reference"]
+	it.Then(t).Should(it.Seq(reference.Required).Equal("title", "ref", "relevance"))
 
 	// timeline deliberately diverges from CORE §11.5 here (BUG-002,
 	// research.md D12): "entries" is replaced by "cites" (reusing the
@@ -108,8 +117,16 @@ func TestCoreTypeDefsOptionalListsIncludeCrossCuttingPredicates(t *testing.T) {
 	}{
 		{"Source", []string{"authors", "url", "cites", "doi", "indexed"}},
 		{"Entity", append([]string{"aliases", "notes", "indexed", "mentions"}, semantic...)},
-		{"Resource", append([]string{"url", "isCitedBy", "authors", "year", "doi", "status", "notes", "indexed", "mentions", "mentionedIn"}, semantic...)},
+		// CORE §11.4 v0.11 lists notes as Resource's sole optional: the
+		// structural and semantic optionals it used to carry are not
+		// carried over, and §11.6 gives Reference none of them either
+		// (specs/022-reference-type-folders, data-model.md §1.1). Both
+		// keep "indexed", which is not a CORE predicate but the arc
+		// extension arc apply stamps on every node it creates — every
+		// other content type already carries it for the same reason.
+		{"Resource", []string{"notes", "indexed"}},
 		{"Timeline", []string{"heading", "indexed", "mentions", "mentionedIn"}},
+		{"Reference", []string{"url", "authors", "year", "doi", "status", "isCitedBy", "notes", "indexed"}},
 	}
 
 	for _, tc := range tests {
@@ -128,7 +145,7 @@ func TestCoreTypeDefsNodeOptionalList(t *testing.T) {
 // Node (spec 017, data-model.md) — redundant with the implicit rule but
 // written for the seeded document's own self-description.
 func TestCoreTypeBasesWireContentTypesToNode(t *testing.T) {
-	for _, name := range []string{"Source", "Entity", "Resource", "Timeline"} {
+	for _, name := range []string{"Source", "Entity", "Resource", "Timeline", "Reference"} {
 		it.Then(t).Should(it.Seq(kernel.CoreTypeBases[name]).Equal("Node"))
 	}
 	_, hasNode := kernel.CoreTypeBases["Node"]
@@ -165,5 +182,57 @@ func TestCorePredicateDefsTextRoleSeedsAppend(t *testing.T) {
 			continue
 		}
 		it.Then(t).Should(it.Equal(core.MergeAppend, def.Merge))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// specs/022-reference-type-folders — ARCNET-CORE v0.11
+// ---------------------------------------------------------------------------
+
+// TestReferencePredicatesAreAllRegistered enforces data-model.md §4 rule 5
+// and spec.md FR-006: every predicate Reference names in either list is
+// itself a key of CorePredicateDefs, so arc init seeds a Property document
+// for each and a freshly initialized graph lints clean.
+//
+// This feature introduces no new predicate — Reference's whole vocabulary is
+// the set displaced from Resource, plus title, all of which CORE §10 already
+// documented. A type declaring a predicate nobody seeded is exactly the
+// defect a new core type is most likely to introduce, and it surfaces at
+// lint time on a graph the tool itself created.
+func TestReferencePredicatesAreAllRegistered(t *testing.T) {
+	reference := kernel.CoreTypeDefs["Reference"]
+
+	for _, name := range append(append([]string{}, reference.Required...), reference.Optional...) {
+		_, ok := kernel.CorePredicateDefs[name]
+		it.Then(t).Should(it.True(ok))
+	}
+}
+
+// TestEveryCoreTypePredicateIsRegistered generalizes the rule above to the
+// whole seeded vocabulary: no type may name a predicate the seed does not
+// also register, whichever type it is. Reference is the reason to write it,
+// but the invariant was always meant to hold.
+func TestEveryCoreTypePredicateIsRegistered(t *testing.T) {
+	for _, def := range kernel.CoreTypeDefs {
+		for _, name := range append(append([]string{}, def.Required...), def.Optional...) {
+			_, ok := kernel.CorePredicateDefs[name]
+			it.Then(t).Should(it.True(ok))
+		}
+	}
+}
+
+// TestResourceDeclaresNoExternalWorkPredicate pins contract C2's negative
+// half: the eight predicates that moved to Reference appear in neither of
+// Resource's lists. A Resource that still offered them would accept a node
+// shaped like the retired definition without complaint, which is precisely
+// the non-conformance this feature exists to end.
+func TestResourceDeclaresNoExternalWorkPredicate(t *testing.T) {
+	resource := kernel.CoreTypeDefs["Resource"]
+	declared := append(append([]string{}, resource.Required...), resource.Optional...)
+
+	for _, retired := range []string{"ref", "relevance", "url", "authors", "year", "doi", "status", "isCitedBy"} {
+		for _, got := range declared {
+			it.Then(t).Should(it.True(got != retired))
+		}
 	}
 }

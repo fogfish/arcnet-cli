@@ -25,6 +25,7 @@ import (
 
 	"github.com/fogfish/arcnet-cli/cmd/arc/lint"
 	appschema "github.com/fogfish/arcnet-cli/internal/app/schema"
+	schemakernel "github.com/fogfish/arcnet-cli/internal/app/schema/kernel"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
@@ -108,7 +109,7 @@ func runGit(t *testing.T, dir string, args ...string) string {
 // behavior — so Resolve's fail-fast validation never rejects this fixture.
 func initGraph(t *testing.T, dir string) {
 	t.Helper()
-	for _, folder := range []string{"sources", "entities", "resources", "timeline/yearly", "timeline/monthly", "_schema/types", "_schema/predicates"} {
+	for _, folder := range []string{"Source", "Entity", "Resource", "timeline/yearly", "timeline/monthly", "_schema/Class", "_schema/Property"} {
 		it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, folder), 0o755)))
 	}
 	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, ".arc"), 0o755)))
@@ -138,12 +139,12 @@ func seedNode(t *testing.T, dir, relPath, content string) {
 	runGit(t, dir, "commit", "-m", "seed: "+relPath)
 }
 
-// seedSchemaNode writes _schema/types/<kind>.md directly, registering kind
+// seedSchemaNode writes _schema/Class/<kind>.md directly, registering kind
 // with merge behavior op — equivalent to a prior arc apply's auto-discovery
 // or a hand-edit (spec.md US2/US3), without writing a git commit of its own.
 func seedSchemaNode(t *testing.T, dir, kind, op string) {
 	t.Helper()
-	full := filepath.Join(dir, "_schema", "types", kind+".md")
+	full := filepath.Join(dir, "_schema", "Class", kind+".md")
 	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Dir(full), 0o755)))
 	content := "---\n\"@id\": " + kind + "\n\"@type\": Class\nmerge: " + op + "\n---\n# " + kind + "\n\nA domain type registered by this test fixture.\n"
 	it.Then(t).Should(it.Nil(os.WriteFile(full, []byte(content), 0o644)))
@@ -217,8 +218,8 @@ func TestApplyCreatesNodesForNewDocument(t *testing.T) {
 	out, err := sut(NewApplyCmd(), []string{patch})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
-	assertIsFile(t, filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
-	assertIsFile(t, filepath.Join(dir, "entities", "Transport Layer Security.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
+	assertIsFile(t, filepath.Join(dir, "Entity", "Transport Layer Security.md"))
 }
 
 // arc apply tls13.patch.md
@@ -376,18 +377,18 @@ A cryptographic protocol.
 func TestApplyMergesExistingEntityUnion(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedNode(t, dir, "entities/Transport Layer Security.md", tlsEntitySeed)
+	seedNode(t, dir, "Entity/Transport Layer Security.md", tlsEntitySeed)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "pqkex.patch.md", pqkexPatchMergingEntity)
 
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	entries, err := os.ReadDir(filepath.Join(dir, "entities"))
+	entries, err := os.ReadDir(filepath.Join(dir, "Entity"))
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, len(entries)))
 
-	content := readFile(t, filepath.Join(dir, "entities", "Transport Layer Security.md"))
+	content := readFile(t, filepath.Join(dir, "Entity", "Transport Layer Security.md"))
 	it.Then(t).
 		Should(it.String(content).Contain("replaces:: [[SSL Protocol]]")).
 		Should(it.String(content).Contain("requires:: [[Forward Secrecy]]"))
@@ -442,14 +443,14 @@ The normative specification of TLS 1.3.
 func TestApplyMergeFillsEmptyResourceField(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedNode(t, dir, "resources/RFC 8446.md", rfcResourceSeedEmptyStatus)
+	seedNode(t, dir, "Resource/RFC 8446.md", rfcResourceSeedEmptyStatus)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "pqkex.patch.md", patchFillsResourceStatus)
 
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	content := readFile(t, filepath.Join(dir, "resources", "RFC 8446.md"))
+	content := readFile(t, filepath.Join(dir, "Resource", "RFC 8446.md"))
 	it.Then(t).Should(it.String(content).Contain("status: read"))
 }
 
@@ -566,7 +567,7 @@ Andrej Karpathy has publicly argued that agentic coding workflows will reshape h
 func TestApplyEntityReContributionAppendsProseAndAccumulatesUnregisteredScalars(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedNode(t, dir, "entities/LLM.md", llmEntitySeed)
+	seedNode(t, dir, "Entity/LLM.md", llmEntitySeed)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "karpathy.patch.md", karpathyPatchRegeneratesEntity)
 
@@ -574,7 +575,7 @@ func TestApplyEntityReContributionAppendsProseAndAccumulatesUnregisteredScalars(
 	it.Then(t).ShouldNot(it.Error(stdout, err))
 	it.Then(t).ShouldNot(it.String(stderr).Contain("merge conflict"))
 
-	content := readFile(t, filepath.Join(dir, "entities", "LLM.md"))
+	content := readFile(t, filepath.Join(dir, "Entity", "LLM.md"))
 	it.Then(t).
 		ShouldNot(it.String(content).Contain("<<<<<<<")).
 		Should(it.String(content).Contain("knowledge management")).
@@ -597,7 +598,7 @@ func TestApplyEntityReContributionAppendsProseAndAccumulatesUnregisteredScalars(
 func TestApplyMergePreservesSetFieldOnDivergence(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedNode(t, dir, "resources/RFC 8446.md", rfcResourceSeedSetStatus)
+	seedNode(t, dir, "Resource/RFC 8446.md", rfcResourceSeedSetStatus)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "pqkex.patch.md", patchDivergesResourceStatus)
 
@@ -611,7 +612,7 @@ func TestApplyMergePreservesSetFieldOnDivergence(t *testing.T) {
 	afterCount := len(strings.Split(after, "\n"))
 	it.Then(t).Should(it.Equal(beforeCount+1, afterCount))
 
-	content := readFile(t, filepath.Join(dir, "resources", "RFC 8446.md"))
+	content := readFile(t, filepath.Join(dir, "Resource", "RFC 8446.md"))
 	it.Then(t).
 		Should(it.String(content).Contain("<<<<<<< existing")).
 		Should(it.String(content).Contain("normative")).
@@ -628,7 +629,7 @@ func TestApplyMergePreservesSetFieldOnDivergence(t *testing.T) {
 func TestApplyCommitStatsDistinguishMergedFromCreated(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedNode(t, dir, "entities/Transport Layer Security.md", tlsEntitySeed)
+	seedNode(t, dir, "Entity/Transport Layer Security.md", tlsEntitySeed)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "pqkex.patch.md", pqkexPatchMergingEntity)
 
@@ -715,13 +716,13 @@ func TestApplyUnregisteredKindCreatesSchemaDocumentInSameCommit(t *testing.T) {
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	assertIsFile(t, filepath.Join(dir, "_schema", "types", "Hypothesis.md"))
-	content := readFile(t, filepath.Join(dir, "_schema", "types", "Hypothesis.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "Class", "Hypothesis.md"))
+	content := readFile(t, filepath.Join(dir, "_schema", "Class", "Hypothesis.md"))
 	it.Then(t).Should(it.String(content).Contain("merge: union"))
 
 	stat := runGit(t, dir, "show", "--stat", "HEAD")
 	it.Then(t).
-		Should(it.String(stat).Contain("_schema/types/Hypothesis.md")).
+		Should(it.String(stat).Contain("_schema/Class/Hypothesis.md")).
 		Should(it.String(stat).Contain("Forward Secrecy Requires Ephemeral Keys.md"))
 }
 
@@ -741,12 +742,12 @@ func TestApplyUnregisteredPredicateCreatesSchemaDocumentInSameCommit(t *testing.
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "supersedes.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "Property", "supersedes.md"))
 
 	stat := runGit(t, dir, "show", "--stat", "HEAD")
 	it.Then(t).
-		Should(it.String(stat).Contain("_schema/predicates/supersedes.md")).
-		Should(it.String(stat).Contain("sources/rescorla-2026-tls13.md"))
+		Should(it.String(stat).Contain("_schema/Property/supersedes.md")).
+		Should(it.String(stat).Contain("Source/rescorla-2026-tls13.md"))
 }
 
 const hypothesisWithLabeledBlocksPatch = `---
@@ -799,12 +800,12 @@ func TestApplyLabeledBlockNonWikilinkContentSurvives(t *testing.T) {
 		Should(it.String(content).Contain("CommonMark")).
 		Should(it.String(content).Contain("[[Some Aporia]]"))
 
-	assumptionsSchema := readFile(t, filepath.Join(dir, "_schema", "predicates", "assumptions.md"))
+	assumptionsSchema := readFile(t, filepath.Join(dir, "_schema", "Property", "assumptions.md"))
 	it.Then(t).
 		Should(it.String(assumptionsSchema).Contain("role: text")).
 		Should(it.String(assumptionsSchema).Contain("merge: append"))
 
-	referencesSchema := readFile(t, filepath.Join(dir, "_schema", "predicates", "references.md"))
+	referencesSchema := readFile(t, filepath.Join(dir, "_schema", "Property", "references.md"))
 	it.Then(t).
 		Should(it.String(referencesSchema).Contain("role: text")).
 		Should(it.String(referencesSchema).Contain("merge: append"))
@@ -869,10 +870,10 @@ func TestApplyLabeledBlockShapeSurvivesWikilinksListMarkersHeadingsAndGrouping(t
 		Should(it.String(content).Contain("## Derived From")).
 		Should(it.String(content).Contain("derivedFrom:: [[dmitry-2026-article2]]"))
 
-	assumptionsSchema := readFile(t, filepath.Join(dir, "_schema", "predicates", "assumptions.md"))
+	assumptionsSchema := readFile(t, filepath.Join(dir, "_schema", "Property", "assumptions.md"))
 	it.Then(t).Should(it.String(assumptionsSchema).Contain("role: text"))
 
-	relatedAporiasSchema := readFile(t, filepath.Join(dir, "_schema", "predicates", "relatedAporias.md"))
+	relatedAporiasSchema := readFile(t, filepath.Join(dir, "_schema", "Property", "relatedAporias.md"))
 	it.Then(t).
 		Should(it.String(relatedAporiasSchema).Contain("role: link")).
 		Should(it.String(relatedAporiasSchema).Contain("label: Related Aporias"))
@@ -889,7 +890,7 @@ func TestApplyRegisteredKindContentNotDuplicated(t *testing.T) {
 	_, err := sut(NewApplyCmd(), []string{patch1})
 	it.Then(t).Should(it.Nil(err))
 
-	before := readFile(t, filepath.Join(dir, "_schema", "types", "Hypothesis.md"))
+	before := readFile(t, filepath.Join(dir, "_schema", "Class", "Hypothesis.md"))
 
 	secondPatch := strings.ReplaceAll(strings.ReplaceAll(notePatchWithHypothesis,
 		"kolesnikov-2026-note", "kolesnikov-2026-note2"),
@@ -898,7 +899,7 @@ func TestApplyRegisteredKindContentNotDuplicated(t *testing.T) {
 	_, err = sut(NewApplyCmd(), []string{patch2})
 	it.Then(t).Should(it.Nil(err))
 
-	after := readFile(t, filepath.Join(dir, "_schema", "types", "Hypothesis.md"))
+	after := readFile(t, filepath.Join(dir, "_schema", "Class", "Hypothesis.md"))
 	it.Then(t).Should(it.Equal(before, after))
 }
 
@@ -966,9 +967,9 @@ A conclusion distilled from sources.
 
 // arc apply
 // spec.md FR-013/FR-015/FR-016: hand-editing a registered kind's own
-// _schema/types/<kind>.md merge value has no effect on reconciliation
+// _schema/Class/<kind>.md merge value has no effect on reconciliation
 // (D4 — it's vestigial); hand-editing the touched PREDICATE's own
-// _schema/predicates/<name>.md merge value is what changes the behavior a
+// _schema/Property/<name>.md merge value is what changes the behavior a
 // later arc apply invocation actually uses. "status" starts out
 // arc-init-seeded lastWriteWin — a diverging contribution is silently
 // applied (no conflict) — but after a hand-edit to firstWriteWin the
@@ -991,9 +992,9 @@ func TestApplyHandEditedMergeValueChangesLaterApplyBehavior(t *testing.T) {
 		ShouldNot(it.String(content).Contain("<<<<<<<")).
 		Should(it.String(content).Contain("status: draft"))
 
-	statusDoc := readFile(t, filepath.Join(dir, "_schema", "predicates", "status.md"))
+	statusDoc := readFile(t, filepath.Join(dir, "_schema", "Property", "status.md"))
 	it.Then(t).Should(it.Nil(os.WriteFile(
-		filepath.Join(dir, "_schema", "predicates", "status.md"),
+		filepath.Join(dir, "_schema", "Property", "status.md"),
 		[]byte(strings.ReplaceAll(statusDoc, "merge: lastWriteWin", "merge: firstWriteWin")), 0o644)))
 
 	firstWriteWinPatch := fmt.Sprintf(patchDivergesHypothesisStatusTemplate, "kolesnikov-2026-second", "Second Note", "kolesnikov-2026-second", "kolesnikov-2026-second", "Second Note")
@@ -1060,7 +1061,7 @@ text.
 	after := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
 	it.Then(t).Should(it.Equal(before, after))
 
-	entries, rerr := os.ReadDir(filepath.Join(dir, "sources"))
+	entries, rerr := os.ReadDir(filepath.Join(dir, "Source"))
 	it.Then(t).
 		Should(it.Nil(rerr)).
 		Should(it.Equal(0, len(entries)))
@@ -1094,7 +1095,7 @@ func TestApplyUnrelatedOldFormatNodeAbortsWithZeroWrites(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	legacyNode := "---\nkind: entity\nid: old-node\ncategory: [independent]\n---\n# old-node\n\nAn entity written before this feature shipped.\n"
-	seedNode(t, dir, "entities/old-node.md", legacyNode)
+	seedNode(t, dir, "Entity/old-node.md", legacyNode)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
 
@@ -1106,7 +1107,7 @@ func TestApplyUnrelatedOldFormatNodeAbortsWithZeroWrites(t *testing.T) {
 	after := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
 	it.Then(t).Should(it.Equal(before, after))
 
-	_, statErr := os.Stat(filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	_, statErr := os.Stat(filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }
 
@@ -1117,7 +1118,7 @@ func TestApplyOldFormatKindFieldRefuses(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	legacyNode := "---\nkind: entity\nid: old-node\n---\n# old-node\n\nLegacy shaped.\n"
-	seedNode(t, dir, "entities/old-node.md", legacyNode)
+	seedNode(t, dir, "Entity/old-node.md", legacyNode)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
 
@@ -1132,7 +1133,7 @@ func TestApplyMissingIdRefuses(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	legacyNode := "---\n\"@type\": Entity\ntitle: No Id\n---\n# No Id\n\nMissing @id.\n"
-	seedNode(t, dir, "entities/No Id.md", legacyNode)
+	seedNode(t, dir, "Entity/No Id.md", legacyNode)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
 
@@ -1147,7 +1148,7 @@ func TestApplyIdMismatchedBasenameRefuses(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	mismatched := "---\n\"@id\": Something Else\n\"@type\": Entity\n---\n# Mismatched\n\nWrong id.\n"
-	seedNode(t, dir, "entities/Mismatched.md", mismatched)
+	seedNode(t, dir, "Entity/Mismatched.md", mismatched)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
 
@@ -1254,9 +1255,9 @@ func TestApplyMalformedSchemaDocumentAbortsWithZeroWrites(t *testing.T) {
 	// field is no longer validated as mandatory, so corrupting it (as this
 	// test previously did via "merge: bogus") no longer makes the document
 	// malformed — its mandatory descriptive body is corrupted instead.
-	entityDoc := readFile(t, filepath.Join(dir, "_schema", "types", "Entity.md"))
+	entityDoc := readFile(t, filepath.Join(dir, "_schema", "Class", "Entity.md"))
 	it.Then(t).Should(it.Nil(os.WriteFile(
-		filepath.Join(dir, "_schema", "types", "Entity.md"),
+		filepath.Join(dir, "_schema", "Class", "Entity.md"),
 		[]byte(strings.ReplaceAll(entityDoc, "A node for a subject occurring in sources, typed by Sowa category.", "")), 0o644)))
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
@@ -1264,12 +1265,12 @@ func TestApplyMalformedSchemaDocumentAbortsWithZeroWrites(t *testing.T) {
 	before := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
 
 	out, err := sut(NewApplyCmd(), []string{patch})
-	it.Then(t).Should(it.Error(out, err).Contain("_schema/types/Entity.md"))
+	it.Then(t).Should(it.Error(out, err).Contain("_schema/Class/Entity.md"))
 
 	after := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
 	it.Then(t).Should(it.Equal(before, after))
 
-	_, statErr := os.Stat(filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	_, statErr := os.Stat(filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }
 
@@ -1279,14 +1280,14 @@ func TestApplyMalformedSchemaDocumentAbortsWithZeroWrites(t *testing.T) {
 func TestApplyMissingSchemaFolderAbortsWithZeroWrites(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	it.Then(t).Should(it.Nil(os.RemoveAll(filepath.Join(dir, "_schema", "types"))))
+	it.Then(t).Should(it.Nil(os.RemoveAll(filepath.Join(dir, "_schema", "Class"))))
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
 
 	out, err := sut(NewApplyCmd(), []string{patch})
-	it.Then(t).Should(it.Error(out, err).Contain("_schema/types"))
+	it.Then(t).Should(it.Error(out, err).Contain("_schema/Class"))
 
-	_, statErr := os.Stat(filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	_, statErr := os.Stat(filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }
 
@@ -1296,7 +1297,7 @@ func TestApplyMissingSchemaFolderAbortsWithZeroWrites(t *testing.T) {
 func TestApplyConflictHintPrinted(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedNode(t, dir, "resources/RFC 8446.md", rfcResourceSeedSetStatus)
+	seedNode(t, dir, "Resource/RFC 8446.md", rfcResourceSeedSetStatus)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "pqkex.patch.md", patchDivergesResourceStatus)
 
@@ -1431,7 +1432,7 @@ func TestApplyVerboseReportsUnchangedNotAppendedForDuplicateContribution(t *test
 		Should(it.String(stderr).Contain("definition: append -> unchanged")).
 		ShouldNot(it.String(stderr).Contain("definition: append -> appended"))
 
-	content := readFile(t, filepath.Join(dir, "entities", "Widget Dup.md"))
+	content := readFile(t, filepath.Join(dir, "Entity", "Widget Dup.md"))
 	it.Then(t).Should(it.Equal(1, strings.Count(content, "A duplicate-tested widget definition.")))
 }
 
@@ -1528,12 +1529,18 @@ func TestApplyAppendRegisteredKindUnionsAcrossPatches(t *testing.T) {
 		Should(it.String(out2).Contain("+0 LogEntrys")).
 		Should(it.String(out2).Contain("1 merged"))
 
-	entries, rerr := os.ReadDir(filepath.Join(dir, "LogEntrys"))
+	// The summary above still reads "LogEntrys" while the folder below is
+	// "LogEntry": pluralizeKind formats a display count and nodeFolder
+	// derives a path, and specs/022-reference-type-folders made only the
+	// second one the identity function (research.md D4). This pair is the
+	// regression guard against "fixing" the display string to match.
+
+	entries, rerr := os.ReadDir(filepath.Join(dir, "LogEntry"))
 	it.Then(t).
 		Should(it.Nil(rerr)).
 		Should(it.Equal(1, len(entries)))
 
-	content := readFile(t, filepath.Join(dir, "LogEntrys", "Deploy Event.md"))
+	content := readFile(t, filepath.Join(dir, "LogEntry", "Deploy Event.md"))
 	it.Then(t).
 		Should(it.String(content).Contain("relatesTo:: [[Service A]]")).
 		Should(it.String(content).Contain("relatesTo:: [[Service B]]")).
@@ -1611,8 +1618,8 @@ func TestApplyCreatedNodeCarriesPublishedFromPatch(t *testing.T) {
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	source := readFile(t, filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
-	entity := readFile(t, filepath.Join(dir, "entities", "Transport Layer Security.md"))
+	source := readFile(t, filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
+	entity := readFile(t, filepath.Join(dir, "Entity", "Transport Layer Security.md"))
 	it.Then(t).
 		Should(it.String(source).Contain(`published: "2026-04-12"`)).
 		Should(it.String(entity).Contain(`published: "2026-04-12"`))
@@ -1630,8 +1637,8 @@ func TestApplyCreatedNodesShareIdenticalIndexedValue(t *testing.T) {
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	source := readFile(t, filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
-	entity := readFile(t, filepath.Join(dir, "entities", "Transport Layer Security.md"))
+	source := readFile(t, filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
+	entity := readFile(t, filepath.Join(dir, "Entity", "Transport Layer Security.md"))
 
 	sourceIndexed := extractQuotedAttr(source, "indexed")
 	entityIndexed := extractQuotedAttr(entity, "indexed")
@@ -1676,7 +1683,7 @@ func TestApplyStubShapedSectionCreatesNodeWithNoPublishedOrIndexed(t *testing.T)
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	content := readFile(t, filepath.Join(dir, "entities", "StubEntity.md"))
+	content := readFile(t, filepath.Join(dir, "Entity", "StubEntity.md"))
 	it.Then(t).
 		ShouldNot(it.String(content).Contain("published:")).
 		ShouldNot(it.String(content).Contain("indexed:"))
@@ -1694,7 +1701,7 @@ func TestApplyAutoRegisteredSchemaDocumentCarriesNoTimestamps(t *testing.T) {
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	schemaDoc := readFile(t, filepath.Join(dir, "_schema", "types", "Hypothesis.md"))
+	schemaDoc := readFile(t, filepath.Join(dir, "_schema", "Class", "Hypothesis.md"))
 	it.Then(t).
 		ShouldNot(it.String(schemaDoc).Contain("published:")).
 		ShouldNot(it.String(schemaDoc).Contain("indexed:"))
@@ -1706,15 +1713,15 @@ func TestApplyAutoRegisteredSchemaDocumentCarriesNoTimestamps(t *testing.T) {
 func TestApplyRealMergeStampsUpdatedIdenticalToIndexed(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedNode(t, dir, "entities/Transport Layer Security.md", tlsEntitySeed)
+	seedNode(t, dir, "Entity/Transport Layer Security.md", tlsEntitySeed)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "pqkex.patch.md", pqkexPatchMergingEntity)
 
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	source := readFile(t, filepath.Join(dir, "sources", "chen-2026-pqkex.md"))
-	entity := readFile(t, filepath.Join(dir, "entities", "Transport Layer Security.md"))
+	source := readFile(t, filepath.Join(dir, "Source", "chen-2026-pqkex.md"))
+	entity := readFile(t, filepath.Join(dir, "Entity", "Transport Layer Security.md"))
 
 	sourceIndexed := extractQuotedAttr(source, "indexed")
 	entityUpdated := extractQuotedAttr(entity, "updated")
@@ -1771,14 +1778,14 @@ func TestApplyTypeLevelMergeValueNoLongerGovernsReconciliation(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	seedSchemaNode(t, dir, "Memo", "immutable")
-	seedNode(t, dir, "Memos/Widget.md", memoNoneSeed)
+	seedNode(t, dir, "Memo/Widget.md", memoNoneSeed)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "memo.patch.md", memoNonePatch)
 
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	content := readFile(t, filepath.Join(dir, "Memos", "Widget.md"))
+	content := readFile(t, filepath.Join(dir, "Memo", "Widget.md"))
 	it.Then(t).
 		Should(it.String(content).Contain("Original text.")).
 		Should(it.String(content).Contain("Changed text.")).
@@ -1827,14 +1834,14 @@ Now has real content.
 func TestApplyStubMergedWithRealContentFillsPublishedAndUpdatedNeverIndexed(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedNode(t, dir, "entities/StubbedThing.md", stubbedThingSeed)
+	seedNode(t, dir, "Entity/StubbedThing.md", stubbedThingSeed)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "fill.patch.md", patchFillsStubWithRealContent)
 
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	content := readFile(t, filepath.Join(dir, "entities", "StubbedThing.md"))
+	content := readFile(t, filepath.Join(dir, "Entity", "StubbedThing.md"))
 	it.Then(t).
 		Should(it.String(content).Contain(`published: "2026-05-02"`)).
 		ShouldNot(it.String(content).Contain("indexed:"))
@@ -1892,14 +1899,14 @@ A test entity.
 func TestApplyNoOpUnionReContributionAddsNoUpdated(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedNode(t, dir, "entities/Widget.md", noOpUnionEntitySeed)
+	seedNode(t, dir, "Entity/Widget.md", noOpUnionEntitySeed)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "noop.patch.md", noOpUnionPatch)
 
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	content := readFile(t, filepath.Join(dir, "entities", "Widget.md"))
+	content := readFile(t, filepath.Join(dir, "Entity", "Widget.md"))
 	it.Then(t).ShouldNot(it.String(content).Contain("updated:"))
 }
 
@@ -1917,12 +1924,12 @@ func TestApplyBoldLabelPatchNoEdgeLoss(t *testing.T) {
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	source := readFile(t, filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	source := readFile(t, filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
 	it.Then(t).
 		Should(it.String(source).Contain("mentions:: [[Transport Layer Security]]")).
 		Should(it.String(source).Contain("cites:: [[RFC 8446]]"))
 
-	entity := readFile(t, filepath.Join(dir, "entities", "Transport Layer Security.md"))
+	entity := readFile(t, filepath.Join(dir, "Entity", "Transport Layer Security.md"))
 	it.Then(t).
 		Should(it.String(entity).Contain("mentionedIn:: [[rescorla-2026-tls13]]")).
 		Should(it.String(entity).Contain("related:: [[Forward Secrecy]]"))
@@ -1978,10 +1985,10 @@ func TestApplyHeadingOnlyCanonicalPatchAcceptedEndToEnd(t *testing.T) {
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	assertIsFile(t, filepath.Join(dir, "sources", "dmitry-2026-graph.md"))
-	assertIsFile(t, filepath.Join(dir, "entities", "LLM.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "dmitry-2026-graph.md"))
+	assertIsFile(t, filepath.Join(dir, "Entity", "LLM.md"))
 
-	entity := readFile(t, filepath.Join(dir, "entities", "LLM.md"))
+	entity := readFile(t, filepath.Join(dir, "Entity", "LLM.md"))
 	it.Then(t).
 		Should(it.String(entity).Contain(`"@id": LLM`)).
 		Should(it.String(entity).Contain(`"@type": Entity`))
@@ -2083,7 +2090,7 @@ func TestApply012US1PerPredicateReconciliation(t *testing.T) {
 	out, err := sut(NewApplyCmd(), []string{patch2})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	content := readFile(t, filepath.Join(dir, "resources", "example-book.md"))
+	content := readFile(t, filepath.Join(dir, "Resource", "example-book.md"))
 	it.Then(t).
 		Should(it.String(content).Contain("ref: book")).
 		Should(it.String(content).Contain("status: read")).
@@ -2133,7 +2140,7 @@ func TestApply012US2ConflictFlaggingScopedToFirstWriteWin(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.String(stderr).Contain("merge conflict"))
 
-	content := readFile(t, filepath.Join(dir, "resources", "example-book.md"))
+	content := readFile(t, filepath.Join(dir, "Resource", "example-book.md"))
 	it.Then(t).
 		Should(it.String(content).Contain("<<<<<<< existing")).
 		Should(it.String(content).Contain("First summary.")).
@@ -2226,7 +2233,7 @@ A draft specification.
 func TestApply012US2FillIfEmptyFlagsOnlyAfterFirstWrite(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedNode(t, dir, "resources/RFC 9999.md", resourceFillIfEmptySeed)
+	seedNode(t, dir, "Resource/RFC 9999.md", resourceFillIfEmptySeed)
 	chdir(t, dir)
 	patch1 := writePatchFile(t, dir, "doc-c.patch.md", patchFillsUrlFirstTime)
 
@@ -2234,7 +2241,7 @@ func TestApply012US2FillIfEmptyFlagsOnlyAfterFirstWrite(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).ShouldNot(it.String(stderr1).Contain("merge conflict"))
 
-	content := readFile(t, filepath.Join(dir, "resources", "RFC 9999.md"))
+	content := readFile(t, filepath.Join(dir, "Resource", "RFC 9999.md"))
 	it.Then(t).Should(it.String(content).Contain("https://example.org/rfc9999-v1"))
 
 	patch2 := writePatchFile(t, dir, "doc-d.patch.md", patchDivergesUrlAfterFirstWrite)
@@ -2242,7 +2249,7 @@ func TestApply012US2FillIfEmptyFlagsOnlyAfterFirstWrite(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.String(stderr2).Contain("merge conflict"))
 
-	content = readFile(t, filepath.Join(dir, "resources", "RFC 9999.md"))
+	content = readFile(t, filepath.Join(dir, "Resource", "RFC 9999.md"))
 	it.Then(t).
 		Should(it.String(content).Contain("<<<<<<< existing")).
 		Should(it.String(content).Contain("rfc9999-v1")).
@@ -2328,11 +2335,11 @@ An ongoing research topic.
 func TestApply012US3IndependentPredicatesConvergeInEitherOrder(t *testing.T) {
 	forward := t.TempDir()
 	initGraph(t, forward)
-	seedNode(t, forward, "resources/example-topic.md", resourceIndependentPredicatesSeed)
+	seedNode(t, forward, "Resource/example-topic.md", resourceIndependentPredicatesSeed)
 
 	reverse := t.TempDir()
 	initGraph(t, reverse)
-	seedNode(t, reverse, "resources/example-topic.md", resourceIndependentPredicatesSeed)
+	seedNode(t, reverse, "Resource/example-topic.md", resourceIndependentPredicatesSeed)
 
 	func() {
 		chdir(t, forward)
@@ -2354,8 +2361,8 @@ func TestApply012US3IndependentPredicatesConvergeInEitherOrder(t *testing.T) {
 		it.Then(t).Should(it.Nil(err))
 	}()
 
-	forwardContent := readFile(t, filepath.Join(forward, "resources", "example-topic.md"))
-	reverseContent := readFile(t, filepath.Join(reverse, "resources", "example-topic.md"))
+	forwardContent := readFile(t, filepath.Join(forward, "Resource", "example-topic.md"))
+	reverseContent := readFile(t, filepath.Join(reverse, "Resource", "example-topic.md"))
 
 	stripUpdated := func(s string) string {
 		return regexp.MustCompile(`updated: "[^"]+"\n`).ReplaceAllString(s, "")
@@ -2370,7 +2377,7 @@ func TestApply012US3IndependentPredicatesConvergeInEitherOrder(t *testing.T) {
 func TestApply012US3LastWriteWinIsOrderSensitive(t *testing.T) {
 	forward := t.TempDir()
 	initGraph(t, forward)
-	seedNode(t, forward, "resources/example-book.md", `---
+	seedNode(t, forward, "Resource/example-book.md", `---
 "@id": "example-book"
 "@type": Resource
 title: example-book
@@ -2383,7 +2390,7 @@ A tracked reading item.
 
 	reverse := t.TempDir()
 	initGraph(t, reverse)
-	seedNode(t, reverse, "resources/example-book.md", `---
+	seedNode(t, reverse, "Resource/example-book.md", `---
 "@id": "example-book"
 "@type": Resource
 title: example-book
@@ -2475,8 +2482,8 @@ A tracked reading item.
 		it.Then(t).Should(it.Nil(err))
 	}()
 
-	forwardContent := readFile(t, filepath.Join(forward, "resources", "example-book.md"))
-	reverseContent := readFile(t, filepath.Join(reverse, "resources", "example-book.md"))
+	forwardContent := readFile(t, filepath.Join(forward, "Resource", "example-book.md"))
+	reverseContent := readFile(t, filepath.Join(reverse, "Resource", "example-book.md"))
 
 	it.Then(t).
 		Should(it.String(forwardContent).Contain("status: archived")).
@@ -2498,7 +2505,7 @@ func TestApply012US3ReplayDoesNotRewrapConflictMarker(t *testing.T) {
 	_, err = sut(NewApplyCmd(), []string{patch2})
 	it.Then(t).Should(it.Nil(err))
 
-	firstConflict := readFile(t, filepath.Join(dir, "resources", "example-book.md"))
+	firstConflict := readFile(t, filepath.Join(dir, "Resource", "example-book.md"))
 	it.Then(t).Should(it.Equal(1, strings.Count(firstConflict, "<<<<<<<")))
 
 	replayPatch := strings.ReplaceAll(resourcePatch012Second, "doc-2026-b", "doc-2026-b-replay")
@@ -2506,7 +2513,7 @@ func TestApply012US3ReplayDoesNotRewrapConflictMarker(t *testing.T) {
 	_, err = sut(NewApplyCmd(), []string{patch3})
 	it.Then(t).Should(it.Nil(err))
 
-	secondConflict := readFile(t, filepath.Join(dir, "resources", "example-book.md"))
+	secondConflict := readFile(t, filepath.Join(dir, "Resource", "example-book.md"))
 	it.Then(t).
 		Should(it.Equal(1, strings.Count(secondConflict, "<<<<<<<"))).
 		Should(it.Equal(firstConflict, secondConflict))
@@ -2548,7 +2555,7 @@ func TestApplyLowercaseH1HeadingRejected(t *testing.T) {
 	after := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
 	it.Then(t).Should(it.Equal(before, after))
 
-	_, statErr := os.Stat(filepath.Join(dir, "entities", "Transport Layer Security.md"))
+	_, statErr := os.Stat(filepath.Join(dir, "Entity", "Transport Layer Security.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }
 
@@ -2582,7 +2589,7 @@ func TestApplyUppercaseH1HeadingStoresExactCasing(t *testing.T) {
 	out, err := sut(NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	content := readFile(t, filepath.Join(dir, "entities", "Transport Layer Security.md"))
+	content := readFile(t, filepath.Join(dir, "Entity", "Transport Layer Security.md"))
 	it.Then(t).Should(it.String(content).Contain(`"@type": Entity`))
 }
 
@@ -2633,9 +2640,9 @@ func TestApplyMultiH1OneNonCompliantRejectsWholeDocument(t *testing.T) {
 	after := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
 	it.Then(t).Should(it.Equal(before, after))
 
-	_, sourceStatErr := os.Stat(filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	_, sourceStatErr := os.Stat(filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(sourceStatErr)))
-	_, entityStatErr := os.Stat(filepath.Join(dir, "entities", "Transport Layer Security.md"))
+	_, entityStatErr := os.Stat(filepath.Join(dir, "Entity", "Transport Layer Security.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(entityStatErr)))
 }
 
@@ -2673,8 +2680,8 @@ func TestApplyTypeKeyPatchAppliesWithOneIngestCommit(t *testing.T) {
 	out, err := sut(NewApplyCmd(), []string{patch})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
-	assertIsFile(t, filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
-	assertIsFile(t, filepath.Join(dir, "entities", "Transport Layer Security.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
+	assertIsFile(t, filepath.Join(dir, "Entity", "Transport Layer Security.md"))
 	it.Then(t).Should(it.Equal(before+1, commitCount(t, dir)))
 }
 
@@ -2727,7 +2734,7 @@ func TestApplyLegacyKindPatchRefusedNamingReplacement(t *testing.T) {
 		Should(it.Equal(before, gitLog(t, dir))).
 		Should(it.Equal("", strings.TrimSpace(out)))
 
-	_, statErr := os.Stat(filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	_, statErr := os.Stat(filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }
 
@@ -2767,7 +2774,7 @@ func TestApplyBothIdentityKeysAgreeingApplies(t *testing.T) {
 	out, err := sut(NewApplyCmd(), []string{patch})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
-	assertIsFile(t, filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
 }
 
 // arc apply notapatch.md
@@ -2841,7 +2848,7 @@ func TestApplyBareIdentityKeyReportsQuoting(t *testing.T) {
 func TestApplyRetiredKeyPatchInGraphTreeSurfacesLegacyKindError(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedNode(t, dir, "entities/stale.patch.md", withIdentity("kind: patch"))
+	seedNode(t, dir, "Entity/stale.patch.md", withIdentity("kind: patch"))
 	chdir(t, dir)
 	patch := writePatchFile(t, t.TempDir(), "tls13.patch.md", tls13Patch)
 
@@ -2863,14 +2870,14 @@ func TestApplyRetiredKeyPatchInGraphTreeSurfacesLegacyKindError(t *testing.T) {
 func TestApplyTypeKeyPatchInGraphTreeIsPassedOver(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedNode(t, dir, "entities/exchange.patch.md", tlsEntityDocBPatch)
+	seedNode(t, dir, "Entity/exchange.patch.md", tlsEntityDocBPatch)
 	chdir(t, dir)
 	patch := writePatchFile(t, t.TempDir(), "tls13.patch.md", tls13Patch)
 
 	out, err := sut(NewApplyCmd(), []string{patch})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
-	assertIsFile(t, filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
 }
 
 // arc apply cased-body.patch.md
@@ -2897,4 +2904,336 @@ func TestApplyTypeKeyPatchWithBodyCasingViolationReportsBodyError(t *testing.T) 
 		ShouldNot(it.True(errors.Is(err, core.ErrManifestLegacyKind))).
 		ShouldNot(it.True(errors.Is(err, core.ErrManifestNotAPatch))).
 		ShouldNot(it.True(errors.Is(err, core.ErrManifestTypeConflict)))
+}
+
+// ---------------------------------------------------------------------------
+// specs/022-reference-type-folders — ARCNET-CORE v0.11
+// ---------------------------------------------------------------------------
+
+// v011Patch carries one node of every core content type this feature
+// touches, plus one domain-profile type the tool does not recognize. Each
+// content node opens with body prose, so every node exercises the
+// leading-prose derivation as well as the folder derivation.
+const v011Patch = `---
+"@type": patch
+document: doe-2026-probe
+published: 2026-04-12
+title: A probe document
+---
+# Source
+
+## doe-2026-probe
+` + "```yaml" + `
+"@id": "doe-2026-probe"
+"@type": Source
+title: A probe document
+authors: [Jane Doe]
+published: "2026-04-12"
+` + "```" + `
+
+An abstract of the probe document.
+
+## Mentions
+- mentions:: [[Probe Concept]]
+
+# Entity
+
+## Probe Concept
+` + "```yaml" + `
+"@id": "Probe Concept"
+"@type": Entity
+category: [independent, abstract, occurrent, script]
+` + "```" + `
+
+A definition of the probe concept.
+
+- mentionedIn:: [[doe-2026-probe]]
+
+# Resource
+
+## probe-fragment
+` + "```yaml" + `
+"@id": "probe-fragment"
+"@type": Resource
+tags: [probe, fragment]
+` + "```" + `
+
+A fragment of the probe document worth keeping around.
+
+- mentionedIn:: [[doe-2026-probe]]
+
+# Reference
+
+## rescorla-2018-tls13
+` + "```yaml" + `
+"@id": "rescorla-2018-tls13"
+"@type": Reference
+title: "The Transport Layer Security (TLS) Protocol Version 1.3"
+ref: RFC 8446
+year: 2018
+status: backlog
+` + "```" + `
+
+The normative definition of the handshake this document analyses.
+
+# Thought
+
+## a-passing-thought
+` + "```yaml" + `
+"@id": "a-passing-thought"
+"@type": Thought
+tags: [speculation]
+` + "```" + `
+
+An unrecognized domain type's node, carrying leading prose of its own.
+`
+
+// coreIndex builds the schema index straight from the seeded vocabulary —
+// the same values arc init writes to _schema/ — so a test can re-parse a
+// written node file without mounting the graph's own store.
+func coreIndex() core.Index {
+	return core.Index{
+		Predicates: schemakernel.CorePredicateDefs,
+		Types:      schemakernel.CoreTypeDefs,
+	}
+}
+
+// parseNodeFile re-parses a written node document back into a core.Node,
+// exposing which prose key its body actually landed under. Reading the
+// rendered bytes cannot answer that on its own: a leading-prose slot is
+// rendered bare, without a heading naming its predicate.
+func parseNodeFile(t *testing.T, path string) core.Node {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	it.Then(t).Should(it.Nil(err))
+
+	node, err := core.ParseNode(bytes.NewReader(raw), coreIndex())
+	it.Then(t).Should(it.Nil(err))
+	return node
+}
+
+// violationsFor returns the lint report lines owned by path. Lint prints one
+// line per violation, prefixed with "<path>[:<line>] — [<rule>] <message>".
+func violationsFor(t *testing.T, lintOut, path string) []string {
+	t.Helper()
+	var out []string
+	for _, line := range strings.Split(lintOut, "\n") {
+		if strings.Contains(line, path+" —") || strings.Contains(line, path+":") {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// rootDirNames reports the directory names the filesystem actually stores
+// at the graph root. Contract C7: os.Stat cannot distinguish "Timeline"
+// from "timeline" on APFS, so a case-sensitive assertion must compare the
+// names ReadDir returns.
+func rootDirNames(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	it.Then(t).Should(it.Nil(err))
+
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() {
+			out = append(out, e.Name())
+		}
+	}
+	return out
+}
+
+// assertNodeAt asserts that folder holds a node file named exactly
+// "<id>.md", comparing against the basenames the filesystem reports rather
+// than stat-ing a constructed path (contract C7) — and, unlike
+// assertIsFile, reports a plain failure instead of panicking on a nil
+// FileInfo when the node is missing, so one red test cannot take the whole
+// test binary down with it.
+func assertNodeAt(t *testing.T, dir, folder, id string) {
+	t.Helper()
+	it.Then(t).Should(it.Seq(dirEntryNames(t, filepath.Join(dir, folder))).Contain(id + ".md"))
+}
+
+// dirEntryNames reports the basenames the filesystem actually stores in
+// dir, case included. A missing directory yields no names rather than a
+// failure, so a caller asserting a node's absence works whether the whole
+// type folder or only the node went away.
+func dirEntryNames(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return names
+}
+
+// applyV011Patch initializes a graph, applies v011Patch from outside the
+// graph tree (so the patch document itself is never linted as a node), and
+// returns the graph root.
+func applyV011Patch(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, t.TempDir(), "probe.patch.md", v011Patch)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+	return dir
+}
+
+// arc apply probe.patch.md
+// spec.md US1 Acceptance Scenario 4: a patch carrying a Reference node is
+// accepted, written, and reported with no "unknown type" diagnostic —
+// Reference is a seeded core type, not a type discovered at apply time.
+func TestApplyAcceptsReferenceNodeWithoutUnknownTypeDiagnostic(t *testing.T) {
+	dir := applyV011Patch(t)
+
+	assertNodeAt(t, dir, "Reference", "rescorla-2018-tls13")
+
+	// A type the tool already knows is never auto-registered, so applying
+	// one must not rewrite its seeded schema document. Thought, which it
+	// does not know, is the control: that one is registered on first sight.
+	referenceSchema := readFile(t, filepath.Join(dir, "_schema", "Class", "Reference.md"))
+	it.Then(t).
+		Should(it.String(referenceSchema).Contain("required:: [[title]]")).
+		Should(it.String(referenceSchema).Contain("required:: [[ref]]")).
+		Should(it.String(referenceSchema).Contain("required:: [[relevance]]"))
+}
+
+// arc apply probe.patch.md && arc lint
+// spec.md US1 Acceptance Scenario 6: a Reference node carrying title, ref,
+// and leading prose draws no type-conformance diagnostic about a missing
+// required predicate or an undeclared one.
+//
+// The assertion names the three required predicates rather than demanding
+// the node be violation-free: arc apply writes no "created" timestamp, so
+// every applied node of every type carries one pre-existing typeRequires
+// violation for it. That gap predates this feature and is scoped to
+// CORE-FIX's Feature 023 (research.md §7 follow-up 3).
+func TestApplyReferenceNodeIsTypeConformant(t *testing.T) {
+	dir := applyV011Patch(t)
+	assertNodeAt(t, dir, "Reference", "rescorla-2018-tls13")
+
+	lintOut, _ := sut(lint.NewLintCmd(), nil)
+	got := violationsFor(t, lintOut, "Reference/rescorla-2018-tls13.md")
+
+	for _, line := range got {
+		it.Then(t).
+			ShouldNot(it.String(line).Contain("not permitted by type")).
+			ShouldNot(it.String(line).Contain(`requires predicate "title"`)).
+			ShouldNot(it.String(line).Contain(`requires predicate "ref"`)).
+			ShouldNot(it.String(line).Contain(`requires predicate "relevance"`))
+	}
+}
+
+// arc apply probe.patch.md
+// spec.md US2 Acceptance Scenarios 1 and 2: a Resource node's leading prose
+// is stored under text and nothing under relevance; a Reference node's is
+// stored under relevance (contract C4).
+func TestApplyStoresLeadingProseUnderTheTypesOwnPredicate(t *testing.T) {
+	dir := applyV011Patch(t)
+
+	resource := parseNodeFile(t, filepath.Join(dir, "Resource", "probe-fragment.md"))
+	it.Then(t).
+		Should(it.String(resource.Texts["text"]).Contain("A fragment of the probe document")).
+		Should(it.Equal("", resource.Texts["relevance"]))
+
+	reference := parseNodeFile(t, filepath.Join(dir, "Reference", "rescorla-2018-tls13.md"))
+	it.Then(t).
+		Should(it.String(reference.Texts["relevance"]).Contain("The normative definition of the handshake")).
+		Should(it.Equal("", reference.Texts["text"]))
+}
+
+// arc apply probe.patch.md
+// spec.md US2 Acceptance Scenarios 5 and 6: the derivation is unchanged for
+// every other type — Source keeps abstract, Entity keeps definition, and a
+// type with no type-specific prose predicate keeps text.
+func TestApplyLeavesOtherTypesLeadingProseDerivationUnchanged(t *testing.T) {
+	dir := applyV011Patch(t)
+
+	source := parseNodeFile(t, filepath.Join(dir, "Source", "doe-2026-probe.md"))
+	it.Then(t).Should(it.String(source.Texts["abstract"]).Contain("An abstract of the probe document"))
+
+	entity := parseNodeFile(t, filepath.Join(dir, "Entity", "Probe Concept.md"))
+	it.Then(t).Should(it.String(entity.Texts["definition"]).Contain("A definition of the probe concept"))
+
+	thought := parseNodeFile(t, filepath.Join(dir, "Thought", "a-passing-thought.md"))
+	it.Then(t).Should(it.String(thought.Texts["text"]).Contain("An unrecognized domain type's node"))
+}
+
+// arc apply probe.patch.md && arc lint
+// spec.md US2 Acceptance Scenario 4: the applied Resource draws no
+// diagnostic for a missing required text or an undeclared relevance — the
+// exact pair the pre-v0.11 derivation would have produced against the
+// corrected type definition.
+func TestApplyResourceNodeCarriesTextNotRelevance(t *testing.T) {
+	dir := applyV011Patch(t)
+	assertNodeAt(t, dir, "Resource", "probe-fragment")
+
+	lintOut, _ := sut(lint.NewLintCmd(), nil)
+	got := violationsFor(t, lintOut, "Resource/probe-fragment.md")
+
+	for _, line := range got {
+		it.Then(t).
+			ShouldNot(it.String(line).Contain(`requires predicate "text"`)).
+			ShouldNot(it.String(line).Contain(`predicate "relevance" is not permitted`))
+	}
+}
+
+// arc apply probe.patch.md
+// spec.md US3 Acceptance Scenario 2: every core content node lands at the
+// exact path <TypeName>/<id>.md.
+func TestApplyFilesCoreNodesInTypeNamedFolders(t *testing.T) {
+	dir := applyV011Patch(t)
+
+	for folder, id := range map[string]string{
+		"Source":    "doe-2026-probe",
+		"Entity":    "Probe Concept",
+		"Resource":  "probe-fragment",
+		"Reference": "rescorla-2018-tls13",
+	} {
+		names := rootDirNames(t, dir)
+		it.Then(t).Should(it.Seq(names).Contain(folder))
+		assertNodeAt(t, dir, folder, id)
+	}
+}
+
+// arc apply probe.patch.md
+// spec.md US3 Acceptance Scenario 3: a domain type the tool does not
+// recognize is filed under a folder named exactly that type — no
+// pluralizing suffix, no case change. Asserted against the directory names
+// the filesystem reports, because os.Stat on APFS answers yes to
+// "Thought", "Thoughts", and "thoughts" indiscriminately (contract C7).
+func TestApplyFilesUnknownDomainTypeUnderItsVerbatimName(t *testing.T) {
+	dir := applyV011Patch(t)
+
+	names := rootDirNames(t, dir)
+	it.Then(t).Should(it.Seq(names).Contain("Thought"))
+	for _, wrong := range []string{"Thoughts", "thoughts", "thought"} {
+		for _, got := range names {
+			it.Then(t).Should(it.True(got != wrong))
+		}
+	}
+	assertNodeAt(t, dir, "Thought", "a-passing-thought")
+}
+
+// arc apply probe.patch.md
+// spec.md US3 Acceptance Scenario 4: timeline/ stays exempt. Timeline nodes
+// remain bucketed by granularity and no flat Timeline/ folder is ever
+// created for them.
+func TestApplyKeepsTimelineNodesBucketedAndCreatesNoFlatFolder(t *testing.T) {
+	dir := applyV011Patch(t)
+
+	assertIsFile(t, filepath.Join(dir, "timeline", "yearly", "2026.md"))
+	assertIsFile(t, filepath.Join(dir, "timeline", "monthly", "2026-04.md"))
+
+	for _, got := range rootDirNames(t, dir) {
+		it.Then(t).Should(it.True(got != "Timeline"))
+	}
 }

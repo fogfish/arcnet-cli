@@ -244,7 +244,7 @@ func TestApplySchemaCreatesPredicateFromPropertyOnlyPatch(t *testing.T) {
 	out, err := sut(NewApplySchemaCmd(), []string{patch})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
-	assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "acmeWeight.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "Property", "acmeWeight.md"))
 	it.Then(t).Should(it.String(out).Contain("+1 predicate"))
 }
 
@@ -258,7 +258,7 @@ func TestApplySchemaCreatesTypeFromClassOnlyPatch(t *testing.T) {
 	out, err := sut(NewApplySchemaCmd(), []string{patch})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
-	assertIsFile(t, filepath.Join(dir, "_schema", "types", "Widget.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "Class", "Widget.md"))
 	it.Then(t).Should(it.String(out).Contain("+1 type"))
 }
 
@@ -275,7 +275,7 @@ func TestApplySchemaCreatesTypeFromClassOnlyPatchWithNoMergeField(t *testing.T) 
 	out, err := sut(NewApplySchemaCmd(), []string{patch})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
-	assertIsFile(t, filepath.Join(dir, "_schema", "types", "Hypothesis.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "Class", "Hypothesis.md"))
 	it.Then(t).Should(it.String(out).Contain("+1 type"))
 }
 
@@ -289,8 +289,8 @@ func TestApplySchemaCreatesBothFromMixedPatch(t *testing.T) {
 	out, err := sut(NewApplySchemaCmd(), []string{patch})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
-	assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "acmeWeight.md"))
-	assertIsFile(t, filepath.Join(dir, "_schema", "types", "Widget.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "Property", "acmeWeight.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "Class", "Widget.md"))
 
 	log := gitOutput(t, dir, "log", "--oneline")
 	it.Then(t).Should(it.String(log).Contain("schema(apply):"))
@@ -345,7 +345,7 @@ func TestApplySchemaArcnetShorthandResolvesAndImports(t *testing.T) {
 	out, err := sut(NewApplySchemaCmd(), []string{"arcnet:media.schema.md"})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
-	assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "acmeWeight.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "Property", "acmeWeight.md"))
 }
 
 // arc apply schema <patch.md>
@@ -360,7 +360,7 @@ func TestApplySchemaRejectsDisallowedNodeType(t *testing.T) {
 	it.Then(t).
 		Should(it.Error(out, err).Contain("Acme Corp")).
 		Should(it.Error(out, err).Contain("Entity"))
-	_, statErr := os.Stat(filepath.Join(dir, "_schema", "predicates", "Acme Corp.md"))
+	_, statErr := os.Stat(filepath.Join(dir, "_schema", "Property", "Acme Corp.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }
 
@@ -375,9 +375,9 @@ func TestApplySchemaRejectsMixedValidAndInvalidPatchWritesNothing(t *testing.T) 
 	out, err := sut(NewApplySchemaCmd(), []string{patch})
 
 	it.Then(t).Should(it.Error(out, err).Contain("Acme Corp"))
-	_, weightErr := os.Stat(filepath.Join(dir, "_schema", "predicates", "acmeWeight.md"))
+	_, weightErr := os.Stat(filepath.Join(dir, "_schema", "Property", "acmeWeight.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(weightErr)))
-	_, widgetErr := os.Stat(filepath.Join(dir, "_schema", "types", "Widget.md"))
+	_, widgetErr := os.Stat(filepath.Join(dir, "_schema", "Class", "Widget.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(widgetErr)))
 
 	status := gitOutput(t, dir, "status", "--short", "--", "_schema")
@@ -413,7 +413,7 @@ func TestApplySchemaReapplyMergesChangedField(t *testing.T) {
 	out, err = sut(NewApplySchemaCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	content, rerr := os.ReadFile(filepath.Join(dir, "_schema", "predicates", "acmeWeight.md"))
+	content, rerr := os.ReadFile(filepath.Join(dir, "_schema", "Property", "acmeWeight.md"))
 	it.Then(t).Should(it.Nil(rerr))
 	it.Then(t).
 		Should(it.String(string(content)).Contain("kilograms.")).
@@ -453,7 +453,7 @@ func TestApplySchemaMergesOptionalPredicateIntoExistingTypeOmittingDescription(t
 
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	content, rerr := os.ReadFile(filepath.Join(dir, "_schema", "types", "Source.md"))
+	content, rerr := os.ReadFile(filepath.Join(dir, "_schema", "Class", "Source.md"))
 	it.Then(t).Should(it.Nil(rerr))
 	it.Then(t).
 		Should(it.String(string(content)).Contain("optional:: [[proposes]]")).
@@ -506,7 +506,7 @@ func TestApplySchemaRecognizesTypeKeyFromEverySource(t *testing.T) {
 		out, err := sut(NewApplySchemaCmd(), []string{patch})
 
 		it.Then(t).ShouldNot(it.Error(out, err))
-		assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "acmeWeight.md"))
+		assertIsFile(t, filepath.Join(dir, "_schema", "Property", "acmeWeight.md"))
 	})
 
 	t.Run("url", func(t *testing.T) {
@@ -520,7 +520,7 @@ func TestApplySchemaRecognizesTypeKeyFromEverySource(t *testing.T) {
 		out, err := sut(NewApplySchemaCmd(), []string{srv.URL + "/media.schema.md"})
 
 		it.Then(t).ShouldNot(it.Error(out, err))
-		assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "acmeWeight.md"))
+		assertIsFile(t, filepath.Join(dir, "_schema", "Property", "acmeWeight.md"))
 	})
 
 	t.Run("arcnet catalog reference", func(t *testing.T) {
@@ -538,7 +538,7 @@ func TestApplySchemaRecognizesTypeKeyFromEverySource(t *testing.T) {
 		out, err := sut(NewApplySchemaCmd(), []string{"arcnet:media.schema.md"})
 
 		it.Then(t).ShouldNot(it.Error(out, err))
-		assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "acmeWeight.md"))
+		assertIsFile(t, filepath.Join(dir, "_schema", "Property", "acmeWeight.md"))
 	})
 }
 
@@ -555,4 +555,59 @@ func TestApplySchemaLegacyKindRefused(t *testing.T) {
 
 	it.Then(t).Must(it.True(errors.Is(err, core.ErrManifestLegacyKind)))
 	it.Then(t).Should(it.String(err.Error()).Contain("legacy.schema.md"))
+}
+
+// ---------------------------------------------------------------------------
+// specs/022-reference-type-folders — ARCNET-CORE v0.11
+// ---------------------------------------------------------------------------
+
+// arc apply schema ext.schema.md
+// spec.md US3 Acceptance Scenario 5: an applied schema patch files its
+// predicate node under _schema/Property/ and its type node under
+// _schema/Class/ — the same two type folders arc init seeds into, since
+// both read the one pair of path constants (contract C2).
+//
+// Asserted against the basenames the filesystem reports rather than a
+// per-path os.Stat: on APFS a stat would answer yes to "_schema/property"
+// and "_schema/class" too (contract C7).
+func TestApplySchemaWritesIntoTypeNamedSchemaFolders(t *testing.T) {
+	dir := newSchemaGraph(t)
+	patch := writeSchemaPatchFile(t, dir, "ext.schema.md", mixedSchemaPatch)
+
+	out, err := sut(NewApplySchemaCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	it.Then(t).
+		Should(it.Seq(schemaDirEntryNames(t, dir, "Property")).Contain("acmeWeight.md")).
+		Should(it.Seq(schemaDirEntryNames(t, dir, "Class")).Contain("Widget.md"))
+
+	// The retired folders must not reappear alongside them.
+	schemaChildren := schemaDirEntryNames(t, dir, "")
+	for _, retired := range []string{"predicates", "types"} {
+		for _, got := range schemaChildren {
+			it.Then(t).Should(it.True(got != retired))
+		}
+	}
+}
+
+// schemaDirEntryNames lists the basenames stored under _schema/<child>, or
+// under _schema/ itself when child is empty. A missing directory yields no
+// names, so an assertion about absence reads the same either way.
+func schemaDirEntryNames(t *testing.T, dir, child string) []string {
+	t.Helper()
+	path := filepath.Join(dir, "_schema")
+	if child != "" {
+		path = filepath.Join(path, child)
+	}
+
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil
+	}
+
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return names
 }

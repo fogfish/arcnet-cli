@@ -178,7 +178,7 @@ func TestSeedEntriesRoundTripThroughParseNode(t *testing.T) {
 func TestSeedContentTypesCarrySubClassOfNodeEdge(t *testing.T) {
 	seed := service.Seed()
 
-	for _, name := range []string{"Source", "Entity", "Resource", "Timeline"} {
+	for _, name := range []string{"Source", "Entity", "Resource", "Timeline", "Reference"} {
 		raw, ok := seed[kernel.TypesDir+"/"+name+".md"]
 		it.Then(t).Should(it.True(ok))
 		it.Then(t).Should(it.String(string(raw)).Contain("subClassOf:: [[Node]]"))
@@ -189,7 +189,7 @@ func TestSeedContentTypesCarrySubClassOfNodeEdge(t *testing.T) {
 	it.Then(t).ShouldNot(it.String(string(nodeRaw)).Contain("- subClassOf::"))
 }
 
-// spec 019 FR-002/FR-003: every key Seed() produces under _schema/types/
+// spec 019 FR-002/FR-003: every key Seed() produces under _schema/Class/
 // begins with an uppercase letter — a regression guard against a future
 // built-in type being added with a lowercase-first-letter name.
 func TestSeedTypeKeysAreAllCamelCase(t *testing.T) {
@@ -448,9 +448,9 @@ func typeDoc(id string, required, optional, subClassOf []string) string {
 	return body.String()
 }
 
-// newTypesStore builds a fake graph root whose _schema/types/ carries
+// newTypesStore builds a fake graph root whose _schema/Class/ carries
 // exactly the given documents, plus a no-op Node.md (unless the caller
-// supplies its own), and an empty _schema/predicates/ dir — Resolve never
+// supplies its own), and an empty _schema/Property/ dir — Resolve never
 // cross-checks a type's Required/Optional/subClassOf targets against
 // registered predicates.
 func newTypesStore(types map[string]string) *fakeStore {
@@ -580,7 +580,7 @@ func TestResolveUnresolvedBaseTypeReferenceFails(t *testing.T) {
 	it.Then(t).Should(it.True(errors.Is(err, service.ErrSchemaUnresolvedBase)))
 }
 
-// A type whose _schema/types/ carries no Node.md of its own also fails
+// A type whose _schema/Class/ carries no Node.md of its own also fails
 // unresolved-base — the implicit Node reference (research.md D5) is exactly
 // as much a schema reference as an explicit one (data-model.md's Errors
 // section, contracts/type-schema-document.md).
@@ -626,4 +626,61 @@ func TestResolveNoExplicitBaseStillGetsImplicitNode(t *testing.T) {
 
 	solo := index.Types["Solo"]
 	it.Then(t).Should(it.Seq(solo.Required).Equal("r", "n"))
+}
+
+// ---------------------------------------------------------------------------
+// specs/022-reference-type-folders — ARCNET-CORE v0.11
+// ---------------------------------------------------------------------------
+
+// TestSeedEmitsReferenceTypeDocument is the golden assertion for contract
+// C3: Seed renders a complete Reference definition, at the type-named
+// schema path, carrying the CORE §11.6 predicate lists and the same
+// subClassOf:: [[Node]] edge every other content type declares.
+//
+// Contract C6 is why this is asserted against Seed rather than against a
+// re-applied schema patch: `required`/`optional` merge by union, and union
+// has no inverse, so the corrected definitions can only ever reach a graph
+// as a whole-cloth render — never as a merge onto a pre-existing one.
+func TestSeedEmitsReferenceTypeDocument(t *testing.T) {
+	seed := service.Seed()
+
+	raw, ok := seed[kernel.TypesDir+"/Reference.md"]
+	it.Then(t).Must(it.True(ok))
+
+	content := string(raw)
+	it.Then(t).
+		Should(it.String(content).Contain(`"@id": Reference`)).
+		Should(it.String(content).Contain(`"@type": Class`)).
+		Should(it.String(content).Contain("subClassOf:: [[Node]]"))
+
+	for _, required := range []string{"title", "ref", "relevance"} {
+		it.Then(t).Should(it.String(content).Contain("required:: [[" + required + "]]"))
+	}
+	for _, optional := range []string{"url", "authors", "year", "doi", "status", "isCitedBy", "notes"} {
+		it.Then(t).Should(it.String(content).Contain("optional:: [[" + optional + "]]"))
+	}
+}
+
+// TestSeedResourceDocumentCarriesNoExternalWorkPredicate is contract C2's
+// negative golden: the seeded Resource document names none of the eight
+// predicates that moved to Reference. Asserted over the rendered bytes
+// rather than the table, so a rendering path that reintroduced one — via an
+// inherited base, say — would still be caught.
+func TestSeedResourceDocumentCarriesNoExternalWorkPredicate(t *testing.T) {
+	seed := service.Seed()
+
+	raw, ok := seed[kernel.TypesDir+"/Resource.md"]
+	it.Then(t).Must(it.True(ok))
+
+	content := string(raw)
+	for _, retired := range []string{"ref", "relevance", "url", "authors", "year", "doi", "status", "isCitedBy"} {
+		it.Then(t).
+			ShouldNot(it.String(content).Contain("required:: [[" + retired + "]]")).
+			ShouldNot(it.String(content).Contain("optional:: [[" + retired + "]]"))
+	}
+
+	for _, required := range []string{"text", "tags", "mentionedIn"} {
+		it.Then(t).Should(it.String(content).Contain("required:: [[" + required + "]]"))
+	}
+	it.Then(t).Should(it.String(content).Contain("optional:: [[notes]]"))
 }

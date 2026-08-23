@@ -2013,3 +2013,106 @@ func TestParsePatchManifestTypeDoesNotLeakIntoNodeTypes(t *testing.T) {
 	it.Then(t).Must(it.Equal(1, len(patch.Nodes)))
 	it.Then(t).Should(it.Equal("Source", patch.Nodes[0].Type))
 }
+
+// ---------------------------------------------------------------------------
+// specs/022-reference-type-folders — ARCNET-CORE v0.11
+// ---------------------------------------------------------------------------
+
+// TestTextPredicateForCoreTypes is contract C4's table, asserted case by
+// case: each of the five ARCNET-CORE v0.11 content types at both prose
+// positions, plus one type the table has no case for.
+//
+// Resource and Reference are the two rows this feature changes. Resource
+// means a fragment of an *ingested* document, so its leading prose belongs
+// under the "text" its own type requires; Reference means an un-ingested
+// external work, so its leading prose is the "relevance" that justifies
+// keeping the pointer. Trailing prose stays "notes" for every type, with no
+// per-type branch at all.
+func TestTextPredicateForCoreTypes(t *testing.T) {
+	for _, tt := range []struct {
+		nodeType string
+		leading  string
+	}{
+		{"Source", "abstract"},
+		{"Entity", "definition"},
+		{"Resource", "text"},
+		{"Timeline", "text"},
+		{"Reference", "relevance"},
+		// A domain-profile type the table has no case for falls through
+		// to the generic prose predicate, unchanged by this feature.
+		{"Thought", "text"},
+	} {
+		it.Then(t).
+			Should(it.Equal(tt.leading, core.TextPredicateFor(tt.nodeType, true))).
+			Should(it.Equal("notes", core.TextPredicateFor(tt.nodeType, false)))
+	}
+}
+
+const resourceFragmentFixture = `---
+"@id": handshake-fragment
+"@type": Resource
+tags: [handshake]
+---
+# handshake-fragment
+
+A fragment of the ingested document worth keeping around.
+
+- mentionedIn:: [[rescorla-2026-tls13]]
+`
+
+const referenceWorkFixture = `---
+"@id": rfc-8446
+"@type": Reference
+title: The TLS 1.3 Protocol
+ref: RFC 8446
+---
+# rfc-8446
+
+Why this un-ingested work is worth pointing at.
+`
+
+// TestParseRenderRoundTripPreservesLeadingProseKey pins the *observable*
+// key a Resource's and a Reference's leading prose lands under, and pins
+// the bytes that key renders back to.
+//
+// It cannot catch a parse/render disagreement — both sides call the one
+// textPredicateFor, so they move together by construction (research.md D5).
+// What it does catch is a change to the key itself: the assertion names
+// Texts["text"] and Texts["relevance"] explicitly, so re-keying either type
+// fails here rather than silently in a graph.
+func TestParseRenderRoundTripPreservesLeadingProseKey(t *testing.T) {
+	for _, tt := range []struct {
+		fixture string
+		key     string
+		prose   string
+	}{
+		{resourceFragmentFixture, "text", "A fragment of the ingested document worth keeping around."},
+		{referenceWorkFixture, "relevance", "Why this un-ingested work is worth pointing at."},
+	} {
+		node, err := core.ParseNode(strings.NewReader(tt.fixture), testIndex)
+		it.Then(t).Must(it.Nil(err))
+		it.Then(t).Should(it.Equal(tt.prose, node.Texts[tt.key]))
+
+		raw, err := core.RenderNode(node, testIndex)
+		it.Then(t).Must(it.Nil(err))
+
+		// The leading slot renders bare — directly under the H1, with no
+		// heading naming its predicate. A "## Text"/"## Relevance" heading
+		// here would mean the key was treated as an ordinary non-slot
+		// predicate, which is the defect this feature fixes.
+		it.Then(t).
+			Should(it.String(string(raw)).Contain("# " + node.ID + "\n\n" + tt.prose)).
+			ShouldNot(it.String(string(raw)).Contain("## Text")).
+			ShouldNot(it.String(string(raw)).Contain("## Relevance"))
+
+		again, err := core.ParseNode(strings.NewReader(string(raw)), testIndex)
+		it.Then(t).Must(it.Nil(err))
+		it.Then(t).Should(it.Equal(tt.prose, again.Texts[tt.key]))
+
+		// And the bytes are stable: a second render of the re-parsed node
+		// is identical to the first.
+		rawAgain, err := core.RenderNode(again, testIndex)
+		it.Then(t).Must(it.Nil(err))
+		it.Then(t).Should(it.Equal(string(raw), string(rawAgain)))
+	}
+}

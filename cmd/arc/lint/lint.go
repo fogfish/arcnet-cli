@@ -40,7 +40,7 @@ func formatUnownedViolation(v kernel.Violation) string {
 
 // graphSpanningViolations returns r.Violations entries with no single
 // owning node (research.md D14) — RuleUniqueBasename (Path == "") and
-// RuleTypeCase's schema-level occurrence (a "_schema/types/<name>.md" Path
+// RuleTypeCase's schema-level occurrence (a "_schema/Class/<name>.md" Path
 // that never corresponds to one of r.Nodes, since schema documents are
 // excluded from that walk, spec.md Clarifications Q1/Q3).
 func graphSpanningViolations(r kernel.LintResult) []kernel.Violation {

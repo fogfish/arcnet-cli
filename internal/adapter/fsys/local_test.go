@@ -42,11 +42,11 @@ func TestLocalStatAndReadDir(t *testing.T) {
 	store, err := fsys.Local{}.Mount(root)
 	it.Then(t).Should(it.Nil(err))
 
-	f, err := store.Create("sources/.gitkeep")
+	f, err := store.Create("Source/.gitkeep")
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Nil(f.Close()))
 
-	info, statErr := store.Stat("sources")
+	info, statErr := store.Stat("Source")
 	it.Then(t).
 		Should(it.Nil(statErr)).
 		Should(it.True(info.IsDir()))
@@ -87,14 +87,14 @@ func TestLocalDiscardRemovesHalfWrittenFile(t *testing.T) {
 	store, err := fsys.Local{}.Mount(root)
 	it.Then(t).Should(it.Nil(err))
 
-	f, err := store.Create("sources/broken.md")
+	f, err := store.Create("Source/broken.md")
 	it.Then(t).Should(it.Nil(err))
 	_, werr := f.Write([]byte("partial"))
 	it.Then(t).Should(it.Nil(werr))
 
 	it.Then(t).Should(it.Nil(f.Discard()))
 
-	_, statErr := os.Stat(filepath.Join(root, "sources", "broken.md"))
+	_, statErr := os.Stat(filepath.Join(root, "Source", "broken.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }
 

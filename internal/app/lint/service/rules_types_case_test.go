@@ -19,17 +19,17 @@ import (
 
 func TestCheckNodeTypeCaseValid(t *testing.T) {
 	node := core.Node{Type: "Entity"}
-	out := checkNodeTypeCase(node, "entities/X.md")
+	out := checkNodeTypeCase(node, "Entity/X.md")
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
 func TestCheckNodeTypeCaseInvalid(t *testing.T) {
 	node := core.Node{Type: "entity"}
-	out := checkNodeTypeCase(node, "entities/X.md")
+	out := checkNodeTypeCase(node, "Entity/X.md")
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).
 		Should(it.Equal(kernel.RuleTypeCase, out[0].Rule)).
-		Should(it.Equal("entities/X.md", out[0].Path)).
+		Should(it.Equal("Entity/X.md", out[0].Path)).
 		Should(it.String(out[0].Message).Contain("entity"))
 }
 
@@ -49,6 +49,6 @@ func TestCheckSchemaTypeCaseLowercaseKeyReportsOne(t *testing.T) {
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).
 		Should(it.Equal(kernel.RuleTypeCase, out[0].Rule)).
-		Should(it.Equal("_schema/types/widget.md", out[0].Path)).
+		Should(it.Equal("_schema/Class/widget.md", out[0].Path)).
 		Should(it.String(out[0].Message).Contain("widget"))
 }

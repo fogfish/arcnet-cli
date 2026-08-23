@@ -94,8 +94,8 @@ func TestGrepGuardNotAGraph(t *testing.T) {
 
 func TestGrepEmptyFilterScansEveryNode(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"sources/a.md":  grepSourceNodeA,
-		"entities/b.md": grepEntityNodeB,
+		"Source/a.md": grepSourceNodeA,
+		"Entity/b.md": grepEntityNodeB,
 	})
 
 	result, err := service.Grep(context.Background(), mounter, core.Filter{}, "TLS", configkernel.GrepConfig{}, "/graph")
@@ -105,13 +105,13 @@ func TestGrepEmptyFilterScansEveryNode(t *testing.T) {
 	it.Then(t).
 		Should(it.Equal("Source", result.Matches[0].Type)).
 		Should(it.Equal("a", result.Matches[0].ID)).
-		Should(it.Equal("sources/a.md", result.Matches[0].Path))
+		Should(it.Equal("Source/a.md", result.Matches[0].Path))
 }
 
 func TestGrepFilterExcludesNonMatchingNodesFromScan(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"sources/a.md":  grepSourceNodeA,
-		"entities/b.md": grepEntityNodeB,
+		"Source/a.md": grepSourceNodeA,
+		"Entity/b.md": grepEntityNodeB,
 	})
 	filter := core.Filter{Types: []string{"Entity"}}
 
@@ -123,8 +123,8 @@ func TestGrepFilterExcludesNonMatchingNodesFromScan(t *testing.T) {
 
 func TestGrepUnreadableNodeExcludedAndReported(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"sources/a.md":      grepSourceNodeA,
-		"sources/broken.md": "not a valid node front matter",
+		"Source/a.md":      grepSourceNodeA,
+		"Source/broken.md": "not a valid node front matter",
 	})
 
 	result, err := service.Grep(context.Background(), mounter, core.Filter{}, "TLS", configkernel.GrepConfig{}, "/graph")
@@ -133,11 +133,11 @@ func TestGrepUnreadableNodeExcludedAndReported(t *testing.T) {
 	it.Then(t).Should(it.Equal(1, len(result.Matches)))
 	it.Then(t).
 		Should(it.Equal(1, len(result.Unreadable))).
-		Should(it.Equal("sources/broken.md", result.Unreadable[0]))
+		Should(it.Equal("Source/broken.md", result.Unreadable[0]))
 }
 
 func TestGrepInvalidPatternReturnsError(t *testing.T) {
-	mounter := newGrepGraph(map[string]string{"sources/a.md": grepSourceNodeA})
+	mounter := newGrepGraph(map[string]string{"Source/a.md": grepSourceNodeA})
 
 	_, err := service.Grep(context.Background(), mounter, core.Filter{}, "[TLS", configkernel.GrepConfig{}, "/graph")
 
@@ -149,7 +149,7 @@ func TestGrepInvalidPatternReturnsError(t *testing.T) {
 // kind/id, and a node matching on multiple lines produces one kernel.Match
 // per line, in line order.
 func TestGrepMultiLineNodeProducesOneMatchPerLineInOrder(t *testing.T) {
-	mounter := newGrepGraph(map[string]string{"sources/multi.md": grepSourceNodeMultiLine})
+	mounter := newGrepGraph(map[string]string{"Source/multi.md": grepSourceNodeMultiLine})
 
 	result, err := service.Grep(context.Background(), mounter, core.Filter{}, "TLS", configkernel.GrepConfig{}, "/graph")
 
@@ -163,8 +163,8 @@ func TestGrepMultiLineNodeProducesOneMatchPerLineInOrder(t *testing.T) {
 
 func TestGrepCombinedFilterMatchesZeroNodes(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"sources/a.md":  grepSourceNodeA,
-		"entities/b.md": grepEntityNodeB,
+		"Source/a.md": grepSourceNodeA,
+		"Entity/b.md": grepEntityNodeB,
 	})
 	filter := core.Filter{Types: []string{"Resource"}}
 
@@ -181,7 +181,7 @@ func TestGrepCombinedFilterMatchesZeroNodes(t *testing.T) {
 // hardcoded Texts key.
 func TestGrepMatchesNonDefaultNamedTextsPredicate(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"entities/c.md": grepEntityNodeDefinition,
+		"Entity/c.md": grepEntityNodeDefinition,
 	})
 
 	result, err := service.Grep(context.Background(), mounter, core.Filter{}, "TLS", configkernel.GrepConfig{}, "/graph")
@@ -191,5 +191,5 @@ func TestGrepMatchesNonDefaultNamedTextsPredicate(t *testing.T) {
 	it.Then(t).
 		Should(it.Equal("Entity", result.Matches[0].Type)).
 		Should(it.Equal("c", result.Matches[0].ID)).
-		Should(it.Equal("entities/c.md", result.Matches[0].Path))
+		Should(it.Equal("Entity/c.md", result.Matches[0].Path))
 }

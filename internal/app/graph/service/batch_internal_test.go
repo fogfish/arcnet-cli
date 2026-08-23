@@ -263,10 +263,10 @@ func TestOrderAppendsClassificationFailuresLast(t *testing.T) {
 // FR-016: conflicted paths are de-duplicated and sorted, so a path flagged
 // by three patches is named once and the list reads the same every run.
 func TestUnionSortedDeduplicatesAndSorts(t *testing.T) {
-	out := unionSorted([]string{"entities/b.md"}, []string{"entities/a.md", "entities/b.md"})
-	out = unionSorted(out, []string{"resources/c.md", "entities/a.md"})
+	out := unionSorted([]string{"Entity/b.md"}, []string{"Entity/a.md", "Entity/b.md"})
+	out = unionSorted(out, []string{"Resource/c.md", "Entity/a.md"})
 
-	it.Then(t).Should(it.Seq(out).Equal("entities/a.md", "entities/b.md", "resources/c.md"))
+	it.Then(t).Should(it.Seq(out).Equal("Entity/a.md", "Entity/b.md", "Resource/c.md"))
 }
 
 // FR-017: warnings are de-duplicated but keep first-seen order, because

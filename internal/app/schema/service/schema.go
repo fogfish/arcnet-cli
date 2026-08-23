@@ -119,8 +119,8 @@ func typeNode(name string, def core.TypeDef) core.Node {
 }
 
 // Resolve checks .arc/ presence first (research.md D2), returning
-// ErrNotAGraph if absent; then walks _schema/predicates/ and
-// _schema/types/, decoding each document into a PredicateDef/TypeDef. A
+// ErrNotAGraph if absent; then walks _schema/Property/ and
+// _schema/Class/, decoding each document into a PredicateDef/TypeDef. A
 // missing schema folder, or any document missing/invalid role/merge/
 // description, fails the entire load — never skipped (spec FR-014). Never
 // returns a partially-populated Index.
@@ -213,7 +213,7 @@ var implicitBaseExempt = map[string]bool{"Node": true, propertyType: true, class
 // (including direct self-reference) the moment a type is revisited before
 // its own resolution completes; a base name absent from raw is reported as
 // an unresolved reference — including the implicit Node base, when a
-// graph's _schema/types/ carries no Node.md of its own.
+// graph's _schema/Class/ carries no Node.md of its own.
 func resolveEffectiveTypes(raw map[string]rawType) (map[string]core.TypeDef, error) {
 	resolved := make(map[string]core.TypeDef, len(raw))
 	onStack := make(map[string]bool, len(raw))

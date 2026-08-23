@@ -55,7 +55,7 @@ func TestParseConflictMarkerRejectsOrdinaryText(t *testing.T) {
 func TestResolveConflictMarkerWhenRevertedPatchIsIncomingSide(t *testing.T) {
 	vcs := &graphmock.VCS{}
 
-	resolved, matched, err := resolveConflictMarker(context.Background(), vcs, "/graph", "entities/Widget.md", "notes",
+	resolved, matched, err := resolveConflictMarker(context.Background(), vcs, "/graph", "Entity/Widget.md", "notes",
 		"Old text.", "New text.", "foo-2026-x", "ingest123", "foo-2026-x")
 
 	it.Then(t).Should(it.Nil(err))
@@ -100,7 +100,7 @@ func TestResolveConflictMarkerWhenRevertedPatchIsFrozenExistingSide(t *testing.T
 		},
 	}
 
-	resolved, matched, err := resolveConflictMarker(context.Background(), vcs, "/graph", "entities/Widget.md", "notes",
+	resolved, matched, err := resolveConflictMarker(context.Background(), vcs, "/graph", "Entity/Widget.md", "notes",
 		"Old text.", "New text.", "other-2026-y", "c2", "foo-2026-x")
 
 	it.Then(t).Should(it.Nil(err))
@@ -137,7 +137,7 @@ func TestResolveConflictMarkerWhenRevertedPatchIsNeitherSide(t *testing.T) {
 		},
 	}
 
-	resolved, matched, err := resolveConflictMarker(context.Background(), vcs, "/graph", "entities/Widget.md", "notes",
+	resolved, matched, err := resolveConflictMarker(context.Background(), vcs, "/graph", "Entity/Widget.md", "notes",
 		"Old text.", "New text.", "other-2026-y", "ingest-of-someone-else", "foo-2026-x")
 
 	it.Then(t).Should(it.Nil(err))
@@ -188,4 +188,47 @@ func TestBuildRevertCommitMessageCarriesRevertedDocumentTrailerNotSourceId(t *te
 	it.Then(t).
 		Should(it.String(msg).Contain("Reverted-Document: foo-2026-x")).
 		ShouldNot(it.String(msg).Contain("Source-Id:"))
+}
+
+// ---------------------------------------------------------------------------
+// specs/022-reference-type-folders — ARCNET-CORE v0.11
+// ---------------------------------------------------------------------------
+
+// TestRevertLeadingKeyAgreesWithCoreForCoreTypes locks down the divergence
+// research.md D6b found: revertLeadingKey is a hand-copied duplicate of
+// internal/core's own textPredicateFor table, and at this feature's baseline
+// the two already disagreed — on hypothesis, aporia, and thought, whose
+// prose apply writes under "text" while revert looks for it under "claim" or
+// "tension". A node whose two sides disagree has its prose written to one
+// key and read from another: revert silently finds nothing to retract, and
+// the paragraph outlives the ingest that contributed it.
+//
+// The assertion deliberately covers the five core types only. The three
+// domain entries are a live, pre-existing defect belonging to domain
+// profiles this feature does not otherwise touch; fixing them changes
+// behaviour for those graphs and needs its own spec (research.md §7
+// follow-up 1). Pinning the core half here is what stops the divergence
+// spreading into it — including through this feature's own two new cases.
+func TestRevertLeadingKeyAgreesWithCoreForCoreTypes(t *testing.T) {
+	for _, nodeType := range []string{"Source", "Entity", "Resource", "Timeline", "Reference"} {
+		it.Then(t).Should(it.Equal(core.TextPredicateFor(nodeType, true), revertLeadingKey(nodeType)))
+	}
+}
+
+// TestReferrerPathDivertsTimelineToItsGranularityBucket pins contract C2's
+// timeline exemption on the read side. A Timeline node is an index entry
+// bucketed by granularity, not a node filed flat, so referrerPath must send
+// it to timeline/yearly|monthly rather than through nodePath — which, now
+// that nodeFolder is the identity, would otherwise compose the
+// "Timeline/<period>.md" path CORE §6 forbids.
+//
+// Every other type, Reference included, goes through nodePath unchanged.
+func TestReferrerPathDivertsTimelineToItsGranularityBucket(t *testing.T) {
+	it.Then(t).
+		Should(it.Equal("timeline/yearly/2026.md", referrerPath(core.Node{ID: "2026", Type: "Timeline"}))).
+		Should(it.Equal("timeline/monthly/2026-04.md", referrerPath(core.Node{ID: "2026-04", Type: "Timeline"})))
+
+	it.Then(t).
+		Should(it.Equal("Source/doe-2026-probe.md", referrerPath(core.Node{ID: "doe-2026-probe", Type: "Source"}))).
+		Should(it.Equal("Reference/rfc-8446.md", referrerPath(core.Node{ID: "rfc-8446", Type: "Reference"})))
 }

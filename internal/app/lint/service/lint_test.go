@@ -204,8 +204,8 @@ var coreIndexFixtureLint = core.Index{
 
 func newConformantStore() *memStore {
 	s := newMemStore()
-	s.files["sources/foo-2026-x.md"] = conformantSourceFixture
-	s.files["entities/Widget.md"] = conformantEntityFixture
+	s.files["Source/foo-2026-x.md"] = conformantSourceFixture
+	s.files["Entity/Widget.md"] = conformantEntityFixture
 	return s
 }
 
@@ -235,7 +235,7 @@ func TestLintConformantGraphAllPass(t *testing.T) {
 func TestLintExcludesArcAndSchema(t *testing.T) {
 	s := newConformantStore()
 	s.files[".arc/config.yml"] = ""
-	s.files["_schema/types/entity.md"] = "---\n\"@id\": Entity\n\"@type\": Class\nmerge: union\n---\n# entity\n\nA node for a subject occurring in sources.\n"
+	s.files["_schema/Class/entity.md"] = "---\n\"@id\": Entity\n\"@type\": Class\nmerge: union\n---\n# entity\n\nA node for a subject occurring in sources.\n"
 	vcs := &lintmock.VCS{Commits: map[string][]string{"Source-Id: foo-2026-x": {"abc123"}}}
 
 	result, err := service.Lint(context.Background(), memMounter{s}, vcs, bios.NewReporter(true, true), coreIndexFixtureLint, "/graph")
@@ -267,7 +267,7 @@ func TestLintIncludesNodeInNonStandardFolder(t *testing.T) {
 
 func TestLintRecordsFrontMatterViolationWithoutAbortingWalk(t *testing.T) {
 	s := newConformantStore()
-	s.files["entities/Broken.md"] = "not valid front matter at all\n"
+	s.files["Entity/Broken.md"] = "not valid front matter at all\n"
 	vcs := &lintmock.VCS{Commits: map[string][]string{"Source-Id: foo-2026-x": {"abc123"}}}
 
 	result, err := service.Lint(context.Background(), memMounter{s}, vcs, bios.NewReporter(true, true), coreIndexFixtureLint, "/graph")
@@ -277,7 +277,7 @@ func TestLintRecordsFrontMatterViolationWithoutAbortingWalk(t *testing.T) {
 
 	found := false
 	for _, n := range result.Nodes {
-		if n.Path == "entities/Broken.md" {
+		if n.Path == "Entity/Broken.md" {
 			found = true
 			it.Then(t).Should(it.Equal(1, len(n.Violations)))
 		}
@@ -287,14 +287,14 @@ func TestLintRecordsFrontMatterViolationWithoutAbortingWalk(t *testing.T) {
 
 func TestLintMergeConflictExcludesFileFromOtherChecks(t *testing.T) {
 	s := newConformantStore()
-	s.files["entities/Broken.md"] = "<<<<<<< HEAD\nkind: entity\n=======\nkind: entity\n>>>>>>> feature\n"
+	s.files["Entity/Broken.md"] = "<<<<<<< HEAD\nkind: entity\n=======\nkind: entity\n>>>>>>> feature\n"
 	vcs := &lintmock.VCS{Commits: map[string][]string{"Source-Id: foo-2026-x": {"abc123"}}}
 
 	result, err := service.Lint(context.Background(), memMounter{s}, vcs, bios.NewReporter(true, true), coreIndexFixtureLint, "/graph")
 
 	it.Then(t).Should(it.Nil(err))
 	for _, n := range result.Nodes {
-		if n.Path == "entities/Broken.md" {
+		if n.Path == "Entity/Broken.md" {
 			it.Then(t).Should(it.Equal(1, len(n.Violations)))
 			it.Then(t).Should(it.Equal("mergeConflict", string(n.Violations[0].Rule)))
 		}

@@ -42,10 +42,11 @@ func (r *fakeReporter) Error(string, error)        {}
 // listed here falls back to MergeUnion (research.md D6).
 var coreIndexFixture = core.Index{
 	Types: map[string]core.TypeDef{
-		"Source":   {Merge: core.MergeImmutable},
-		"Entity":   {Merge: core.MergeUnion},
-		"Resource": {Merge: core.MergeFirstWriteWin},
-		"Timeline": {Merge: core.MergeAppend},
+		"Source":    {Merge: core.MergeImmutable},
+		"Entity":    {Merge: core.MergeUnion},
+		"Resource":  {Merge: core.MergeFirstWriteWin},
+		"Timeline":  {Merge: core.MergeAppend},
+		"Reference": {Merge: core.MergeFirstWriteWin},
 	},
 	Predicates: map[string]core.PredicateDef{
 		"ref":       {Merge: core.MergeImmutable},
@@ -250,13 +251,21 @@ category: [independent, abstract, occurrent, script]
 A test entity.
 `
 
-// sourceResourcePatch/existingWidgetSpecResourceWithStatus: a "Resource"
+// sourceReferencePatch/existingWidgetSpecReferenceWithStatus: a "Reference"
 // node's leading prose (Texts["relevance"], firstWriteWin per
 // coreIndexFixture) genuinely diverges from what's already on disk, so it
 // is flagged — its "status" (lastWriteWin) diverges too but is never
 // flagged (spec.md FR-012), and "ref" (immutable) is unchanged on both
 // sides so it doesn't interact with this scenario.
-const sourceResourcePatch = `---
+//
+// The node was typed "Resource" until ARCNET-CORE v0.11
+// (specs/022-reference-type-folders). It is a "Reference" now for the same
+// reason the predicates it carries are: ref/status/relevance describe an
+// external work the graph has not ingested, and that whole semantic — the
+// firstWriteWin leading prose included — moved to Reference. Under v0.11 a
+// Resource's leading prose keys to "text", which merges by append and so
+// could never produce the conflict this scenario exists to exercise.
+const sourceReferencePatch = `---
 "@type": patch
 document: foo-2026-x
 published: 2026-04-12
@@ -275,12 +284,12 @@ published: "2026-04-12"
 
 A test document.
 
-# Resource
+# Reference
 
 ## Widget Spec
 ` + "```yaml" + `
 "@id": "Widget Spec"
-"@type": Resource
+"@type": Reference
 ref: standard
 status: backlog
 ` + "```" + `
@@ -288,9 +297,9 @@ status: backlog
 An updated specification of Widget alignment.
 `
 
-const existingWidgetSpecResourceWithStatus = `---
+const existingWidgetSpecReferenceWithStatus = `---
 "@id": "Widget Spec"
-"@type": Resource
+"@type": Reference
 title: Widget Spec
 ref: standard
 status: read
@@ -350,7 +359,7 @@ func TestApplyGuardPatchReadFailure(t *testing.T) {
 func TestApplySkipsWhenAlreadyTracked(t *testing.T) {
 	store := newGraphStore()
 	store.files["patch.md"] = []byte(minimalSourcePatch)
-	vcs := &graphmock.VCS{Tracked: map[string]bool{"sources/foo-2026-x.md": true}}
+	vcs := &graphmock.VCS{Tracked: map[string]bool{"Source/foo-2026-x.md": true}}
 
 	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 
@@ -373,7 +382,7 @@ func TestApplyCreatesNewNode(t *testing.T) {
 	it.Then(t).
 		Should(it.Equal(1, result.Created["Source"])).
 		Should(it.Equal("abc123", result.CommitHash))
-	it.Then(t).Should(it.True(len(store.files["sources/foo-2026-x.md"]) > 0))
+	it.Then(t).Should(it.True(len(store.files["Source/foo-2026-x.md"]) > 0))
 	it.Then(t).
 		Should(it.Seq(vcs.Calls).Contain("StageAll:/graph"))
 }
@@ -381,7 +390,7 @@ func TestApplyCreatesNewNode(t *testing.T) {
 func TestApplyMergesExistingNode(t *testing.T) {
 	store := newGraphStore()
 	store.files["patch.md"] = []byte(sourceEntityPatch)
-	store.files["entities/Widget.md"] = []byte(existingWidgetEntity)
+	store.files["Entity/Widget.md"] = []byte(existingWidgetEntity)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
 	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
@@ -392,17 +401,17 @@ func TestApplyMergesExistingNode(t *testing.T) {
 		Should(it.Equal(1, result.Merged["Entity"])).
 		Should(it.Equal(0, len(result.Conflicts)))
 
-	content := string(store.files["entities/Widget.md"])
+	content := string(store.files["Entity/Widget.md"])
 	it.Then(t).Should(it.String(content).Contain("replaces:: [[Old Widget]]"))
 }
 
-// BUG-004: a "Resource" node (MergeUnionFirstWriter) is unaffected by this
+// BUG-004: a "Reference" node (MergeUnionFirstWriter) is unaffected by this
 // bugfix — its already-populated scalar field is still flagged as a
 // conflict on divergence, exactly as before.
 func TestApplyFlagsConflict(t *testing.T) {
 	store := newGraphStore()
-	store.files["patch.md"] = []byte(sourceResourcePatch)
-	store.files["resources/Widget Spec.md"] = []byte(existingWidgetSpecResourceWithStatus)
+	store.files["patch.md"] = []byte(sourceReferencePatch)
+	store.files["Reference/Widget Spec.md"] = []byte(existingWidgetSpecReferenceWithStatus)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
 	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
@@ -410,7 +419,7 @@ func TestApplyFlagsConflict(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, len(result.Conflicts)))
 
-	content := string(store.files["resources/Widget Spec.md"])
+	content := string(store.files["Reference/Widget Spec.md"])
 	it.Then(t).
 		Should(it.String(content).Contain("<<<<<<< existing")).
 		Should(it.String(content).Contain("The normative specification of Widget.")).
@@ -460,7 +469,7 @@ func TestApplyUnregisteredKindRegistersSchemaKind(t *testing.T) {
 }
 
 // arc apply — spec.md US2: a previously-unseen predicate declared in a
-// patch-carried node is registered into _schema/predicates/ too.
+// patch-carried node is registered into _schema/Property/ too.
 func TestApplyUnregisteredPredicateRegistersSchemaPredicate(t *testing.T) {
 	store := newGraphStore()
 	store.files["patch.md"] = []byte(sourceEntityPatch)
@@ -555,7 +564,7 @@ func TestApplyUnregisteredLabeledEdgeRegistersAsLinkRoleWithLabel(t *testing.T) 
 	it.Then(t).Should(it.Equal("link", schema.registeredPredicateRole["relatedAporias"]))
 	it.Then(t).Should(it.Equal("Related Aporias", schema.registeredPredicateLabel["relatedAporias"]))
 
-	content := string(store.files["entities/Widget3.md"])
+	content := string(store.files["Entity/Widget3.md"])
 	it.Then(t).
 		Should(it.String(content).Contain("## Related Aporias")).
 		Should(it.String(content).Contain("[[Some Aporia]]")).
@@ -635,7 +644,7 @@ func TestApplyYearlyTimelinePeriodFileParsesViaCoreParseNode(t *testing.T) {
 func TestApplyReportsStepPerNode(t *testing.T) {
 	store := newGraphStore()
 	store.files["patch.md"] = []byte(sourceEntityPatch)
-	store.files["entities/Widget.md"] = []byte(existingWidgetEntity)
+	store.files["Entity/Widget.md"] = []byte(existingWidgetEntity)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 	reporter := &fakeReporter{}
 
@@ -694,7 +703,7 @@ func TestApplyStubCreatesNodeWithNeitherPublishedNorIndexed(t *testing.T) {
 	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 	it.Then(t).Should(it.Nil(err))
 
-	content := string(store.files["entities/StubEntity.md"])
+	content := string(store.files["Entity/StubEntity.md"])
 	node, err := core.ParseNode(bytes.NewReader([]byte(content)), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
@@ -703,7 +712,7 @@ func TestApplyStubCreatesNodeWithNeitherPublishedNorIndexed(t *testing.T) {
 }
 
 // spec.md US1 Acceptance Scenario 4 / FR-003: an auto-registered
-// _schema/types/<name>.md document carries neither published nor indexed,
+// _schema/Class/<name>.md document carries neither published nor indexed,
 // even though service.Apply's own writeNode never actually writes this
 // path — schema.RegisterType is a separate port call the loop never routes
 // through create-path stamping (research.md D8); this asserts the
@@ -731,9 +740,9 @@ func TestApplyCreatedNodesCarryPublishedAndShareIndexed(t *testing.T) {
 	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 	it.Then(t).Should(it.Nil(err))
 
-	source, err := core.ParseNode(bytes.NewReader(store.files["sources/foo-2026-x.md"]), core.Index{})
+	source, err := core.ParseNode(bytes.NewReader(store.files["Source/foo-2026-x.md"]), core.Index{})
 	it.Then(t).Should(it.Nil(err))
-	entity, err := core.ParseNode(bytes.NewReader(store.files["entities/Widget.md"]), core.Index{})
+	entity, err := core.ParseNode(bytes.NewReader(store.files["Entity/Widget.md"]), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 
 	sourceIndexedPreds := source.Attrs["indexed"]
@@ -753,15 +762,15 @@ func TestApplyCreatedNodesCarryPublishedAndShareIndexed(t *testing.T) {
 func TestApplyMergedNodeGetsUpdatedMatchingIndexed(t *testing.T) {
 	store := newGraphStore()
 	store.files["patch.md"] = []byte(sourceEntityPatch)
-	store.files["entities/Widget.md"] = []byte(existingWidgetEntity)
+	store.files["Entity/Widget.md"] = []byte(existingWidgetEntity)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
 	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 	it.Then(t).Should(it.Nil(err))
 
-	source, err := core.ParseNode(bytes.NewReader(store.files["sources/foo-2026-x.md"]), core.Index{})
+	source, err := core.ParseNode(bytes.NewReader(store.files["Source/foo-2026-x.md"]), core.Index{})
 	it.Then(t).Should(it.Nil(err))
-	entity, err := core.ParseNode(bytes.NewReader(store.files["entities/Widget.md"]), core.Index{})
+	entity, err := core.ParseNode(bytes.NewReader(store.files["Entity/Widget.md"]), core.Index{})
 	it.Then(t).Should(it.Nil(err))
 
 	sourceIndexedPreds := source.Attrs["indexed"]
@@ -804,7 +813,7 @@ A test document.
 func TestApplyNoneKindMergeAddsNoUpdated(t *testing.T) {
 	store := newGraphStore()
 	store.files["patch.md"] = []byte(sourceOnlyReContributionPatch)
-	store.files["sources/foo-2026-x2.md"] = []byte(`---
+	store.files["Source/foo-2026-x2.md"] = []byte(`---
 "@id": "foo-2026-x2"
 "@type": Source
 title: "A Second Document"
@@ -820,17 +829,17 @@ A test document.
 	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 	it.Then(t).Should(it.Nil(err))
 
-	content := string(store.files["sources/foo-2026-x2.md"])
+	content := string(store.files["Source/foo-2026-x2.md"])
 	it.Then(t).ShouldNot(it.String(content).Contain("updated:"))
 }
 
-// BUG-004: uses the same resource-kind conflict fixture as
+// BUG-004: uses the same Reference-kind conflict fixture as
 // TestApplyFlagsConflict above, since an "Entity" (MergeUnion) node no
 // longer ever flags a conflict.
 func TestApplyReportsStepConflictFlagged(t *testing.T) {
 	store := newGraphStore()
-	store.files["patch.md"] = []byte(sourceResourcePatch)
-	store.files["resources/Widget Spec.md"] = []byte(existingWidgetSpecResourceWithStatus)
+	store.files["patch.md"] = []byte(sourceReferencePatch)
+	store.files["Reference/Widget Spec.md"] = []byte(existingWidgetSpecReferenceWithStatus)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 	reporter := &fakeReporter{}
 
@@ -859,14 +868,14 @@ category: [independent, abstract, occurrent, script]
 
 A test entity.
 `
-	store.files["entities/Widget.md"] = []byte(mismatched)
+	store.files["Entity/Widget.md"] = []byte(mismatched)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
 	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).ShouldNot(it.Nil(err))
 	it.Then(t).
-		Should(it.Equal(mismatched, string(store.files["entities/Widget.md"]))).
-		Should(it.Equal(0, len(store.files["sources/foo-2026-x.md"]))).
+		Should(it.Equal(mismatched, string(store.files["Entity/Widget.md"]))).
+		Should(it.Equal(0, len(store.files["Source/foo-2026-x.md"]))).
 		ShouldNot(it.Seq(vcs.Calls).Contain("StageAll:/graph"))
 }

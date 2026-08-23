@@ -14,10 +14,21 @@ package kernel
 import "github.com/fogfish/arcnet-cli/internal/core"
 
 // TypesDir/PredicatesDir are the two _schema/ subfolders, relative to a
-// graph root (renamed from the existence-only NodesDir — CORE §9.2).
+// graph root: "_schema/Class" holds the Class-typed type schema nodes (CORE
+// §9.2) and "_schema/Property" the Property-typed predicate schema nodes
+// (§9.1).
+//
+// _schema/ is a namespace prefix rather than a type folder, but its two
+// children are type folders and so obey CORE §6 (v0.11) like any other:
+// each is named for the type it holds, character for character
+// (specs/022-reference-type-folders, contract C2). The Go identifiers keep
+// naming the concept — the folder of type nodes, the folder of predicate
+// nodes — while their values name the path; both Seed and Resolve read
+// these constants, so the pair is the single source of truth for where
+// schema documents live.
 const (
-	TypesDir      = "_schema/types"
-	PredicatesDir = "_schema/predicates"
+	TypesDir      = "_schema/Class"
+	PredicatesDir = "_schema/Property"
 )
 
 // CorePredicateDefs is every predicate ARCNET-CORE §10 documents (research.md
@@ -27,7 +38,7 @@ const (
 // structural identity fields stripped out of Attrs/Edges before a Node is
 // ever constructed (internal/core.identityFields), never looked up through
 // core.Index.Predicates by any consumer — the reference ARCNET-CORE example
-// graph's own _schema/predicates/ folder likewise carries no such files.
+// graph's own predicate-schema folder likewise carries no such files.
 var CorePredicateDefs = map[string]core.PredicateDef{
 	"tags": {Role: "meta", Merge: core.MergeUnion, Description: "Topical tags for discoverability."},
 	"text": {Role: "text", Merge: core.MergeAppend, Aligned: "schema:text", Description: "Generic prose predicate; each contribution appends to the existing prose rather than overwriting it."},
@@ -41,7 +52,7 @@ var CorePredicateDefs = map[string]core.PredicateDef{
 	"scoreC": {Role: "meta", Merge: core.MergeValidatedOverwrite, Aligned: "arc:scoreC", Description: "A graph-analytics centrality-style score recomputed by a validation/ingest pass; overwritten only by that designated pass, never by ordinary content merges."},
 
 	"mentions":    {Role: "link", Merge: core.MergeUnion, Aligned: "schema:mentions", Description: "Asserts that the source document mentions the entity; recorded under the source's own Mentions block."},
-	"mentionedIn": {Role: "link", Merge: core.MergeUnion, Aligned: "schema:subjectOf", Description: "The inverse of mentions — recorded as a backlink under the entity's own mentionedIn block."},
+	"mentionedIn": {Role: "link", Merge: core.MergeUnion, Aligned: "schema:subjectOf", Description: "The inverse of mentions — recorded as a backlink under the mentioned node's own mentionedIn block."},
 
 	"broader":      {Role: "edge", Merge: core.MergeUnion, Aligned: "skos:broader", Description: "Generalization: the target is the more general concept, the subject a kind or specialization of it."},
 	"narrower":     {Role: "edge", Merge: core.MergeUnion, Aligned: "skos:narrower", Description: "The inverse of broader — an optional backlink from the more general concept to the specialization."},
@@ -54,7 +65,7 @@ var CorePredicateDefs = map[string]core.PredicateDef{
 	"related":      {Role: "edge", Merge: core.MergeUnion, Aligned: "skos:related", Description: "A non-hierarchical, non-compositional association between two subjects, used only when no more specific predicate applies."},
 	"referencedBy": {Role: "edge", Merge: core.MergeUnion, Description: "A non-hierarchical, non-compositional asymmetric association when the object's own node doesn't explicitly link the subject back."},
 
-	"cites":            {Role: "link", Merge: core.MergeAppend, Aligned: "cito:cites", Description: "The general-purpose citation predicate; a source's own structural link to a cited resource, or a timeline's chronological reference to a source node it contains."},
+	"cites":            {Role: "link", Merge: core.MergeAppend, Aligned: "cito:cites", Description: "The general-purpose citation predicate; a source's own structural link to a cited reference, or a timeline's chronological reference to a source node it contains."},
 	"citesAsEvidence":  {Role: "edge", Merge: core.MergeUnion, Aligned: "cito:citesAsEvidence", Description: "Cites the target as evidence for the citing statement."},
 	"citesAsAuthority": {Role: "edge", Merge: core.MergeUnion, Aligned: "cito:citesAsAuthority", Description: "Cites the target as an authoritative source for the citing statement."},
 	"supports":         {Role: "edge", Merge: core.MergeUnion, Aligned: "cito:supports", Description: "The citing statement is supported by the target."},
@@ -74,10 +85,10 @@ var CorePredicateDefs = map[string]core.PredicateDef{
 	"aliases":     {Role: "meta", Merge: core.MergeUnion, Description: "Alternative names for the entity."},
 	"definition":  {Role: "text", Merge: core.MergeAppend, Description: "A one-to-three sentence definition of the subject."},
 	"notes":       {Role: "text", Merge: core.MergeAppend, Description: "Additional prose."},
-	"ref":         {Role: "meta", Merge: core.MergeImmutable, Description: "Resource type: a citable work or a topic/area tracked for reading or research."},
+	"ref":         {Role: "meta", Merge: core.MergeImmutable, Description: "Reference type: a citable work or a topic/area tracked for reading or research."},
 	"year":        {Role: "meta", Merge: core.MergeFillIfEmpty, Description: "Year of publication."},
-	"status":      {Role: "meta", Merge: core.MergeLastWriteWin, Description: "read or backlog — a backlog resource is a research target."},
-	"relevance":   {Role: "text", Merge: core.MergeAppend, Description: "A one-to-two sentence note on why the resource matters."},
+	"status":      {Role: "meta", Merge: core.MergeLastWriteWin, Description: "read or backlog — a backlog reference is a research target."},
+	"relevance":   {Role: "text", Merge: core.MergeAppend, Description: "A one-to-two sentence note on why the reference matters."},
 	"granularity": {Role: "meta", Merge: core.MergeImmutable, Description: "yearly or monthly."},
 	"heading":     {Role: "meta", Merge: core.MergeFirstWriteWin, Description: "A human-readable title for the period, shown in place of the bare @id (period code)."},
 	"period":      {Role: "meta", Merge: core.MergeImmutable, Aligned: "arc:period", Description: "A timeline node's own period code (YYYY or YYYY-MM), duplicated from its @id so a bare 4-digit yearly value always decodes as a YAML string rather than an integer."},
@@ -115,15 +126,18 @@ var CoreTypeDefs = map[string]core.TypeDef{
 		},
 		Description: "A node for a subject occurring in sources, typed by Sowa category.",
 	},
+	// CORE §11.4 lists "notes" as Resource's sole optional; "indexed" is
+	// carried in addition because it is not a CORE predicate at all but an
+	// arc extension (arc:indexed, spec 009) that arc apply stamps on every
+	// node it creates. Omitting it would make every Resource the tool
+	// itself writes fail its own type-conformance check — the same reason
+	// Source, Entity, and Timeline each carry it, and the same kind of
+	// documented divergence as Timeline's arc-internal "period".
 	"Resource": {
-		Merge:    core.MergeFirstWriteWin,
-		Required: []string{"ref", "relevance"},
-		Optional: []string{
-			"url", "isCitedBy", "authors", "year", "doi", "status", "notes",
-			"indexed", "mentions", "mentionedIn",
-			"broader", "narrower", "isPartOf", "hasPart", "requires", "replaces", "isReplacedBy", "conformsTo", "related", "referencedBy",
-		},
-		Description: "A node for an external work the graph points to but has not ingested, or a topic/area tracked for reading or research.",
+		Merge:       core.MergeFirstWriteWin,
+		Required:    []string{"text", "tags", "mentionedIn"},
+		Optional:    []string{"notes", "indexed"},
+		Description: "A fragment of an ingested document's content that is relevant to the graph but does not warrant its own dedicated type; tag-classified so a recurring pattern can later be promoted into a proper domain type.",
 	},
 	"Timeline": {
 		Merge:       core.MergeAppend,
@@ -131,11 +145,19 @@ var CoreTypeDefs = map[string]core.TypeDef{
 		Optional:    []string{"heading", "indexed", "mentions", "mentionedIn"},
 		Description: "A production-date index of ingested documents.",
 	},
+	// §11.6's own list, plus the same arc-extension "indexed" Resource
+	// carries above and for the same reason.
+	"Reference": {
+		Merge:       core.MergeFirstWriteWin,
+		Required:    []string{"title", "ref", "relevance"},
+		Optional:    []string{"url", "authors", "year", "doi", "status", "isCitedBy", "notes", "indexed"},
+		Description: "A node for an external work the graph points to but has not ingested, or a topic/area tracked for reading or research.",
+	},
 	"Node": {
 		Merge:       core.MergeUnion,
 		Required:    []string{"published", "created"},
 		Optional:    []string{"tags", "text", "updated", "scoreZ", "scoreC"},
-		Description: "The graph's implicit universal base type: every content type (Source, Entity, Resource, Timeline) inherits its Required/Optional contract via rdfs:subClassOf, whether declared explicitly or not. Never itself a node's own @type — it exists only to be inherited from (spec 017).",
+		Description: "The graph's implicit universal base type: every content type (Source, Entity, Resource, Timeline, Reference) inherits its Required/Optional contract via rdfs:subClassOf, whether declared explicitly or not. Never itself a node's own @type — it exists only to be inherited from (spec 017).",
 	},
 	"Property": {
 		Merge:       core.MergeUnion,
@@ -157,8 +179,9 @@ var CoreTypeDefs = map[string]core.TypeDef{
 // except Node/Property/Class already receives at resolve time regardless of
 // what this map says.
 var CoreTypeBases = map[string][]string{
-	"Source":   {"Node"},
-	"Entity":   {"Node"},
-	"Resource": {"Node"},
-	"Timeline": {"Node"},
+	"Source":    {"Node"},
+	"Entity":    {"Node"},
+	"Resource":  {"Node"},
+	"Timeline":  {"Node"},
+	"Reference": {"Node"},
 }

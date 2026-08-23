@@ -29,8 +29,8 @@ var coreIndexFixture = core.Index{
 
 func TestCheckUniqueBasenamesNoCollision(t *testing.T) {
 	index := map[string][]string{
-		"foo": {"sources/foo.md"},
-		"bar": {"entities/bar.md"},
+		"foo": {"Source/foo.md"},
+		"bar": {"Entity/bar.md"},
 	}
 	out := checkUniqueBasenames(index)
 	it.Then(t).Should(it.Equal(0, len(out)))
@@ -38,7 +38,7 @@ func TestCheckUniqueBasenamesNoCollision(t *testing.T) {
 
 func TestCheckUniqueBasenamesTwoWayCollision(t *testing.T) {
 	index := map[string][]string{
-		"rfc8446": {"resources/rfc8446.md", "entities/rfc8446.md"},
+		"rfc8446": {"Resource/rfc8446.md", "Entity/rfc8446.md"},
 	}
 	out := checkUniqueBasenames(index)
 	it.Then(t).Should(it.Equal(1, len(out)))
@@ -61,7 +61,7 @@ func TestCheckUniqueBasenamesThreeWayCollisionNamesEveryFile(t *testing.T) {
 
 func TestCheckUnrecognizedKindRecognized(t *testing.T) {
 	node := core.Node{Type: "Source"}
-	out := checkUnrecognizedKind(node, "sources/foo.md", coreIndexFixture)
+	out := checkUnrecognizedKind(node, "Source/foo.md", coreIndexFixture)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
@@ -89,13 +89,13 @@ func TestCheckUnrecognizedKindConfigRegistered(t *testing.T) {
 
 func TestCheckIdentityKeyQuotingBothQuotedNoViolation(t *testing.T) {
 	raw := []byte("---\n\"@id\": foo\n\"@type\": Source\n---\n")
-	out := checkIdentityKeyQuoting(core.Node{}, "sources/foo.md", raw)
+	out := checkIdentityKeyQuoting(core.Node{}, "Source/foo.md", raw)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
 func TestCheckIdentityKeyQuotingUnquotedIdReportsViolation(t *testing.T) {
 	raw := []byte("---\n@id: foo\n\"@type\": Source\n---\n")
-	out := checkIdentityKeyQuoting(core.Node{}, "sources/foo.md", raw)
+	out := checkIdentityKeyQuoting(core.Node{}, "Source/foo.md", raw)
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).
 		Should(it.Equal(kernel.RuleIdentityQuoting, out[0].Rule)).
@@ -105,7 +105,7 @@ func TestCheckIdentityKeyQuotingUnquotedIdReportsViolation(t *testing.T) {
 
 func TestCheckIdentityKeyQuotingUnquotedTypeReportsViolation(t *testing.T) {
 	raw := []byte("---\n\"@id\": foo\n@type: Source\n---\n")
-	out := checkIdentityKeyQuoting(core.Node{}, "sources/foo.md", raw)
+	out := checkIdentityKeyQuoting(core.Node{}, "Source/foo.md", raw)
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).
 		Should(it.Equal(kernel.RuleIdentityQuoting, out[0].Rule)).
@@ -114,7 +114,7 @@ func TestCheckIdentityKeyQuotingUnquotedTypeReportsViolation(t *testing.T) {
 
 func TestCheckIdentityKeyQuotingMissingKeyDistinctMessage(t *testing.T) {
 	raw := []byte("---\n\"@id\": foo\n---\n")
-	out := checkIdentityKeyQuoting(core.Node{}, "sources/foo.md", raw)
+	out := checkIdentityKeyQuoting(core.Node{}, "Source/foo.md", raw)
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).
 		Should(it.Equal(kernel.RuleIdentityQuoting, out[0].Rule)).
@@ -130,7 +130,7 @@ func TestCheckIdentityKeyQuotingMissingKeyDistinctMessage(t *testing.T) {
 // applied to the offending key.
 func TestCheckBareIdentityKeysWordingMatchesCoreConstant(t *testing.T) {
 	raw := []byte("---\n@id: foo\n@type: Source\n---\n")
-	out := checkBareIdentityKeys("sources/foo.md", raw)
+	out := checkBareIdentityKeys("Source/foo.md", raw)
 
 	it.Then(t).Must(it.Equal(2, len(out)))
 	for i, key := range []string{"@id", "@type"} {
