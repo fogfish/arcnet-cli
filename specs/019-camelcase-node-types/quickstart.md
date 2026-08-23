@@ -25,7 +25,7 @@ shows `"@type": Class` and `grep '"@id"' _schema/types/Entity.md` shows
 ```sh
 cat > bad.patch.md <<'EOF'
 ---
-kind: patch
+"@type": patch
 document: bad-entry
 published: 2026-07-19
 title: A lowercase-headed contribution
@@ -59,7 +59,7 @@ rm -f bad.patch.md
 
 cat > good.patch.md <<'EOF'
 ---
-kind: patch
+"@type": patch
 document: good-entry
 published: 2026-07-19
 title: A CamelCase contribution

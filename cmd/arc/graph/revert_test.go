@@ -116,7 +116,7 @@ func TestRevertSucceedsAfterRetractReapplyCycle(t *testing.T) {
 }
 
 const unrelatedNotePatchDifferentYear = `---
-kind: patch
+"@type": patch
 document: kolesnikov-2020-note
 published: 2020-05-01
 title: "A Working Note"
@@ -180,7 +180,7 @@ func TestRevertOlderNonOverlappingPatchStillTakesWholeCommitPath(t *testing.T) {
 }
 
 const tlsEntityDocAPatch = `---
-kind: patch
+"@type": patch
 document: doc-2026-a
 published: 2026-04-01
 title: "Document A"
@@ -214,7 +214,7 @@ Introduced in RFC 8446.
 `
 
 const tlsEntityDocBPatch = `---
-kind: patch
+"@type": patch
 document: doc-2026-b
 published: 2026-04-02
 title: "Document B"
@@ -314,7 +314,7 @@ func TestRevertVerboseReportsPerNodeReconciliationDetail(t *testing.T) {
 }
 
 const resourcePatchForRevert = `---
-kind: patch
+"@type": patch
 document: doc-2026-r
 published: 2026-05-01
 title: "Resource Document"
@@ -344,7 +344,7 @@ An exclusively-owned resource.
 `
 
 const referrerPatchForRevert = `---
-kind: patch
+"@type": patch
 document: doc-2026-s
 published: 2026-05-02
 title: "Referrer Document"
@@ -496,4 +496,65 @@ func TestRevertJSONOutput(t *testing.T) {
 		Should(it.String(out).Contain(`"document"`)).
 		Should(it.String(out).Contain(`"approach"`)).
 		Should(it.String(out).Contain(`"commit"`))
+}
+
+// ---------------------------------------------------------------------------
+// spec 021 — patch manifest identity ("@type": patch)
+// ---------------------------------------------------------------------------
+
+// arc apply docA.patch.md; arc apply docB.patch.md; arc revert doc-2026-a
+// --force
+// spec 021 T046/T047 (FR-009, research.md D6): docA's own patch file was
+// picked up by its ingest commit's `git add -A`, so the per-node walk sees it
+// among the reverted commit's touched paths. It is an exchange document, not
+// a node — revert must skip it rather than remove or text-strip it — and it
+// must do so under either identity key, because isPatchDocument now asks the
+// single shared recognition rule (core.LooksLikePatch) instead of "ParsePatch
+// succeeds". A retired-key file is precisely the case the old rule got wrong:
+// ParsePatch rejects it, so it stopped being recognized as an exchange file
+// and became eligible for node handling by a destructive command.
+func TestRevertSkipsPatchDocumentLeftInGraphTree(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		retireIt bool
+	}{
+		{name: "current identity key", retireIt: false},
+		{name: "retired identity key", retireIt: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			initGraph(t, dir)
+			chdir(t, dir)
+
+			patchA := writePatchFile(t, dir, "docA.patch.md", tlsEntityDocAPatch)
+			_, err := sut(NewApplyCmd(), []string{patchA})
+			it.Then(t).Must(it.Nil(err))
+
+			patchB := writePatchFile(t, dir, "docB.patch.md", tlsEntityDocBPatch)
+			_, err = sut(NewApplyCmd(), []string{patchB})
+			it.Then(t).Must(it.Nil(err))
+
+			want := tlsEntityDocAPatch
+			if tt.retireIt {
+				// the state a graph reaches when a pre-0.5 patch was left
+				// behind in-tree by an older release
+				want = strings.Replace(tlsEntityDocAPatch, `"@type": patch`, "kind: patch", 1)
+				seedNode(t, dir, "docA.patch.md", want)
+			}
+
+			out, err := sut(forcedRevertCmd(t), []string{"doc-2026-a"})
+
+			it.Then(t).ShouldNot(it.Error(out, err))
+			it.Then(t).Should(it.String(out).Contain("per-node"))
+
+			// the exchange file survives, byte-for-byte — revert never removed
+			// or rewrote it as if it were a node
+			assertIsFile(t, filepath.Join(dir, "docA.patch.md"))
+			it.Then(t).Should(it.Equal(want, readFile(t, filepath.Join(dir, "docA.patch.md"))))
+
+			// while the nodes it contributed are gone
+			_, statErr := os.Stat(filepath.Join(dir, "sources", "doc-2026-a.md"))
+			it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+		})
+	}
 }

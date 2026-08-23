@@ -1,5 +1,5 @@
 ---
-kind: patch
+"@type": patch
 document: karpathy-2026-notes
 published: 2026-04-02
 title: "Notes on Sequence Models"

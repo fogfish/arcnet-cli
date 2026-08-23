@@ -1,5 +1,5 @@
 ---
-kind: patch
+"@type": patch
 document: alpha-2025-early
 published: 2025-01-01
 title: "Early — applies before the blocker"

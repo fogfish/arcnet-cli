@@ -41,7 +41,7 @@ func mountTree(t *testing.T, files map[string]string) fsys.Store {
 }
 
 func patchSource(document, published string) string {
-	manifest := "---\nkind: patch\ndocument: " + document + "\n"
+	manifest := "---\n\"@type\": patch\ndocument: " + document + "\n"
 	if published != "" {
 		manifest += "published: " + published + "\n"
 	}
@@ -146,11 +146,11 @@ func TestClassifyPassesOverFilesWithoutAPatchManifest(t *testing.T) {
 		Should(it.Nil(p.candidates[0].err))
 }
 
-// FR-020: a file that declares kind: patch but does not parse becomes a
-// failed candidate — never a passed-over file.
+// FR-020: a file that declares a patch identity ("@type": patch) but does
+// not parse becomes a failed candidate — never a passed-over file.
 func TestClassifyMakesUnparsablePatchAFailedCandidate(t *testing.T) {
 	store := mountTree(t, map[string]string{
-		"truncated.patch.md": "---\nkind: patch\ndocument: broken-doc\npublished: 2025-01-01\n---\n# Source\n\n## broken-doc\n```yaml\n\"@id\": \"bro",
+		"truncated.patch.md": "---\n\"@type\": patch\ndocument: broken-doc\npublished: 2025-01-01\n---\n# Source\n\n## broken-doc\n```yaml\n\"@id\": \"bro",
 	})
 	paths, err := discoverPatchFiles(store)
 	it.Then(t).Should(it.Nil(err))

@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-08-23
+
+**Breaking format change** — a document patch now declares its identity with
+`"@type": patch` (quoted key, literal lowercase value, first key of the
+manifest), per ARCNET-CORE §14.2.1. This is now the sole recognized *and*
+emitted manifest identity across `arc apply`, `arc apply batch`,
+`arc apply schema` (local file, URL and `arcnet:` catalog reference),
+`arc subgraph`, `arc serve`'s `subgraph_get`, and `arc revert`'s patch-versus-
+node discrimination.
+
+The pre-0.5 `kind: patch` key is retired. It is **refused**, not accepted:
+there is no transitional grace period. A file still carrying it is rejected
+with a message naming the file, the retired key and its replacement, and — in
+`arc apply batch` — is reported by name under `failed`, never silently passed
+over as ordinary Markdown. A manifest carrying both keys is accepted when they
+agree and refused as self-contradictory when they do not.
+
+Unaffected: `arc subgraph --json` and `arc apply batch --json` schemas
+(`core.Patch` gains no field, so the identity key was never serialized),
+idempotency, ingest-commit shape, merge behaviour, and `arc lint` — patches are
+not nodes and are never indexed.
+
+One behaviour change beyond the key itself: `arc revert` now identifies an
+exchange document left in the graph tree by the shared recognition rule rather
+than by "does it parse", so a malformed patch is skipped instead of being
+processed as a node.
+
+`specs/021-patch-type-manifest`
+
 ## 2026-08-06
 
 /speckit-specify `arc apply batch <dir>` — apply every `*.md` patch in a directory recursively in published-date order, skipping already-ingested sources; each patch is still exactly one commit

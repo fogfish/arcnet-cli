@@ -32,7 +32,7 @@ discovery, ordering, and classification at once:
 ```text
 cmd/arc/graph/testdata/batch/
 ├── README.md                     # not a patch — passed over (FR-003)
-├── notes.md                      # front matter, but no `kind: patch` (FR-003)
+├── notes.md                      # front matter, but no patch identity (FR-003)
 ├── bibliography.bib              # not Markdown — ignored entirely, uncounted
 ├── 2026/
 │   ├── pqkex.patch.md            # published 2026-01-20
@@ -42,7 +42,7 @@ cmd/arc/graph/testdata/batch/
 ├── nested/deep/
 │   └── legacy.patch.md           # published 2023-08-05  ← applies FIRST
 ├── broken/
-│   └── truncated.patch.md        # declares kind: patch, no `published` (FR-020)
+│   └── truncated.patch.md        # declares `"@type": patch`, no `published` (FR-020)
 └── .hidden/
     └── ignored.patch.md          # never discovered (FR-019)
 ```

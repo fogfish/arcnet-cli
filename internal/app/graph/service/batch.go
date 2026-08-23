@@ -48,7 +48,8 @@ type candidate struct {
 	// zero-valued when classification failed.
 	document  string
 	published time.Time
-	// err is non-nil when the file declares kind: patch but does not parse
+	// err is non-nil when the file declares a patch identity but does not
+	// parse — including one that declares it with the retired "kind" key
 	// (FR-020).
 	err error
 }
@@ -177,9 +178,12 @@ func discoverPatchFiles(store fsys.Store) ([]string, error) {
 // classifyPatchFiles splits the discovered files into applicable patches and
 // passed-over Markdown, reusing core.LooksLikePatch and core.ParsePatch so
 // batch can never disagree with what arc apply itself accepts (research.md
-// D4). A file that declares kind: patch but does not parse — including one
-// whose published date is absent or uninterpretable — becomes a failed
-// candidate, never a passed-over file (FR-003, FR-020).
+// D4). A file that declares itself a patch but does not parse — including one
+// whose published date is absent or uninterpretable, and (since spec 021) one
+// still keyed with the retired "kind: patch" — becomes a failed candidate,
+// never a passed-over file (FR-003, FR-020, spec 021 FR-008). No logic change
+// was needed for the retired key: routing already runs through
+// core.LooksLikePatch, whose recognition spec 021 widened.
 func classifyPatchFiles(store fsys.Store, paths []string, index core.Index) plan {
 	out := plan{candidates: make([]candidate, 0, len(paths))}
 

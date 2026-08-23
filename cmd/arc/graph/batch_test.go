@@ -109,7 +109,7 @@ func indexOfSubjectContaining(subjects []string, document string) int {
 
 // patchWithDocument builds a minimal well-formed single-Source patch.
 func patchWithDocument(document, published string) string {
-	return "---\nkind: patch\ndocument: " + document + "\npublished: " + published +
+	return "---\n\"@type\": patch\ndocument: " + document + "\npublished: " + published +
 		"\ntitle: \"" + document + "\"\n---\n# Source\n\n## " + document + "\n" +
 		"```yaml\n\"@id\": \"" + document + "\"\n\"@type\": Source\ntitle: \"" + document +
 		"\"\nauthors: [Test Author]\npublished: \"" + published + "\"\n```\n\nA test patch.\n"
@@ -239,10 +239,12 @@ func TestBatchReportsSummaryCounts(t *testing.T) {
 	out, err := sut(batchCmd(t, false), []string{batchFixture("batch")})
 	it.Then(t).Should(it.True(errors.Is(err, bios.ErrSilent)))
 
+	// spec 021 T044: legacy-kind.patch.md adds one candidate that fails
+	// recognition — failed +1, not_a_patch deliberately unchanged (FR-008).
 	it.Then(t).
 		Should(it.String(out).Contain("Applied 4 patches")).
 		Should(it.String(out).Contain("0 skipped")).
-		Should(it.String(out).Contain("1 failed")).
+		Should(it.String(out).Contain("2 failed")).
 		Should(it.String(out).Contain("2 not a patch"))
 }
 
@@ -439,8 +441,8 @@ func TestBatchAllFailedRunProducesNoCommits(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	patches := t.TempDir()
-	writeInto(t, patches, "one.patch.md", "---\nkind: patch\ndocument: broken-one\n---\n# Source\n")
-	writeInto(t, patches, "two.patch.md", "---\nkind: patch\ndocument: broken-two\n---\n# Source\n")
+	writeInto(t, patches, "one.patch.md", "---\n\"@type\": patch\ndocument: broken-one\n---\n# Source\n")
+	writeInto(t, patches, "two.patch.md", "---\n\"@type\": patch\ndocument: broken-two\n---\n# Source\n")
 	chdir(t, dir)
 
 	before := commitCount(t, dir)
@@ -747,10 +749,10 @@ func TestBatchAbsentPublicationDateIsAFailure(t *testing.T) {
 	patches := t.TempDir()
 	writeInto(t, patches, "dated.patch.md", patchWithDocument("dated-2025-doc", "2025-04-04"))
 	writeInto(t, patches, "undated.patch.md",
-		"---\nkind: patch\ndocument: undated-doc\ntitle: \"No date\"\n---\n# Source\n\n## undated-doc\n"+
+		"---\n\"@type\": patch\ndocument: undated-doc\ntitle: \"No date\"\n---\n# Source\n\n## undated-doc\n"+
 			"```yaml\n\"@id\": \"undated-doc\"\n\"@type\": Source\n```\n\nNo publication date at all.\n")
 	writeInto(t, patches, "nonsense.patch.md",
-		"---\nkind: patch\ndocument: nonsense-doc\npublished: \"not-a-date\"\ntitle: \"Bad date\"\n---\n# Source\n\n## nonsense-doc\n"+
+		"---\n\"@type\": patch\ndocument: nonsense-doc\npublished: \"not-a-date\"\ntitle: \"Bad date\"\n---\n# Source\n\n## nonsense-doc\n"+
 			"```yaml\n\"@id\": \"nonsense-doc\"\n\"@type\": Source\n```\n\nAn uninterpretable date.\n")
 	chdir(t, dir)
 
@@ -803,7 +805,7 @@ func TestBatchUnregisteredKindWarnsWithoutAbortingTheRun(t *testing.T) {
 	initGraph(t, dir)
 	patches := t.TempDir()
 	writeInto(t, patches, "hypothesis.patch.md",
-		"---\nkind: patch\ndocument: warn-2025-doc\npublished: 2025-02-02\ntitle: \"Unregistered kind\"\n---\n"+
+		"---\n\"@type\": patch\ndocument: warn-2025-doc\npublished: 2025-02-02\ntitle: \"Unregistered kind\"\n---\n"+
 			"# Source\n\n## warn-2025-doc\n```yaml\n\"@id\": \"warn-2025-doc\"\n\"@type\": Source\n```\n\nBody.\n\n"+
 			"# Hypothesis\n\n## Some Hypothesis\n```yaml\n\"@id\": \"Some Hypothesis\"\n\"@type\": Hypothesis\n```\n\nA hypothesis.\n")
 	writeInto(t, patches, "plain.patch.md", patchWithDocument("plain-2025-doc", "2025-03-03"))
@@ -919,10 +921,10 @@ func TestBatchJSONMatchesDocumentedSchema(t *testing.T) {
 		Should(it.Equal(batchFixture("batch"), result.Directory)).
 		Should(it.Equal(4, result.Applied)).
 		Should(it.Equal(0, result.Skipped)).
-		Should(it.Equal(1, result.Failed)).
+		Should(it.Equal(2, result.Failed)).
 		Should(it.Equal(0, result.Unprocessed)).
 		Should(it.Equal(2, result.NotAPatch)).
-		Should(it.Equal(5, len(result.Patches)))
+		Should(it.Equal(6, len(result.Patches)))
 
 	// applied + skipped + failed + unprocessed == len(patches);
 	// not_a_patch is deliberately outside that sum
@@ -943,6 +945,9 @@ func TestBatchJSONMatchesDocumentedSchema(t *testing.T) {
 		"2026/pqkex.patch.md",
 		"2026/karpathy.patch.md",
 		"broken/truncated.patch.md",
+		// spec 021: a retired-key file is a classification failure too, so it
+		// carries no usable date and is appended last, ordered by path.
+		"legacy-kind.patch.md",
 	}
 	for i, want := range expectPaths {
 		it.Then(t).Should(it.Equal(want, result.Patches[i].Path))
@@ -1026,4 +1031,91 @@ func TestBatchJSONUnprocessedOnlyUnderFailFast(t *testing.T) {
 		Should(it.Equal("unprocessed", result.Patches[2].Outcome)).
 		Should(it.Equal("", result.Patches[2].Reason)).
 		Should(it.Equal("", result.Patches[2].CommitHash))
+}
+
+// ---------------------------------------------------------------------------
+// spec 021 — patch manifest identity ("@type": patch)
+// ---------------------------------------------------------------------------
+
+// arc apply batch <dir>
+// spec 021 US1 Acceptance Scenario 3: a directory whose every patch declares
+// itself with the quoted "@type": patch key applies in full — in publication
+// date order, ties broken by relative path — with one ingest commit each and
+// nothing counted as passed over.
+func TestBatchAppliesEveryTypeKeyPatchInDateThenPathOrder(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+
+	patches := t.TempDir()
+	// Alphabetical order deliberately contradicts date order, and the two
+	// 2026-05-01 documents tie on date so only their relative path can
+	// order them.
+	writeInto(t, patches, "z-oldest.patch.md", patchWithDocument("aaa-2024-oldest", "2024-01-05"))
+	writeInto(t, patches, "nested/b-tie.patch.md", patchWithDocument("bbb-2026-tie-b", "2026-05-01"))
+	writeInto(t, patches, "a-tie.patch.md", patchWithDocument("ccc-2026-tie-a", "2026-05-01"))
+
+	before := commitCount(t, dir)
+
+	out, err := sut(batchCmd(t, false), []string{patches})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	it.Then(t).Should(it.Equal(before+3, commitCount(t, dir)))
+
+	subjects := commitSubjects(t, dir)
+	oldest := indexOfSubjectContaining(subjects, "aaa-2024-oldest")
+	tieA := indexOfSubjectContaining(subjects, "ccc-2026-tie-a")
+	tieB := indexOfSubjectContaining(subjects, "bbb-2026-tie-b")
+
+	it.Then(t).
+		Should(it.True(oldest > 0)).
+		Should(it.True(oldest < tieA)).
+		// "a-tie.patch.md" sorts before "nested/b-tie.patch.md"
+		Should(it.True(tieA < tieB))
+
+	assertIsFile(t, filepath.Join(dir, "sources", "aaa-2024-oldest.md"))
+	assertIsFile(t, filepath.Join(dir, "sources", "bbb-2026-tie-b.md"))
+	assertIsFile(t, filepath.Join(dir, "sources", "ccc-2026-tie-a.md"))
+}
+
+// arc apply batch --json testdata/batch
+// spec 021 US3 Acceptance Scenario 4 (FR-008, SC-005): legacy-kind.patch.md
+// declares itself a patch under the retired key. It must be reported **by
+// name** under `failed`, with the retired-key reason attached — and
+// `not_a_patch` must be unchanged, since only README.md and notes.md declare
+// no patch identity at all. That count assertion is the SC-005 test: a file
+// the user meant as a patch is never silently skipped.
+func TestBatchNamesRetiredKeyFileAsFailedNotPassedOver(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	bios.JSON = true
+	t.Cleanup(func() { bios.JSON = false })
+
+	out, err := sut(batchCmd(t, false), []string{batchFixture("batch")})
+	it.Then(t).Should(it.True(errors.Is(err, bios.ErrSilent)))
+
+	var result batchJSON
+	it.Then(t).Must(it.Nil(json.Unmarshal([]byte(out), &result)))
+
+	// README.md and notes.md only — the retired-key file is not among them
+	it.Then(t).Should(it.Equal(2, result.NotAPatch))
+
+	found := false
+	for _, p := range result.Patches {
+		if p.Path != "legacy-kind.patch.md" {
+			continue
+		}
+		found = true
+		it.Then(t).
+			Should(it.Equal("failed", p.Outcome)).
+			Should(it.String(p.Reason).Contain("retired")).
+			Should(it.String(p.Reason).Contain(`"@type": patch`)).
+			Should(it.Equal("", p.CommitHash))
+	}
+	it.Then(t).Should(it.True(found))
+
+	// its Source node was never written — a named failure, not a partial apply
+	_, statErr := os.Stat(filepath.Join(dir, "sources", "turing-2025-legacy-kind.md"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }

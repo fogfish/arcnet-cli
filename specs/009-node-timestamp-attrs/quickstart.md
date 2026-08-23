@@ -18,7 +18,7 @@ $ arc init ./demo-graph && cd demo-graph
 ```sh
 $ cat > tls13.patch.md <<'EOF'
 ---
-kind: patch
+"@type": patch
 document: rescorla-2026-tls13
 published: 2026-04-12
 title: "TLS 1.3: Design and Rationale"
@@ -69,7 +69,7 @@ Expected: both files carry identical `indexed` values (one Application Timestamp
 ```sh
 $ cat > tls13-followup.patch.md <<'EOF'
 ---
-kind: patch
+"@type": patch
 document: rescorla-2026-tls13-followup
 published: 2026-05-01
 ---
@@ -113,7 +113,7 @@ Expected: re-applying the exact same follow-up patch a second time contributes n
 ```sh
 $ arc subgraph tls-1.3 --depth 0
 ---
-kind: patch
+"@type": patch
 document: subgraph:tls-1-3@2026-07-05T14:40:00Z
 published: 2026-07-05
 ---

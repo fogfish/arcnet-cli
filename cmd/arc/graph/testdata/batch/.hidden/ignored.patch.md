@@ -1,5 +1,5 @@
 ---
-kind: patch
+"@type": patch
 document: hidden-2025-ignored
 published: 2025-05-05
 title: "A patch inside a hidden directory"

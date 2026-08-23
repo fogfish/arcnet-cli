@@ -36,7 +36,7 @@ func (r *fakeApplyReporter) Done(string, time.Duration) {}
 func (r *fakeApplyReporter) Error(string, error)        {}
 
 const propertyPatch = `---
-kind: patch
+"@type": patch
 document: acme-extension-schema
 published: 2026-07-15
 title: Acme extension vocabulary
@@ -55,7 +55,7 @@ The item's weight in kilograms.
 `
 
 const propertyPatchUpdated = `---
-kind: patch
+"@type": patch
 document: acme-extension-schema
 published: 2026-07-15
 title: Acme extension vocabulary
@@ -74,7 +74,7 @@ Measured in kilograms (SI).
 `
 
 const mixedSchemaPatch = `---
-kind: patch
+"@type": patch
 document: acme-extension-schema
 published: 2026-07-15
 title: Acme extension vocabulary
@@ -106,7 +106,7 @@ A physical item tracked by the Acme extension.
 `
 
 const mixedValidInvalidSchemaPatch = `---
-kind: patch
+"@type": patch
 document: acme-extension-schema
 published: 2026-07-15
 title: Acme extension vocabulary
@@ -147,7 +147,7 @@ The company behind the extension.
 `
 
 const entityOnlyPatch = `---
-kind: patch
+"@type": patch
 document: acme-corp-note
 published: 2026-07-15
 title: Acme Corp
@@ -219,7 +219,7 @@ func TestApplyPatchReappliedWithChangedFieldMergesPredicate(t *testing.T) {
 }
 
 const sourceOptionalOnlyPatch = `---
-kind: patch
+"@type": patch
 document: acme-extension-schema
 published: 2026-07-15
 title: Acme extension vocabulary
@@ -264,7 +264,7 @@ func TestApplyPatchMergesOptionalPredicateIntoExistingTypeOmittingDescription(t 
 }
 
 const propertyOptionalOnlyPatch = `---
-kind: patch
+"@type": patch
 document: acme-extension-schema
 published: 2026-07-15
 title: Acme extension vocabulary
@@ -301,7 +301,7 @@ func TestApplyPatchMergesPropertyOmittingRoleAndMerge(t *testing.T) {
 }
 
 const classNoDescriptionPatch = `---
-kind: patch
+"@type": patch
 document: acme-extension-schema
 published: 2026-07-15
 title: Acme extension vocabulary

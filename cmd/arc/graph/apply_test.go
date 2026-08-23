@@ -10,6 +10,7 @@ package graph
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -25,6 +26,7 @@ import (
 	"github.com/fogfish/arcnet-cli/cmd/arc/lint"
 	appschema "github.com/fogfish/arcnet-cli/internal/app/schema"
 	"github.com/fogfish/arcnet-cli/internal/bios"
+	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
 // TestMain sets a fake git identity for the whole test binary, matching
@@ -170,7 +172,7 @@ func readFile(t *testing.T, path string) string {
 }
 
 const tls13Patch = `---
-kind: patch
+"@type": patch
 document: rescorla-2026-tls13
 published: 2026-04-12
 title: "TLS 1.3: Design and Rationale"
@@ -337,7 +339,7 @@ A cryptographic protocol.
 `
 
 const pqkexPatchMergingEntity = `---
-kind: patch
+"@type": patch
 document: chen-2026-pqkex
 published: 2026-04-28
 title: "Post-Quantum Key Exchange in Practice"
@@ -404,7 +406,7 @@ The normative specification of TLS 1.3.
 `
 
 const patchFillsResourceStatus = `---
-kind: patch
+"@type": patch
 document: chen-2026-pqkex
 published: 2026-04-28
 title: "Post-Quantum Key Exchange in Practice"
@@ -465,7 +467,7 @@ The normative specification of TLS 1.3.
 `
 
 const patchDivergesResourceStatus = `---
-kind: patch
+"@type": patch
 document: chen-2026-pqkex
 published: 2026-04-28
 title: "Post-Quantum Key Exchange in Practice"
@@ -514,7 +516,7 @@ Large Language Models are technological systems that have fundamentally transfor
 // every re-ingest run) and Text carrying one near-duplicate paraphrase
 // paragraph (only its last word differs) plus one genuinely new paragraph.
 const karpathyPatchRegeneratesEntity = `---
-kind: patch
+"@type": patch
 document: karpathy-2026-agentic
 published: 2026-05-01
 title: "Agentic Coding Workflows"
@@ -640,7 +642,7 @@ func TestApplyCommitStatsDistinguishMergedFromCreated(t *testing.T) {
 }
 
 const notePatchWithHypothesis = `---
-kind: patch
+"@type": patch
 document: kolesnikov-2026-note
 published: 2026-05-01
 title: "A Working Note"
@@ -748,7 +750,7 @@ func TestApplyUnregisteredPredicateCreatesSchemaDocumentInSameCommit(t *testing.
 }
 
 const hypothesisWithLabeledBlocksPatch = `---
-kind: patch
+"@type": patch
 document: dmitry-2026-article
 published: 2026-01-01
 title: "A Test Article"
@@ -809,7 +811,7 @@ func TestApplyLabeledBlockNonWikilinkContentSurvives(t *testing.T) {
 }
 
 const hypothesisWithFullShapePatch = `---
-kind: patch
+"@type": patch
 document: dmitry-2026-article2
 published: 2026-01-01
 title: "A Second Test Article"
@@ -937,7 +939,7 @@ A conclusion distilled from sources.
 `
 
 const patchDivergesHypothesisStatusTemplate = `---
-kind: patch
+"@type": patch
 document: %s
 published: 2026-05-02
 title: "%s"
@@ -1039,7 +1041,7 @@ func TestApplyMissingManifestFieldRefuses(t *testing.T) {
 	initGraph(t, dir)
 	chdir(t, dir)
 	broken := `---
-kind: patch
+"@type": patch
 published: 2026-04-12
 ---
 # Source
@@ -1071,7 +1073,7 @@ func TestApplyMalformedPatchBodyRefuses(t *testing.T) {
 	initGraph(t, dir)
 	chdir(t, dir)
 	broken := `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-04-12
 ---
@@ -1154,7 +1156,7 @@ func TestApplyIdMismatchedBasenameRefuses(t *testing.T) {
 }
 
 const patchWithExplicitTimelineSection = `---
-kind: patch
+"@type": patch
 document: foo-2026-x
 published: 2026-07-12
 title: "A Test Document"
@@ -1346,7 +1348,7 @@ func TestApplyVerboseModeShowsPerNodeProgress(t *testing.T) {
 }
 
 const duplicateDefinitionPatchA = `---
-kind: patch
+"@type": patch
 document: doc-2026-dup-a
 published: 2026-06-01
 title: "Document A"
@@ -1376,7 +1378,7 @@ A duplicate-tested widget definition.
 `
 
 const duplicateDefinitionPatchB = `---
-kind: patch
+"@type": patch
 document: doc-2026-dup-b
 published: 2026-06-02
 title: "Document B"
@@ -1452,7 +1454,7 @@ func TestApplyDefaultModeShowsNoPerNodeProgress(t *testing.T) {
 }
 
 const deployEvent1Patch = `---
-kind: patch
+"@type": patch
 document: acme-2026-deploy1
 published: 2026-06-01
 title: "First Deploy"
@@ -1479,7 +1481,7 @@ An event log.
 `
 
 const deployEvent2Patch = `---
-kind: patch
+"@type": patch
 document: acme-2026-deploy2
 published: 2026-06-02
 title: "Second Deploy"
@@ -1543,7 +1545,7 @@ func TestApplyAppendRegisteredKindUnionsAcrossPatches(t *testing.T) {
 // grouped body blocks use CORE §12.2's bold-label convention, never
 // headings, and each node carries multiple such blocks.
 const boldLabelCanonicalPatch = `---
-kind: patch
+"@type": patch
 document: rescorla-2026-tls13
 published: 2026-04-12
 title: "TLS 1.3: Design and Rationale"
@@ -1639,7 +1641,7 @@ func TestApplyCreatedNodesShareIdenticalIndexedValue(t *testing.T) {
 }
 
 const stubEntityPatch = `---
-kind: patch
+"@type": patch
 document: foo-2026-stub
 published: 2026-04-12
 title: "Stub Test Document"
@@ -1732,7 +1734,7 @@ Original text.
 `
 
 const memoNonePatch = `---
-kind: patch
+"@type": patch
 document: foo-2026-memo
 published: 2026-05-01
 title: "Memo Patch"
@@ -1791,7 +1793,7 @@ const stubbedThingSeed = `---
 `
 
 const patchFillsStubWithRealContent = `---
-kind: patch
+"@type": patch
 document: foo-2026-fill
 published: 2026-06-01
 title: "Fill Patch"
@@ -1854,7 +1856,7 @@ A test entity.
 `
 
 const noOpUnionPatch = `---
-kind: patch
+"@type": patch
 document: foo-2026-noop
 published: 2026-05-03
 title: "No-op Patch"
@@ -1932,7 +1934,7 @@ func TestApplyBoldLabelPatchNoEdgeLoss(t *testing.T) {
 // own yaml fence at all — identity/type come solely from the "## <ID>"/
 // "# <Type>" section headings (BUG-001).
 const headingOnlyCanonicalPatch = `---
-kind: patch
+"@type": patch
 document: dmitry-2026-graph
 published: 2026-07-03
 title: "Ontologies, Graph Structures, and LLM-Based Knowledge Management"
@@ -1997,7 +1999,7 @@ func TestApplyHeadingOnlyCanonicalPatchAcceptedEndToEnd(t *testing.T) {
 // predicate — abstract included — to append.
 
 const resourcePatch012First = `---
-kind: patch
+"@type": patch
 document: doc-2026-a
 published: 2026-07-01
 title: "Doc A"
@@ -2030,7 +2032,7 @@ A tracked reading item.
 `
 
 const resourcePatch012Second = `---
-kind: patch
+"@type": patch
 document: doc-2026-b
 published: 2026-07-02
 title: "Doc B"
@@ -2157,7 +2159,7 @@ A draft specification.
 `
 
 const patchFillsUrlFirstTime = `---
-kind: patch
+"@type": patch
 document: doc-2026-c
 published: 2026-07-03
 title: "Doc C"
@@ -2188,7 +2190,7 @@ A draft specification.
 `
 
 const patchDivergesUrlAfterFirstWrite = `---
-kind: patch
+"@type": patch
 document: doc-2026-d
 published: 2026-07-04
 title: "Doc D"
@@ -2259,7 +2261,7 @@ An ongoing research topic.
 `
 
 const patchContributesTags = `---
-kind: patch
+"@type": patch
 document: doc-2026-e
 published: 2026-07-05
 title: "Doc E"
@@ -2290,7 +2292,7 @@ An ongoing research topic.
 `
 
 const patchContributesStatus = `---
-kind: patch
+"@type": patch
 document: doc-2026-f
 published: 2026-07-06
 title: "Doc F"
@@ -2393,7 +2395,7 @@ A tracked reading item.
 `)
 
 	readPatch := `---
-kind: patch
+"@type": patch
 document: doc-2026-read
 published: 2026-07-07
 title: "Doc Read"
@@ -2423,7 +2425,7 @@ status: read
 A tracked reading item.
 `
 	archivedPatch := `---
-kind: patch
+"@type": patch
 document: doc-2026-archived
 published: 2026-07-08
 title: "Doc Archived"
@@ -2511,7 +2513,7 @@ func TestApply012US3ReplayDoesNotRewrapConflictMarker(t *testing.T) {
 }
 
 const lowercaseH1Patch = `---
-kind: patch
+"@type": patch
 document: rescorla-2026-tls13
 published: 2026-04-12
 title: "TLS 1.3: Design and Rationale"
@@ -2551,7 +2553,7 @@ func TestApplyLowercaseH1HeadingRejected(t *testing.T) {
 }
 
 const uppercaseH1Patch = `---
-kind: patch
+"@type": patch
 document: rescorla-2026-tls13
 published: 2026-04-12
 title: "TLS 1.3: Design and Rationale"
@@ -2585,7 +2587,7 @@ func TestApplyUppercaseH1HeadingStoresExactCasing(t *testing.T) {
 }
 
 const multiH1OneNonCompliantPatch = `---
-kind: patch
+"@type": patch
 document: rescorla-2026-tls13
 published: 2026-04-12
 title: "TLS 1.3: Design and Rationale"
@@ -2635,4 +2637,264 @@ func TestApplyMultiH1OneNonCompliantRejectsWholeDocument(t *testing.T) {
 	it.Then(t).Should(it.True(os.IsNotExist(sourceStatErr)))
 	_, entityStatErr := os.Stat(filepath.Join(dir, "entities", "Transport Layer Security.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(entityStatErr)))
+}
+
+// ---------------------------------------------------------------------------
+// spec 021 — patch manifest identity ("@type": patch)
+// ---------------------------------------------------------------------------
+
+// gitLog returns the graph's whole oneline history, for before/after
+// assertions that a rejection left git untouched (spec 021 FR-007).
+func gitLog(t *testing.T, dir string) string {
+	t.Helper()
+	return strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
+}
+
+// withIdentity rewrites tls13Patch's manifest identity line, the single
+// variable across every spec 021 scenario below.
+func withIdentity(identity string) string {
+	return strings.Replace(tls13Patch, `"@type": patch`, identity, 1)
+}
+
+// arc apply shannon.patch.md
+// spec 021 US1 Acceptance Scenario 1: a patch transcribed straight from
+// ARCNET-CORE §14.2.2 — declaring itself with the quoted "@type": patch key
+// — applies, writes every carried node, and records exactly one ingest
+// commit. This is the whole defect: before this feature the success rate for
+// a spec-conformant patch was 0% (SC-001).
+func TestApplyTypeKeyPatchAppliesWithOneIngestCommit(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
+
+	before := commitCount(t, dir)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	assertIsFile(t, filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	assertIsFile(t, filepath.Join(dir, "entities", "Transport Layer Security.md"))
+	it.Then(t).Should(it.Equal(before+1, commitCount(t, dir)))
+}
+
+// arc apply shannon.patch.md (twice)
+// spec 021 US1 Acceptance Scenario 2: idempotency survives the key change —
+// a second apply is a skip, with no second commit (FR-012, SC-006).
+func TestApplyTypeKeyPatchReapplyRecordsNoSecondCommit(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
+
+	_, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Nil(err))
+	afterFirst := commitCount(t, dir)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).
+		Should(it.String(out).Contain("already tracked")).
+		Should(it.Equal(afterFirst, commitCount(t, dir)))
+}
+
+// arc apply legacy.patch.md
+// Every rejection fixture below is written *outside* the graph tree, matching
+// this file's own TestApplyMultiH1OneNonCompliantRejectsWholeDocument
+// precedent: a patch left sitting inside the graph is a separate concern with
+// its own test (guardNoOldFormatNodes, see the in-tree retired-key case in
+// internal/app/graph/service/apply_test.go).
+//
+// spec 021 US3 Acceptance Scenario 1: the retired key is refused, naming the
+// file, the offending key and its replacement, leaving git untouched
+// (FR-003, FR-007, SC-007).
+func TestApplyLegacyKindPatchRefusedNamingReplacement(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, t.TempDir(), "legacy.patch.md", withIdentity("kind: patch"))
+
+	before := gitLog(t, dir)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+
+	it.Then(t).Must(it.True(errors.Is(err, core.ErrManifestLegacyKind)))
+	it.Then(t).
+		Should(it.String(err.Error()).Contain("retired")).
+		Should(it.String(err.Error()).Contain("legacy.patch.md")).
+		Should(it.String(err.Error()).Contain(`"@type": patch`)).
+		Should(it.Equal(before, gitLog(t, dir))).
+		Should(it.Equal("", strings.TrimSpace(out)))
+
+	_, statErr := os.Stat(filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+}
+
+// arc apply conflict.patch.md
+// spec 021 US3 Acceptance Scenario 2: a self-contradictory manifest is
+// refused with an error distinct from the retired-key one, naming both
+// disagreeing values (FR-005).
+func TestApplyConflictingIdentityKeysRefusedNamingBothValues(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, t.TempDir(), "conflict.patch.md", withIdentity("\"@type\": patch\nkind: source"))
+
+	before := gitLog(t, dir)
+
+	_, err := sut(NewApplyCmd(), []string{patch})
+
+	it.Then(t).Must(it.True(errors.Is(err, core.ErrManifestTypeConflict)))
+	it.Then(t).
+		Should(it.String(err.Error()).Contain("conflict.patch.md")).
+		Should(it.String(err.Error()).Contain("patch")).
+		Should(it.String(err.Error()).Contain("source")).
+		Should(it.Equal(before, gitLog(t, dir)))
+	it.Then(t).ShouldNot(it.True(errors.Is(err, core.ErrManifestLegacyKind)))
+}
+
+// arc apply both.patch.md
+// spec 021 US3 Acceptance Scenario 3: a redundant retired key alongside an
+// agreeing "@type" is not a contradiction — it is ignored and the patch
+// applies normally (FR-004).
+func TestApplyBothIdentityKeysAgreeingApplies(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "both.patch.md", withIdentity("\"@type\": patch\nkind: patch"))
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	assertIsFile(t, filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+}
+
+// arc apply notapatch.md
+// spec 021 US3 Acceptance Scenario 5: a manifest declaring neither identity
+// key still produces the pre-existing manifest-invalid message, unchanged in
+// wording (FR-006).
+func TestApplyNoIdentityKeyProducesPreexistingMessage(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, t.TempDir(), "notapatch.md", withIdentity("title: Reading notes"))
+
+	before := gitLog(t, dir)
+
+	_, err := sut(NewApplyCmd(), []string{patch})
+
+	it.Then(t).Must(it.True(errors.Is(err, core.ErrManifestInvalid)))
+	it.Then(t).
+		Should(it.String(err.Error()).Contain("manifest is missing a mandatory field or uses the pre-0.5 node format")).
+		Should(it.Equal(before, gitLog(t, dir)))
+	it.Then(t).ShouldNot(it.True(errors.Is(err, core.ErrManifestLegacyKind)))
+	it.Then(t).ShouldNot(it.True(errors.Is(err, core.ErrManifestNotAPatch)))
+}
+
+// arc apply cased.patch.md
+// spec 021 edge case (FR-016): "@type": Patch is the right kind in the wrong
+// casing — rejected with a message that shows the offending value.
+func TestApplyCapitalizedTypeValueRefused(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, t.TempDir(), "cased.patch.md", withIdentity(`"@type": Patch`))
+
+	_, err := sut(NewApplyCmd(), []string{patch})
+
+	it.Then(t).Must(it.True(errors.Is(err, core.ErrManifestNotAPatch)))
+	it.Then(t).Should(it.String(err.Error()).Contain("Patch"))
+}
+
+// arc apply bare.patch.md
+// spec 021 edge case (FR-015): a bare "@type:" is a hard YAML syntax error —
+// the user must meet the quoting sentence, not the raw lexer error.
+func TestApplyBareIdentityKeyReportsQuoting(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, t.TempDir(), "bare.patch.md", withIdentity(`@type: patch`))
+
+	_, err := sut(NewApplyCmd(), []string{patch})
+
+	it.Then(t).Must(it.True(errors.Is(err, core.ErrIdentityQuoting)))
+	it.Then(t).
+		Should(it.String(err.Error()).Contain("bare.patch.md")).
+		Should(it.String(err.Error()).Contain("must be a quoted YAML string key, found it unquoted"))
+	it.Then(t).ShouldNot(it.String(err.Error()).Contain("cannot start any token"))
+}
+
+// arc apply tls13.patch.md, with a retired-key patch sitting in the graph
+// spec 021 T048 / data-model.md §3: guardNoOldFormatNodes' whole-graph walk
+// sees a patch file left inside the graph tree. Because core.LooksLikePatch
+// now recognizes the retired key, the guard surfaces the actionable
+// ErrManifestLegacyKind — traceable to the offending file — instead of
+// shadowing it with core.ParseNode's generic "legacy kind field" old-format
+// heuristic, which describes the wrong defect.
+//
+// This lives here rather than in internal/app/graph/service/apply_test.go
+// (where the task placed it) because that package's memStore fixture has no
+// ReadDir, so the guard's whole-graph walk finds nothing there; the guard is
+// only observable against a real filesystem, which is also where every other
+// guardNoOldFormatNodes test in this repository already lives.
+func TestApplyRetiredKeyPatchInGraphTreeSurfacesLegacyKindError(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedNode(t, dir, "entities/stale.patch.md", withIdentity("kind: patch"))
+	chdir(t, dir)
+	patch := writePatchFile(t, t.TempDir(), "tls13.patch.md", tls13Patch)
+
+	before := gitLog(t, dir)
+
+	_, err := sut(NewApplyCmd(), []string{patch})
+
+	it.Then(t).Must(it.True(errors.Is(err, core.ErrManifestLegacyKind)))
+	it.Then(t).
+		Should(it.String(err.Error()).Contain("stale.patch.md")).
+		Should(it.String(err.Error()).Contain(`"@type": patch`)).
+		Should(it.Equal(before, gitLog(t, dir)))
+	it.Then(t).ShouldNot(it.String(err.Error()).Contain(`legacy "kind" field present`))
+}
+
+// arc apply tls13.patch.md, with a conformant patch sitting in the graph
+// spec 021: the same walk passes over a well-formed exchange document
+// entirely — a patch in the tree is a valid, distinct concept, never a node.
+func TestApplyTypeKeyPatchInGraphTreeIsPassedOver(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedNode(t, dir, "entities/exchange.patch.md", tlsEntityDocBPatch)
+	chdir(t, dir)
+	patch := writePatchFile(t, t.TempDir(), "tls13.patch.md", tls13Patch)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	assertIsFile(t, filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+}
+
+// arc apply cased-body.patch.md
+// spec 021 T049 / contracts/cli-contract.md edge cases: when a document
+// declares a valid '"@type": patch' manifest but its body carries a spec 019
+// CamelCase violation, the *body* error must remain the reported reason. The
+// identity check runs first and passes, so it must not shadow the real
+// defect.
+func TestApplyTypeKeyPatchWithBodyCasingViolationReportsBodyError(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	body := strings.Replace(tls13Patch, `"@type": Entity`, `"@type": entity`, 1)
+	patch := writePatchFile(t, t.TempDir(), "cased-body.patch.md", body)
+
+	_, err := sut(NewApplyCmd(), []string{patch})
+
+	it.Then(t).Must(it.True(errors.Is(err, core.ErrTypeCasing)))
+	it.Then(t).Should(it.String(err.Error()).Contain("entity"))
+	// ErrManifestInvalid stays in the chain — parsePatchBody has wrapped body
+	// failures in it since before this feature — but no *identity* error does,
+	// which is what "the identity check did not shadow the body error" means.
+	it.Then(t).
+		ShouldNot(it.True(errors.Is(err, core.ErrManifestLegacyKind))).
+		ShouldNot(it.True(errors.Is(err, core.ErrManifestNotAPatch))).
+		ShouldNot(it.True(errors.Is(err, core.ErrManifestTypeConflict)))
 }

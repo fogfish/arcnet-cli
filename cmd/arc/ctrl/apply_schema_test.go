@@ -10,16 +10,19 @@ package ctrl
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fogfish/it/v2"
 
 	"github.com/fogfish/arcnet-cli/internal/app/schema/kernel"
 	"github.com/fogfish/arcnet-cli/internal/bios"
+	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
 // newSchemaGraph builds a real, git-committed graph root via a real
@@ -51,7 +54,7 @@ func decodeApplySchemaJSON(t *testing.T, out string) kernel.ApplySchemaResult {
 }
 
 const propertyOnlySchemaPatch = `---
-kind: patch
+"@type": patch
 document: acme-extension-schema
 published: 2026-07-15
 title: Acme extension vocabulary
@@ -70,7 +73,7 @@ The item's weight in kilograms.
 `
 
 const propertyOnlySchemaPatchUpdated = `---
-kind: patch
+"@type": patch
 document: acme-extension-schema
 published: 2026-07-15
 title: Acme extension vocabulary
@@ -89,7 +92,7 @@ Measured in kilograms (SI).
 `
 
 const classOnlySchemaPatch = `---
-kind: patch
+"@type": patch
 document: acme-extension-schema
 published: 2026-07-15
 title: Acme extension vocabulary
@@ -107,7 +110,7 @@ A physical item tracked by the Acme extension.
 `
 
 const classOnlySchemaPatchNoMerge = `---
-kind: patch
+"@type": patch
 document: acme-extension-schema
 published: 2026-07-15
 title: Acme extension vocabulary
@@ -124,7 +127,7 @@ A conclusion distilled from sources, carrying no whole-node merge field.
 `
 
 const mixedSchemaPatch = `---
-kind: patch
+"@type": patch
 document: acme-extension-schema
 published: 2026-07-15
 title: Acme extension vocabulary
@@ -156,7 +159,7 @@ A physical item tracked by the Acme extension.
 `
 
 const mixedValidInvalidSchemaPatch = `---
-kind: patch
+"@type": patch
 document: acme-extension-schema
 published: 2026-07-15
 title: Acme extension vocabulary
@@ -197,7 +200,7 @@ The company behind the extension.
 `
 
 const entityOnlySchemaPatch = `---
-kind: patch
+"@type": patch
 document: acme-corp-note
 published: 2026-07-15
 title: Acme Corp
@@ -215,7 +218,7 @@ The company behind the extension.
 `
 
 const timelineOnlySchemaPatch = `---
-kind: patch
+"@type": patch
 document: acme-extension-schema
 published: 2026-07-15
 title: Acme extension vocabulary
@@ -418,7 +421,7 @@ func TestApplySchemaReapplyMergesChangedField(t *testing.T) {
 }
 
 const sourceOptionalOnlySchemaPatch = `---
-kind: patch
+"@type": patch
 document: acme-extension-schema
 published: 2026-07-15
 title: Acme extension vocabulary
@@ -484,4 +487,72 @@ func TestApplySchemaReapplyWithNoChangesReportsZero(t *testing.T) {
 
 	after := gitOutput(t, dir, "log", "--oneline")
 	it.Then(t).Should(it.Equal(before, after))
+}
+
+// ---------------------------------------------------------------------------
+// spec 021 — patch manifest identity ("@type": patch)
+// ---------------------------------------------------------------------------
+
+// arc apply schema <patch.md> | <url> | arcnet:<name>
+// spec 021 US1 Acceptance Scenario 4: a schema patch declaring itself with
+// the quoted "@type": patch key is recognized identically from all three
+// source forms. Remote ARCNET profiles are published as conformant patches,
+// so this is the change that makes them loadable at all.
+func TestApplySchemaRecognizesTypeKeyFromEverySource(t *testing.T) {
+	t.Run("local file", func(t *testing.T) {
+		dir := newSchemaGraph(t)
+		patch := writeSchemaPatchFile(t, dir, "ext.schema.md", propertyOnlySchemaPatch)
+
+		out, err := sut(NewApplySchemaCmd(), []string{patch})
+
+		it.Then(t).ShouldNot(it.Error(out, err))
+		assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "acmeWeight.md"))
+	})
+
+	t.Run("url", func(t *testing.T) {
+		dir := newSchemaGraph(t)
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(propertyOnlySchemaPatch))
+		}))
+		defer srv.Close()
+
+		out, err := sut(NewApplySchemaCmd(), []string{srv.URL + "/media.schema.md"})
+
+		it.Then(t).ShouldNot(it.Error(out, err))
+		assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "acmeWeight.md"))
+	})
+
+	t.Run("arcnet catalog reference", func(t *testing.T) {
+		dir := newSchemaGraph(t)
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(propertyOnlySchemaPatch))
+		}))
+		defer srv.Close()
+
+		original := kernel.ArcnetCatalogBaseURL
+		kernel.ArcnetCatalogBaseURL = srv.URL + "/"
+		t.Cleanup(func() { kernel.ArcnetCatalogBaseURL = original })
+
+		out, err := sut(NewApplySchemaCmd(), []string{"arcnet:media.schema.md"})
+
+		it.Then(t).ShouldNot(it.Error(out, err))
+		assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "acmeWeight.md"))
+	})
+}
+
+// arc apply schema legacy.schema.md
+// spec 021 FR-003/FR-009: the retired key is refused with the identical
+// recognition rule arc apply uses, and the message carries the source it was
+// read from.
+func TestApplySchemaLegacyKindRefused(t *testing.T) {
+	dir := newSchemaGraph(t)
+	legacy := strings.Replace(propertyOnlySchemaPatch, `"@type": patch`, "kind: patch", 1)
+	patch := writeSchemaPatchFile(t, dir, "legacy.schema.md", legacy)
+
+	_, err := sut(NewApplySchemaCmd(), []string{patch})
+
+	it.Then(t).Must(it.True(errors.Is(err, core.ErrManifestLegacyKind)))
+	it.Then(t).Should(it.String(err.Error()).Contain("legacy.schema.md"))
 }

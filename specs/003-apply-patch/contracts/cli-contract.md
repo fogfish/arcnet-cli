@@ -63,9 +63,17 @@ arc apply <patch.md> [--quiet | -q] [--verbose | -v] [--json] [--color | -C] [--
 
 ## Error messages (DS-07/XII: human-readable, no raw Go errors)
 
+> **Superseded manifest grammar.** The patch manifest identity this document
+> describes was the pre-0.5 `kind` key when it was written. It is now `"@type": patch`,
+> governed by
+> [`specs/021-patch-type-manifest/contracts/patch-manifest.md`](../../021-patch-type-manifest/contracts/patch-manifest.md),
+> which supersedes this section for anything concerning the manifest's identity
+> key. Every other part of this contract is unchanged.
+
 | Condition | stderr message (example) |
 |---|---|
-| Patch manifest missing a mandatory field | `❌ patch manifest is missing a mandatory field (kind: patch, document, published). Run \`arc help apply\` for guidance.` |
+| Patch manifest missing a mandatory field | `❌ patch manifest is missing a mandatory field ("@type": patch, document, published). Run \`arc help apply\` for guidance.` |
+| Patch manifest uses the retired `kind` key | `❌ manifest uses the retired "kind: patch" key — rewrite it as "@type": patch` (`specs/021-patch-type-manifest`) |
 | Patch body malformed | `❌ patch body does not follow the H1-kind/H2-node section structure. Run \`arc help apply\` for guidance.` |
 | Target not an initialized graph | `❌ /path/to/target is not an initialized graph. Run \`arc init\` first, or \`arc help apply\` for guidance.` |
 | Malformed `.arc/config.yml` | `❌ .arc/config.yml is not valid YAML. Run \`arc help apply\` for guidance.` |

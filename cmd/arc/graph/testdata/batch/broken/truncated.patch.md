@@ -1,5 +1,5 @@
 ---
-kind: patch
+"@type": patch
 document: broken-2026-truncated
 title: "An extraction that was cut off mid-write"
 ---

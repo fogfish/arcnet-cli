@@ -9,14 +9,17 @@
 package graph
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/fogfish/it/v2"
 
 	"github.com/fogfish/arcnet-cli/cmd/arc/lint"
+	"github.com/fogfish/arcnet-cli/internal/bios"
 )
 
 const subgraphEntityTLS = `---
@@ -697,4 +700,89 @@ func TestSubgraphSchemaDrivenShapeAppliesEndToEndViaResolvedIndex(t *testing.T) 
 	replacesIdx := strings.Index(out, "replaces::")
 	mentionsLabelIdx := strings.Index(out, "**Mentions**")
 	it.Then(t).Should(it.True(replacesIdx >= 0 && replacesIdx < mentionsLabelIdx))
+}
+
+// ---------------------------------------------------------------------------
+// spec 021 — patch manifest identity ("@type": patch)
+// ---------------------------------------------------------------------------
+
+// arc subgraph "Transport Layer Security"
+// spec 021 US2 Acceptance Scenario 1: the emitted manifest's first key is the
+// quoted "@type": patch, and no `kind` key appears anywhere in the output
+// (FR-002, SC-003).
+func TestSubgraphEmitsTypeKeyAsFirstManifestKeyAndNoKind(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedSubgraphFixture(t, dir)
+	chdir(t, dir)
+
+	out, err := sut(NewSubgraphCmd(), []string{"Transport Layer Security"})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	lines := strings.Split(out, "\n")
+	it.Then(t).Must(it.True(len(lines) > 1))
+	it.Then(t).
+		Should(it.Equal("---", lines[0])).
+		Should(it.Equal(`"@type": patch`, lines[1]))
+	it.Then(t).ShouldNot(it.String(out).Contain("kind:"))
+}
+
+// arc subgraph "Transport Layer Security" > out.md && arc apply out.md
+// spec 021 US2 Acceptance Scenario 2: the round trip closes — what arc
+// writes, arc reads, into a graph that has never seen these nodes (SC-002).
+func TestSubgraphEmittedPatchReappliesToFreshGraph(t *testing.T) {
+	source := t.TempDir()
+	initGraph(t, source)
+	seedSubgraphFixture(t, source)
+	chdir(t, source)
+
+	out, err := sut(NewSubgraphCmd(), []string{"Transport Layer Security"})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	patchPath := filepath.Join(t.TempDir(), "exported.patch.md")
+	it.Then(t).Should(it.Nil(os.WriteFile(patchPath, []byte(out), 0o644)))
+
+	fresh := t.TempDir()
+	initGraph(t, fresh)
+	chdir(t, fresh)
+
+	applyOut, applyErr := sut(NewApplyCmd(), []string{patchPath})
+
+	it.Then(t).ShouldNot(it.Error(applyOut, applyErr))
+	assertIsFile(t, filepath.Join(fresh, "entities", "Transport Layer Security.md"))
+	assertIsFile(t, filepath.Join(fresh, "entities", "SSL.md"))
+	assertIsFile(t, filepath.Join(fresh, "sources", "rescorla-2026-tls13.md"))
+}
+
+// arc subgraph "Transport Layer Security" --json
+// spec 021 US2 Acceptance Scenario 3 / FR-011: the --json contract is
+// untouched. core.Patch gained no field, so the patch object carries exactly
+// its own five keys and no identity key ever appears in it.
+func TestSubgraphJSONContractUnaffectedByManifestIdentity(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedSubgraphFixture(t, dir)
+	chdir(t, dir)
+
+	bios.JSON = true
+	t.Cleanup(func() { bios.JSON = false })
+
+	out, err := sut(NewSubgraphCmd(), []string{"Transport Layer Security"})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	var decoded struct {
+		Patch map[string]any `json:"patch"`
+	}
+	it.Then(t).Must(it.Nil(json.Unmarshal([]byte(out), &decoded)))
+
+	keys := make([]string, 0, len(decoded.Patch))
+	for k := range decoded.Patch {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	it.Then(t).Should(it.Seq(keys).Equal("document", "nodes", "published", "stats", "title"))
+	it.Then(t).ShouldNot(it.String(out).Contain(`"kind"`))
+	it.Then(t).ShouldNot(it.String(out).Contain(`"@type": "patch"`))
 }
