@@ -35,6 +35,52 @@ func checkNodeTypeCase(node core.Node, path string) []kernel.Violation {
 	}}
 }
 
+// checkSchemaIdentityCharset reports one graph-spanning RuleIdentityCharset
+// violation per index.Types key, then per index.Predicates key, that
+// contains an ARCNET-CORE §7.1 forbidden filesystem character (contract
+// C2.2, data-model.md §2/§3, research.md D3) — mirroring
+// checkSchemaTypeCase's graph-spanning shape: no real file is opened, the
+// identity string checked is the map key itself, and Path/Line are
+// synthesized exactly as every other graph-spanning rule already does.
+// Types are iterated before Predicates, both in sorted-key order, for
+// deterministic output.
+func checkSchemaIdentityCharset(index core.Index) []kernel.Violation {
+	var out []kernel.Violation
+
+	typeNames := make([]string, 0, len(index.Types))
+	for name := range index.Types {
+		typeNames = append(typeNames, name)
+	}
+	sort.Strings(typeNames)
+	for _, name := range typeNames {
+		out = append(out, schemaIdentityCharsetViolations(name, schemakernel.TypesDir)...)
+	}
+
+	predicateNames := make([]string, 0, len(index.Predicates))
+	for name := range index.Predicates {
+		predicateNames = append(predicateNames, name)
+	}
+	sort.Strings(predicateNames)
+	for _, name := range predicateNames {
+		out = append(out, schemaIdentityCharsetViolations(name, schemakernel.PredicatesDir)...)
+	}
+
+	return out
+}
+
+func schemaIdentityCharsetViolations(name, dir string) []kernel.Violation {
+	pairs := core.ScanIdentityCharset(name)
+	if len(pairs) == 0 {
+		return nil
+	}
+	return []kernel.Violation{{
+		Rule:    kernel.RuleIdentityCharset,
+		Path:    dir + "/" + name + ".md",
+		Line:    0,
+		Message: fmt.Sprintf("identity %q %s", name, core.FormatIdentityCharsetViolation(pairs)),
+	}}
+}
+
 // checkSchemaTypeCase reports one graph-spanning RuleTypeCase violation per
 // index.Types key that does not begin with an uppercase letter (spec 019
 // FR-006), iterated in sorted-key order for deterministic output —

@@ -1,7 +1,7 @@
 ---
 "@id": Merge Vocabulary
 "@type": Entity
-category: [independent, abstract, continuant, object]
+category: [independent, abstract, continuant, schema]
 ---
 # Merge Vocabulary
 

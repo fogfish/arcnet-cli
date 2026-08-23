@@ -124,12 +124,14 @@ func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios
 	start = time.Now()
 	graphSpanning := checkUniqueBasenames(basenameIndex)
 	graphSpanning = append(graphSpanning, checkSchemaTypeCase(index)...)
+	graphSpanning = append(graphSpanning, checkSchemaIdentityCharset(index)...)
 	for _, p := range parsed {
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkUnrecognizedKind(p.Node, p.Path, index)...)
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkLinksResolve(p.Node, p.Path, p.Raw, basenameIndex)...)
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkDerivedProvenance(p.Node, p.Path, kindIndex)...)
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkSourceCitekey(p.Node, p.Path, p.Basename, p.Raw)...)
 		fileViolations[p.Path] = append(fileViolations[p.Path], checkEntityCategory(p.Node, p.Path, p.Raw)...)
+		fileViolations[p.Path] = append(fileViolations[p.Path], checkIdentityCharset(p.Node, p.Path, p.Raw)...)
 	}
 	reporter.Done(labelCheckingBasenames, time.Since(start))
 

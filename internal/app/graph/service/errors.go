@@ -41,4 +41,13 @@ const (
 	// of a retract-then-reapply cycle, resolved by acting on the newest
 	// match rather than refusing.
 	ErrNoIngestCommit = faults.Safe1[string]("no ingest commit found for %s")
+
+	// ErrIdentityCharset rejects a patch that would introduce or modify a
+	// node — content or schema — whose identity contains an ARCNET-CORE
+	// §7.1 forbidden filesystem character (spec.md FR-001-FR-003,
+	// data-model.md §5). Its second argument is the same detail fragment
+	// core.FormatIdentityCharsetViolation renders for arc lint's
+	// RuleIdentityCharset violation, so the two surfaces word the same
+	// underlying rule identically (research.md D8).
+	ErrIdentityCharset = faults.Safe2[string, string]("identity %q %s")
 )

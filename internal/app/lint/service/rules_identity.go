@@ -30,6 +30,26 @@ func checkSourceCitekey(node core.Node, path, basename string, raw []byte) []ker
 	}}
 }
 
+// checkIdentityCharset reports a RuleIdentityCharset violation when node's
+// own identity contains one or more ARCNET-CORE §7.1 forbidden filesystem
+// characters (contract C2.2, data-model.md §2/§4), naming every offending
+// character and its 1-indexed rune position, not only the first. The
+// violation's line is located via the quoted "@id" front-matter key
+// (research.md D4), matching lint.go's own "@id"-basename-mismatch check
+// rather than this file's bare-"id" convention used elsewhere.
+func checkIdentityCharset(node core.Node, path string, raw []byte) []kernel.Violation {
+	pairs := core.ScanIdentityCharset(node.ID)
+	if len(pairs) == 0 {
+		return nil
+	}
+	return []kernel.Violation{{
+		Rule:    kernel.RuleIdentityCharset,
+		Path:    path,
+		Line:    locateFrontMatterField(raw, `"@id"`),
+		Message: fmt.Sprintf("identity %q %s", node.ID, core.FormatIdentityCharsetViolation(pairs)),
+	}}
+}
+
 // checkEntityCategory reports a RuleEntityCategory violation when an
 // entity node's category attribute is missing, is not a four-element
 // sequence, or fails the fixed positional Sowa word-sets (research.md D7).

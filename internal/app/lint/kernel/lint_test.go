@@ -81,3 +81,49 @@ func TestValidSowaCategoryBadWord(t *testing.T) {
 	ok, _ := kernel.ValidSowaCategory([]string{"bogus", "abstract", "occurrent", "script"})
 	it.Then(t).Should(it.True(!ok))
 }
+
+// contract C1.1: the closed set of twelve is exhaustively verified against
+// all 144 positional combinations (3 x 2 x 2 x 12) the old four independent
+// word-set checks used to accept — exactly 12 pass, the rest fail.
+func TestValidSowaCategoryExhaustive144Combinations(t *testing.T) {
+	position1 := []string{"independent", "relative", "mediating"}
+	position2 := []string{"physical", "abstract"}
+	position3 := []string{"continuant", "occurrent"}
+	leaf := []string{
+		"object", "process", "schema", "script",
+		"juncture", "participation", "description", "history",
+		"structure", "situation", "reason", "purpose",
+	}
+
+	total, passing := 0, 0
+	for _, p1 := range position1 {
+		for _, p2 := range position2 {
+			for _, p3 := range position3 {
+				for _, lf := range leaf {
+					total++
+					ok, _ := kernel.ValidSowaCategory([]string{p1, p2, p3, lf})
+					if ok {
+						passing++
+					}
+				}
+			}
+		}
+	}
+
+	it.Then(t).
+		Should(it.Equal(144, total)).
+		Should(it.Equal(12, passing))
+}
+
+// contract C1.2: a structurally-valid-but-illegal tuple (every word belongs
+// to the right word-group, but the four together are not one of the twelve
+// legal rows) is rejected naming both the rejected tuple and the closest
+// legal row sharing the longest leading-word prefix.
+func TestValidSowaCategorySuggestsClosestLegalCombination(t *testing.T) {
+	ok, reason := kernel.ValidSowaCategory([]string{"independent", "physical", "continuant", "purpose"})
+
+	it.Then(t).Should(it.True(!ok))
+	it.Then(t).
+		Should(it.String(reason).Contain("independent, physical, continuant, purpose")).
+		Should(it.String(reason).Contain("independent, physical, continuant, object"))
+}

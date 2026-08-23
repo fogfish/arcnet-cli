@@ -199,13 +199,13 @@ published: "2026-04-01"
 First document.
 
 ## Mentions
-- mentions:: [[TLS 1.3]]
+- mentions:: [[TLS13]]
 
 # Entity
 
-## TLS 1.3
+## TLS13
 ` + "```yaml" + `
-"@id": "TLS 1.3"
+"@id": "TLS13"
 "@type": Entity
 category: [independent, abstract, occurrent, script]
 ` + "```" + `
@@ -238,13 +238,13 @@ published: "2026-04-02"
 Second document.
 
 ## Mentions
-- mentions:: [[TLS 1.3]]
+- mentions:: [[TLS13]]
 
 # Entity
 
-## TLS 1.3
+## TLS13
 ` + "```yaml" + `
-"@id": "TLS 1.3"
+"@id": "TLS13"
 "@type": Entity
 category: [independent, abstract, occurrent, script]
 tags: [deployed]
@@ -276,7 +276,7 @@ func TestRevertNodeEnrichedByLaterPatchTakesPerNodePath(t *testing.T) {
 	_, err = sut(NewApplyCmd(), []string{patchB})
 	it.Then(t).Should(it.Nil(err))
 
-	before := readFile(t, filepath.Join(dir, "Entity", "TLS 1.3.md"))
+	before := readFile(t, filepath.Join(dir, "Entity", "TLS13.md"))
 	it.Then(t).
 		Should(it.String(before).Contain("Introduced in RFC 8446.")).
 		Should(it.String(before).Contain("Widely deployed by 2026."))
@@ -285,8 +285,8 @@ func TestRevertNodeEnrichedByLaterPatchTakesPerNodePath(t *testing.T) {
 	it.Then(t).ShouldNot(it.Error(out, err))
 	it.Then(t).Should(it.String(out).Contain("per-node"))
 
-	assertIsFile(t, filepath.Join(dir, "Entity", "TLS 1.3.md"))
-	after := readFile(t, filepath.Join(dir, "Entity", "TLS 1.3.md"))
+	assertIsFile(t, filepath.Join(dir, "Entity", "TLS13.md"))
+	after := readFile(t, filepath.Join(dir, "Entity", "TLS13.md"))
 	it.Then(t).
 		ShouldNot(it.String(after).Contain("Introduced in RFC 8446.")).
 		Should(it.String(after).Contain("Widely deployed by 2026.")).
@@ -318,7 +318,7 @@ func TestRevertVerboseReportsPerNodeReconciliationDetail(t *testing.T) {
 	_, stderr, err := sutCaptureStderr(t, forcedRevertCmd(t), []string{"doc-2026-a"})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
-		Should(it.String(stderr).Contain("Entity/TLS 1.3.md")).
+		Should(it.String(stderr).Contain("Entity/TLS13.md")).
 		Should(it.String(stderr).Contain("reconciled")).
 		Should(it.String(stderr).Contain("paragraph"))
 }

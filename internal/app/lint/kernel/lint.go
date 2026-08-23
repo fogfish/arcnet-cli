@@ -12,6 +12,7 @@ package kernel
 
 import (
 	"fmt"
+	"strings"
 )
 
 // Rule identifies exactly one CORE §14 checklist item, so every Violation
@@ -36,6 +37,7 @@ const (
 	RuleIdentityQuoting     Rule = "identityQuoting"
 	RulePredicateRole       Rule = "predicateRole"
 	RuleTypeCase            Rule = "typeCase"
+	RuleIdentityCharset     Rule = "identityCharset"
 )
 
 // Violation is the domain value one failed check produces.
@@ -113,40 +115,68 @@ func NewLintResult(root string, nodes []NodeStatus, graphSpanning ...Violation) 
 	}
 }
 
-// sowaPosition1/2/3/Leaf are CORE §9.2.1's fixed four-word Sowa category
-// vocabulary, decoded positionally (research.md D7) — this codebase's own
-// already-established on-disk convention (a literal four-element word
-// array), not the compact "xyz:leaf" code CORE's prose merely uses to
-// explain the code's meaning.
-var (
-	sowaPosition1 = map[string]bool{"independent": true, "relative": true, "mediating": true}
-	sowaPosition2 = map[string]bool{"physical": true, "abstract": true}
-	sowaPosition3 = map[string]bool{"continuant": true, "occurrent": true}
-	sowaLeaf      = map[string]bool{
-		"object": true, "process": true, "schema": true, "script": true,
-		"juncture": true, "participation": true, "description": true, "history": true,
-		"structure": true, "situation": true, "reason": true, "purpose": true,
-	}
-)
+// sowaCategories is ARCNET-CORE §10.2's closed set of twelve legal four-word
+// Sowa category combinations (data-model.md §1, research.md D1) — replacing
+// the four independent positional word-set checks this codebase used to run,
+// which accepted 144 combinations instead of the twelve CORE actually
+// defines.
+var sowaCategories = [12][4]string{
+	{"independent", "physical", "continuant", "object"},
+	{"independent", "physical", "occurrent", "process"},
+	{"independent", "abstract", "continuant", "schema"},
+	{"independent", "abstract", "occurrent", "script"},
+	{"relative", "physical", "continuant", "juncture"},
+	{"relative", "physical", "occurrent", "participation"},
+	{"relative", "abstract", "continuant", "description"},
+	{"relative", "abstract", "occurrent", "history"},
+	{"mediating", "physical", "continuant", "structure"},
+	{"mediating", "physical", "occurrent", "situation"},
+	{"mediating", "abstract", "continuant", "reason"},
+	{"mediating", "abstract", "occurrent", "purpose"},
+}
 
-// ValidSowaCategory reports whether words is a valid CORE §9.2.1 four-word
-// Sowa category, positionally checked against the fixed word-sets above. ok
-// is false with a human-readable reason otherwise.
+// ValidSowaCategory reports whether words is one of sowaCategories' twelve
+// legal rows, byte-for-byte (contract C1.1). ok is false with a
+// human-readable reason otherwise: C1.3's unchanged wrong-length message when
+// words does not have exactly four elements, or C1.2's rejected-tuple-plus-
+// closest-legal-suggestion message when it does but matches no row.
 func ValidSowaCategory(words []string) (ok bool, reason string) {
 	if len(words) != 4 {
 		return false, fmt.Sprintf("category must decode to exactly four Sowa words, found %d", len(words))
 	}
-	if !sowaPosition1[words[0]] {
-		return false, fmt.Sprintf("%q is not a valid first Sowa word (independent/relative/mediating)", words[0])
+
+	tuple := [4]string{words[0], words[1], words[2], words[3]}
+	for _, row := range sowaCategories {
+		if row == tuple {
+			return true, ""
+		}
 	}
-	if !sowaPosition2[words[1]] {
-		return false, fmt.Sprintf("%q is not a valid second Sowa word (physical/abstract)", words[1])
+
+	suggestion := closestSowaCategory(tuple)
+	return false, fmt.Sprintf(
+		"[%s] is not one of the twelve legal Sowa category combinations; the closest legal combination is [%s]",
+		strings.Join(words, ", "), strings.Join(suggestion[:], ", "),
+	)
+}
+
+// closestSowaCategory finds the sowaCategories row sharing the longest
+// leading-word prefix with tuple, first table-order match winning any tie
+// (research.md D2, contract C1.2).
+func closestSowaCategory(tuple [4]string) [4]string {
+	best := sowaCategories[0]
+	bestScore := -1
+	for _, row := range sowaCategories {
+		score := 0
+		for i := 0; i < 4; i++ {
+			if row[i] != tuple[i] {
+				break
+			}
+			score++
+		}
+		if score > bestScore {
+			bestScore = score
+			best = row
+		}
 	}
-	if !sowaPosition3[words[2]] {
-		return false, fmt.Sprintf("%q is not a valid third Sowa word (continuant/occurrent)", words[2])
-	}
-	if !sowaLeaf[words[3]] {
-		return false, fmt.Sprintf("%q is not a valid fourth (leaf) Sowa word", words[3])
-	}
-	return true, ""
+	return best
 }

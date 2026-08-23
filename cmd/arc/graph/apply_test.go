@@ -3727,3 +3727,123 @@ func TestApplySeededCitationPredicateDeclaresUnion(t *testing.T) {
 		Should(it.String(content).Contain("merge: union")).
 		ShouldNot(it.String(content).Contain("merge: append"))
 }
+
+// ---------------------------------------------------------------------------
+// specs/024-lint-conformance-gaps — User Story 1
+//
+// arc apply rejects the entire operation, before any file is written, when
+// a patch would introduce or modify a node — content or schema-implied —
+// whose identity contains an ARCNET-CORE §7.1 forbidden character.
+// ---------------------------------------------------------------------------
+
+// arc apply tls13.patch.md
+// Scenario 1 from spec.md US1 (024): a patch introducing a node whose
+// identity is "Handshake/Protocol" is rejected, naming "/" and its position
+// (10), with the graph directory left byte-for-byte unchanged.
+func TestApplyUnsafeIdentityRejectedNamingCharacterAndPosition(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	unsafe := strings.ReplaceAll(tls13Patch, "Transport Layer Security", "Handshake/Protocol")
+	patch := writePatchFile(t, dir, "tls13.patch.md", unsafe)
+
+	before := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).
+		Should(it.Error(out, err).Contain(`"/"`)).
+		Should(it.Error(out, err).Contain("position 10"))
+
+	after := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
+	it.Then(t).Should(it.Equal(before, after))
+
+	entries, rerr := os.ReadDir(filepath.Join(dir, "Entity"))
+	it.Then(t).
+		Should(it.Nil(rerr)).
+		Should(it.Equal(0, len(entries)))
+}
+
+// arc apply tls13.patch.md
+// Scenario 2 from spec.md US1 (024): a patch introducing a node whose
+// identity is "Handshake Protocol (TLS)" (no forbidden characters) is
+// written normally, with no identity error reported.
+func TestApplySafeIdentityAppliesNormally(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	safe := strings.ReplaceAll(tls13Patch, "Transport Layer Security", "Handshake Protocol (TLS)")
+	patch := writePatchFile(t, dir, "tls13.patch.md", safe)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	assertIsFile(t, filepath.Join(dir, "Entity", "Handshake Protocol (TLS).md"))
+}
+
+// arc apply tls13.patch.md
+// Scenario 3 from spec.md US1 (024): a patch carrying several nodes, only
+// one of which has an unsafe identity, is rejected in its entirety — none
+// of the patch's nodes are written, including the otherwise-valid Source.
+func TestApplyOneUnsafeNodeAmongSeveralRejectsWholePatch(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	unsafe := strings.ReplaceAll(tls13Patch, "Transport Layer Security", "Handshake/Protocol")
+	patch := writePatchFile(t, dir, "tls13.patch.md", unsafe)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Error(out, err))
+
+	_, sourceErr := os.Stat(filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
+	it.Then(t).Should(it.True(os.IsNotExist(sourceErr)))
+}
+
+const patchWithUnsafeSchemaTypeIdentity = `---
+"@type": patch
+document: kolesnikov-2026-badtype
+published: 2026-05-01
+title: "A Test Note"
+---
+# Source
+
+## kolesnikov-2026-badtype
+` + "```yaml" + `
+"@id": "kolesnikov-2026-badtype"
+"@type": Source
+title: "A Test Note"
+published: "2026-05-01"
+` + "```" + `
+
+A short note.
+
+# Bad/Type
+
+## Something
+` + "```yaml\n\"@id\": \"Something\"\n\"@type\": \"Bad/Type\"\n```" + `
+
+A node whose own type name contains a forbidden character.
+`
+
+// arc apply badtype.patch.md
+// Scenario 4 from spec.md US1 (024): a patch introducing a schema node — here
+// a not-yet-registered type name, "Bad/Type" — whose identity contains a
+// forbidden character is rejected the same way as a content node, before any
+// file (including the otherwise-valid Source) is written.
+func TestApplySchemaNodeImpliedUnsafeTypeIdentityRejected(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "badtype.patch.md", patchWithUnsafeSchemaTypeIdentity)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+
+	it.Then(t).
+		Should(it.Error(out, err).Contain(`"/"`)).
+		Should(it.Error(out, err).Contain("Bad/Type"))
+
+	_, sourceErr := os.Stat(filepath.Join(dir, "Source", "kolesnikov-2026-badtype.md"))
+	it.Then(t).Should(it.True(os.IsNotExist(sourceErr)))
+
+	_, schemaErr := os.Stat(filepath.Join(dir, "_schema", "Class", "Bad"))
+	it.Then(t).Should(it.True(os.IsNotExist(schemaErr)))
+}
