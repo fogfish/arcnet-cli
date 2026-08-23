@@ -33,13 +33,13 @@ var typeConformanceIndexFixture = core.Index{
 
 func TestCheckTypeRequiresPresentNoViolation(t *testing.T) {
 	node := core.Node{Type: "Source", Attrs: map[string][]core.Predicate{"title": {{Value: "T"}}}, Texts: map[string]string{"abstract": "A"}}
-	out := checkTypeRequires(node, "sources/x.md", []byte("---\ntitle: T\n---\n"), typeConformanceIndexFixture)
+	out := checkTypeRequires(node, "Source/x.md", []byte("---\ntitle: T\n---\n"), typeConformanceIndexFixture)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
 func TestCheckTypeRequiresAbsentReportsViolation(t *testing.T) {
 	node := core.Node{Type: "Source", Attrs: map[string][]core.Predicate{"title": {{Value: "T"}}}}
-	out := checkTypeRequires(node, "sources/x.md", []byte("---\ntitle: T\n---\n"), typeConformanceIndexFixture)
+	out := checkTypeRequires(node, "Source/x.md", []byte("---\ntitle: T\n---\n"), typeConformanceIndexFixture)
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).
 		Should(it.Equal(kernel.RuleTypeRequires, out[0].Rule)).
@@ -63,7 +63,7 @@ func TestCheckTypeOptionalListedPredicateNoViolation(t *testing.T) {
 	node := core.Node{Type: "Source", Attrs: map[string][]core.Predicate{
 		"title": {{Value: "T"}}, "tags": {{Value: "x"}},
 	}, Texts: map[string]string{"abstract": "A"}}
-	out := checkTypeOptional(node, "sources/x.md", []byte("---\ntitle: T\ntags: [x]\n---\n"), typeConformanceIndexFixture)
+	out := checkTypeOptional(node, "Source/x.md", []byte("---\ntitle: T\ntags: [x]\n---\n"), typeConformanceIndexFixture)
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
@@ -71,7 +71,7 @@ func TestCheckTypeOptionalUnlistedPredicateReportsViolation(t *testing.T) {
 	node := core.Node{Type: "Source", Attrs: map[string][]core.Predicate{
 		"title": {{Value: "T"}}, "extra": {{Value: "x"}},
 	}, Texts: map[string]string{"abstract": "A"}}
-	out := checkTypeOptional(node, "sources/x.md", []byte("---\ntitle: T\nextra: x\n---\n"), typeConformanceIndexFixture)
+	out := checkTypeOptional(node, "Source/x.md", []byte("---\ntitle: T\nextra: x\n---\n"), typeConformanceIndexFixture)
 	it.Then(t).Should(it.Equal(1, len(out)))
 	it.Then(t).
 		Should(it.Equal(kernel.RuleTypeOptional, out[0].Rule)).

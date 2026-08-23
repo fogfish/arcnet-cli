@@ -30,8 +30,8 @@ const (
 	// to write a new schema document.
 	ErrSchemaWrite = faults.Safe1[string]("failed to write schema document %s")
 
-	// ErrSchemaMissing is returned when _schema/predicates/ or
-	// _schema/types/ is absent from an otherwise-initialized graph (spec
+	// ErrSchemaMissing is returned when _schema/Property/ or
+	// _schema/Class/ is absent from an otherwise-initialized graph (spec
 	// FR-014).
 	ErrSchemaMissing = faults.Safe1[string]("schema folder %s is missing or unreadable")
 

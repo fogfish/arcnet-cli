@@ -132,13 +132,13 @@ func TestBatchAppliesEveryDiscoveredPatch(t *testing.T) {
 	// the fixture carries one deliberately broken patch, so the run exits 1
 	it.Then(t).Should(it.True(errors.Is(err, bios.ErrSilent)))
 
-	assertIsFile(t, filepath.Join(dir, "sources", "mccarthy-2023-legacy.md"))
-	assertIsFile(t, filepath.Join(dir, "sources", "rescorla-2024-tls13.md"))
-	assertIsFile(t, filepath.Join(dir, "sources", "chen-2026-pqkex.md"))
-	assertIsFile(t, filepath.Join(dir, "sources", "karpathy-2026-notes.md"))
-	assertIsFile(t, filepath.Join(dir, "entities", "Key Agreement.md"))
-	assertIsFile(t, filepath.Join(dir, "entities", "Transport Layer Security.md"))
-	assertIsFile(t, filepath.Join(dir, "entities", "Sequence Model.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "mccarthy-2023-legacy.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "rescorla-2024-tls13.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "chen-2026-pqkex.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "karpathy-2026-notes.md"))
+	assertIsFile(t, filepath.Join(dir, "Entity", "Key Agreement.md"))
+	assertIsFile(t, filepath.Join(dir, "Entity", "Transport Layer Security.md"))
+	assertIsFile(t, filepath.Join(dir, "Entity", "Sequence Model.md"))
 }
 
 // arc apply batch testdata/batch
@@ -220,7 +220,7 @@ func TestBatchDiscoversNestedPatchesOrderedGlobally(t *testing.T) {
 	it.Then(t).Should(it.True(errors.Is(err, bios.ErrSilent)))
 
 	// nested/deep/legacy.patch.md was found at all ...
-	assertIsFile(t, filepath.Join(dir, "sources", "mccarthy-2023-legacy.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "mccarthy-2023-legacy.md"))
 
 	// ... and, despite living deepest in the tree, was applied first,
 	// because its 2023 publication date is the oldest in the whole bundle.
@@ -325,7 +325,7 @@ func TestBatchRerunAppliesOnlyTheNewPatch(t *testing.T) {
 		Should(it.Equal(afterFirst+1, commitCount(t, dir))).
 		Should(it.String(out).Contain("Applied 1 patch")).
 		Should(it.String(out).Contain("4 skipped"))
-	assertIsFile(t, filepath.Join(dir, "sources", "newcomer-2025-doc.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "newcomer-2025-doc.md"))
 }
 
 // arc apply batch testdata/batch
@@ -396,7 +396,7 @@ func TestBatchAppliesValidPatchesDespiteMalformedOne(t *testing.T) {
 		Should(it.Equal(before+4, commitCount(t, dir))).
 		Should(it.Equal("", strings.TrimSpace(runGit(t, dir, "status", "--porcelain"))))
 
-	_, statErr := os.Stat(filepath.Join(dir, "sources", "broken-2026-truncated.md"))
+	_, statErr := os.Stat(filepath.Join(dir, "Source", "broken-2026-truncated.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }
 
@@ -460,14 +460,14 @@ func TestBatchAllFailedRunProducesNoCommits(t *testing.T) {
 // User Story 4 — Halt the batch at the first failure
 // ---------------------------------------------------------------------------
 
-// seedBlockerDirectory replaces the on-disk node file entities/Blocker.md
+// seedBlockerDirectory replaces the on-disk node file Entity/Blocker.md
 // with a directory, so testdata/batch-failfast's b-blocker.patch.md — which
 // parses perfectly and therefore holds its real position in the publication
 // order (research.md D5b) — fails while being applied rather than while
 // being classified.
 func seedBlockerDirectory(t *testing.T, dir string) {
 	t.Helper()
-	blocker := filepath.Join(dir, "entities", "Blocker.md")
+	blocker := filepath.Join(dir, "Entity", "Blocker.md")
 	it.Then(t).Should(it.Nil(os.MkdirAll(blocker, 0o755)))
 	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(blocker, ".gitkeep"), nil, 0o644)))
 	runGit(t, dir, "add", "-A")
@@ -488,10 +488,10 @@ func TestBatchFailFastHaltsAtFirstFailure(t *testing.T) {
 	it.Then(t).Should(it.True(errors.Is(err, bios.ErrSilent)))
 
 	it.Then(t).Should(it.Equal(before+1, commitCount(t, dir)))
-	assertIsFile(t, filepath.Join(dir, "sources", "alpha-2025-early.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "alpha-2025-early.md"))
 
 	for _, absent := range []string{"beta-2025-blocker.md", "gamma-2025-late.md"} {
-		_, statErr := os.Stat(filepath.Join(dir, "sources", absent))
+		_, statErr := os.Stat(filepath.Join(dir, "Source", absent))
 		it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 	}
 }
@@ -528,7 +528,7 @@ func TestBatchFailFastResumesAfterRepair(t *testing.T) {
 	it.Then(t).Should(it.True(errors.Is(err, bios.ErrSilent)))
 
 	// repair: the node file is a real file again
-	it.Then(t).Should(it.Nil(os.RemoveAll(filepath.Join(dir, "entities", "Blocker.md"))))
+	it.Then(t).Should(it.Nil(os.RemoveAll(filepath.Join(dir, "Entity", "Blocker.md"))))
 	runGit(t, dir, "add", "-A")
 	runGit(t, dir, "commit", "-m", "fix: blocker")
 	afterRepair := commitCount(t, dir)
@@ -541,8 +541,8 @@ func TestBatchFailFastResumesAfterRepair(t *testing.T) {
 		Should(it.String(out).Contain("Applied 2 patches")).
 		Should(it.String(out).Contain("1 skipped")).
 		Should(it.String(out).Contain("0 failed"))
-	assertIsFile(t, filepath.Join(dir, "sources", "beta-2025-blocker.md"))
-	assertIsFile(t, filepath.Join(dir, "sources", "gamma-2025-late.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "beta-2025-blocker.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "gamma-2025-late.md"))
 }
 
 // arc apply batch testdata/batch-failfast   (no --fail-fast)
@@ -560,7 +560,7 @@ func TestBatchWithoutFailFastContinuesPastTheSameFailure(t *testing.T) {
 	it.Then(t).
 		Should(it.String(out).Contain("Applied 2 patches")).
 		Should(it.String(out).Contain("1 failed"))
-	assertIsFile(t, filepath.Join(dir, "sources", "gamma-2025-late.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "gamma-2025-late.md"))
 }
 
 // ---------------------------------------------------------------------------
@@ -726,7 +726,7 @@ func TestBatchNeverDescendsHiddenDirectories(t *testing.T) {
 	out, err := sut(batchCmd(t, false), []string{batchFixture("batch")})
 	it.Then(t).Should(it.True(errors.Is(err, bios.ErrSilent)))
 
-	_, statErr := os.Stat(filepath.Join(dir, "sources", "hidden-2025-ignored.md"))
+	_, statErr := os.Stat(filepath.Join(dir, "Source", "hidden-2025-ignored.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 	it.Then(t).ShouldNot(it.String(out).Contain("hidden-2025-ignored"))
 
@@ -737,7 +737,7 @@ func TestBatchNeverDescendsHiddenDirectories(t *testing.T) {
 
 	_, err = sut(batchCmd(t, false), []string{filepath.Join(batchFixture("batch"), ".hidden")})
 	it.Then(t).Should(it.Nil(err))
-	assertIsFile(t, filepath.Join(explicit, "sources", "hidden-2025-ignored.md"))
+	assertIsFile(t, filepath.Join(explicit, "Source", "hidden-2025-ignored.md"))
 }
 
 // arc apply batch <patch with no published date>
@@ -766,7 +766,7 @@ func TestBatchAbsentPublicationDateIsAFailure(t *testing.T) {
 		Should(it.String(out).Contain("nonsense.patch.md"))
 
 	for _, absent := range []string{"undated-doc.md", "nonsense-doc.md"} {
-		_, statErr := os.Stat(filepath.Join(dir, "sources", absent))
+		_, statErr := os.Stat(filepath.Join(dir, "Source", absent))
 		it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 	}
 }
@@ -778,7 +778,7 @@ func TestBatchAbsentPublicationDateIsAFailure(t *testing.T) {
 func TestBatchConflictCountsAsAppliedAndIsSurfacedInSummary(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedNode(t, dir, "resources/RFC 8446.md", rfcResourceSeedSetStatus)
+	seedNode(t, dir, "Resource/RFC 8446.md", rfcResourceSeedSetStatus)
 	patches := t.TempDir()
 	writeInto(t, patches, "conflicting.patch.md", patchDivergesResourceStatus)
 	writeInto(t, patches, "clean.patch.md", patchWithDocument("clean-2026-doc", "2026-06-06"))
@@ -821,7 +821,7 @@ func TestBatchUnregisteredKindWarnsWithoutAbortingTheRun(t *testing.T) {
 		Should(it.String(out).Contain("0 failed")).
 		Should(it.String(stderr).Contain("Hypothesis is not a recognized node type"))
 	assertIsFile(t, filepath.Join(dir, "Hypothesis", "Some Hypothesis.md"))
-	assertIsFile(t, filepath.Join(dir, "_schema", "types", "Hypothesis.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "Class", "Hypothesis.md"))
 }
 
 // arc apply batch <copy of testdata/batch>
@@ -1073,9 +1073,9 @@ func TestBatchAppliesEveryTypeKeyPatchInDateThenPathOrder(t *testing.T) {
 		// "a-tie.patch.md" sorts before "nested/b-tie.patch.md"
 		Should(it.True(tieA < tieB))
 
-	assertIsFile(t, filepath.Join(dir, "sources", "aaa-2024-oldest.md"))
-	assertIsFile(t, filepath.Join(dir, "sources", "bbb-2026-tie-b.md"))
-	assertIsFile(t, filepath.Join(dir, "sources", "ccc-2026-tie-a.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "aaa-2024-oldest.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "bbb-2026-tie-b.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "ccc-2026-tie-a.md"))
 }
 
 // arc apply batch --json testdata/batch
@@ -1116,6 +1116,6 @@ func TestBatchNamesRetiredKeyFileAsFailedNotPassedOver(t *testing.T) {
 	it.Then(t).Should(it.True(found))
 
 	// its Source node was never written — a named failure, not a partial apply
-	_, statErr := os.Stat(filepath.Join(dir, "sources", "turing-2025-legacy-kind.md"))
+	_, statErr := os.Stat(filepath.Join(dir, "Source", "turing-2025-legacy-kind.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }

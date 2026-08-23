@@ -81,8 +81,8 @@ TLS 1.3 is the latest version of the Transport Layer Security protocol.
 
 func seedServeFixture(t *testing.T, dir string) {
 	t.Helper()
-	writeGrepNode(t, dir, "entities/Transport Layer Security.md", serveEntityTLS)
-	writeGrepNode(t, dir, "sources/rescorla-2026-tls13.md", serveSourceTLS13)
+	writeGrepNode(t, dir, "Entity/Transport Layer Security.md", serveEntityTLS)
+	writeGrepNode(t, dir, "Source/rescorla-2026-tls13.md", serveSourceTLS13)
 }
 
 // { "name": "node_get", "arguments": { "id": "Transport Layer Security" } }
@@ -345,9 +345,9 @@ const serveChainC = `---
 func TestServeSubgraphGetExplicitDepthWidensSet(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	writeGrepNode(t, dir, "entities/ChainA.md", serveChainA)
-	writeGrepNode(t, dir, "entities/ChainB.md", serveChainB)
-	writeGrepNode(t, dir, "entities/ChainC.md", serveChainC)
+	writeGrepNode(t, dir, "Entity/ChainA.md", serveChainA)
+	writeGrepNode(t, dir, "Entity/ChainB.md", serveChainB)
+	writeGrepNode(t, dir, "Entity/ChainC.md", serveChainC)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -410,10 +410,10 @@ const serveDiamondD = `---
 func TestServeSubgraphGetMultiPathNodeAppearsExactlyOnce(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	writeGrepNode(t, dir, "entities/DiamondA.md", serveDiamondA)
-	writeGrepNode(t, dir, "entities/DiamondB.md", serveDiamondB)
-	writeGrepNode(t, dir, "entities/DiamondC.md", serveDiamondC)
-	writeGrepNode(t, dir, "entities/DiamondD.md", serveDiamondD)
+	writeGrepNode(t, dir, "Entity/DiamondA.md", serveDiamondA)
+	writeGrepNode(t, dir, "Entity/DiamondB.md", serveDiamondB)
+	writeGrepNode(t, dir, "Entity/DiamondC.md", serveDiamondC)
+	writeGrepNode(t, dir, "Entity/DiamondD.md", serveDiamondD)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

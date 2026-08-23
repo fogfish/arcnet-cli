@@ -1,5 +1,78 @@
 # Changelog
 
+## 2026-08-23 (ARCNET-CORE v0.11)
+
+**Breaking format change, with no migration** — three related corrections that
+together bring a graph to ARCNET-CORE v0.11. A graph created before this
+release does not load and is not repaired; see "Compatibility" below.
+
+**1. `Resource` redefined, `Reference` added.** `Resource` was carrying the
+definition of an external work the graph points to but has not ingested. Under
+§11.4 it means the opposite: a fragment *of* an ingested document — content
+worth keeping that does not yet warrant its own domain type, tag-classified so
+a recurring pattern can later be promoted into one. It now requires `text`,
+`tags`, `mentionedIn` and offers `notes`. The external-work meaning, and the
+predicates that carried it, move wholesale to a new fifth core content type
+`Reference` (§11.6): requires `title`, `ref`, `relevance`; offers `url`,
+`authors`, `year`, `doi`, `status`, `isCitedBy`, `notes`. Both also permit
+`indexed`, the arc-internal provenance timestamp `arc apply` stamps on every
+node it creates — not a CORE predicate, and carried for the same reason
+`Source`, `Entity`, and `Timeline` already carry it.
+
+Consequence worth noting: the §10.5 semantic predicates (`broader`,
+`isPartOf`, `related`, …) are no longer permitted on `Resource`. §11.4 lists
+`notes` alone and §11.6 lists none, so under v0.11 they are permitted on
+`Entity` only. This narrows Bugfix BUG-001's "usable on entity or resource"
+scope decision.
+
+**2. Body prose keys to the predicate its own type declares.** A `Resource`
+node's leading prose now stores under `text` and a `Reference` node's under
+`relevance`; `Source` (`abstract`), `Entity` (`definition`), and every other
+type (`text`) are unchanged, as is trailing prose (`notes`) for every type.
+Before this, an ingested `Resource` stored its body under `relevance` — a
+predicate the corrected type does not declare at all — so every ingest quietly
+produced a node that failed its own type-conformance check while still
+rendering normally. Write side and read side derive the key from one shared
+definition, and `arc revert`'s hand-copied duplicate is now pinned to it by
+test for all five core types.
+
+**3. Type folders are named for their type, character for character.**
+`sources/`, `entities/`, `resources/` become `Source/`, `Entity/`,
+`Resource/`, joined by `Reference/`; `_schema/predicates/` and `_schema/types/`
+become `_schema/Property/` and `_schema/Class/`. The derivation is now the
+identity function — no lookup table, no pluralizing suffix, no case fold — so
+it holds identically for types the tool recognizes and types it does not: a
+domain profile's `Thought` node files at `Thought/<id>.md`, where the retired
+`kind + "s"` fallback would have written `Thoughts/`. `timeline/` stays exempt
+(its nodes are bucketed by granularity, never filed flat) and `_schema/` stays
+a namespace prefix whose two children are themselves type folders.
+
+Folder is a *mirror* of `@type`, never a substitute: nothing in the tool infers
+a node's type from its path, so a node moved out of its type folder by hand is
+still handled by its declared type.
+
+Unaffected: the command, flag, exit-code and `--json` surface — this release
+adds no subcommand, flag, or output field. Link resolution (basename-keyed, so
+no edge breaks), content traversal (`arc grep`/`arc lint` exclude `.arc/` and
+`_schema/` by name, never by a whitelist of content folders), and the ingest
+summary's own wording, which still reads "+3 entities" — that string is
+display-only and deliberately not the folder deriver.
+
+**Compatibility — breaking, no migration path.** A pre-v0.11 graph has
+`_schema/predicates/` and `_schema/types/`, neither of which this release
+reads. Schema resolution treats a missing schema folder as a hard load
+failure, so `arc lint` and `arc apply` refuse with
+`schema folder _schema/Property is missing or unreadable` and exit non-zero
+**before any write** — verified to leave the graph byte-identical. No
+detection, repair, or `arc migrate` is provided, and re-seeding cannot serve
+as one: `required`/`optional` merge by union and union cannot retract, so
+merging the corrected `Resource` onto the retired one would yield the sum of
+both — neither definition, conformant to no revision of the specification.
+The corrected vocabulary reaches a graph only through `arc init`'s seed, which
+renders whole definitions to fresh paths and never merges.
+
+`specs/022-reference-type-folders`
+
 ## 2026-08-23
 
 **Breaking format change** — a document patch now declares its identity with

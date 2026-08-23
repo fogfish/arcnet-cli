@@ -83,10 +83,10 @@ TLS is mentioned here without the cryptography tag.
 // status=mature" narrows to exactly 1.
 func seedGrepFixture(t *testing.T, dir string) {
 	t.Helper()
-	writeGrepNode(t, dir, "sources/rescorla-2026-tls13.md", grepSourceTLS13)
-	writeGrepNode(t, dir, "entities/Transport Layer Security.md", grepEntityTLS)
-	writeGrepNode(t, dir, "entities/Another Entity.md", grepEntityBacklog)
-	writeGrepNode(t, dir, "resources/Unrelated Note.md", grepResourceUnrelatedTag)
+	writeGrepNode(t, dir, "Source/rescorla-2026-tls13.md", grepSourceTLS13)
+	writeGrepNode(t, dir, "Entity/Transport Layer Security.md", grepEntityTLS)
+	writeGrepNode(t, dir, "Entity/Another Entity.md", grepEntityBacklog)
+	writeGrepNode(t, dir, "Resource/Unrelated Note.md", grepResourceUnrelatedTag)
 }
 
 // arc grep TLS
@@ -332,7 +332,7 @@ func TestGrepUnreadableNodeExcludedRunContinues(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	seedGrepFixture(t, dir)
-	writeGrepNode(t, dir, "sources/broken.md", "not: [valid, front matter\nTLS mentioned here too\n")
+	writeGrepNode(t, dir, "Source/broken.md", "not: [valid, front matter\nTLS mentioned here too\n")
 	chdir(t, dir)
 	bios.JSON = true
 	t.Cleanup(func() { bios.JSON = false })
@@ -342,7 +342,7 @@ func TestGrepUnreadableNodeExcludedRunContinues(t *testing.T) {
 	it.Then(t).ShouldNot(it.Error(out, err))
 	it.Then(t).
 		Should(it.String(out).Contain(`"unreadable"`)).
-		Should(it.String(out).Contain("sources/broken.md")).
+		Should(it.String(out).Contain("Source/broken.md")).
 		Should(it.String(out).Contain(`"pattern": "TLS"`))
 }
 
@@ -355,7 +355,7 @@ func TestGrepVerboseShowsFullLineColorModeTruncatesDefault(t *testing.T) {
 
 	longLine := "TLS 1.3 removes support for static RSA key exchange, replacing it with ephemeral Diffie-Hellman key agreement for every handshake, a change motivated entirely by forward secrecy."
 	content := "---\n\"@id\": longline-2026-doc\n\"@type\": Source\n---\n# longline-2026-doc\n\n" + longLine + "\n"
-	writeGrepNode(t, dir, "sources/longline-2026-doc.md", content)
+	writeGrepNode(t, dir, "Source/longline-2026-doc.md", content)
 	// Pinned explicitly rather than relying on the built-in default, so
 	// this test stays correct regardless of that default's own value —
 	// only that *some* configured width shorter than longLine triggers
@@ -388,7 +388,7 @@ func TestGrepPlainModeNeverTruncatesEvenLongLine(t *testing.T) {
 
 	longLine := "TLS 1.3 removes support for static RSA key exchange, replacing it with ephemeral Diffie-Hellman key agreement for every handshake, a change motivated entirely by forward secrecy."
 	content := "---\n\"@id\": longline-2026-doc\n\"@type\": Source\n---\n# longline-2026-doc\n\n" + longLine + "\n"
-	writeGrepNode(t, dir, "sources/longline-2026-doc.md", content)
+	writeGrepNode(t, dir, "Source/longline-2026-doc.md", content)
 	chdir(t, dir)
 
 	out, err := sut(NewGrepCmd(), []string{"TLS"})

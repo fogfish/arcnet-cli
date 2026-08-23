@@ -29,12 +29,19 @@ import (
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
 
-var coreKindFolders = map[string]string{
-	"Source":   "sources",
-	"Entity":   "entities",
-	"Resource": "resources",
-}
-
+// nodeFolder derives the folder a node of the given type is filed in. Under
+// ARCNET-CORE §6 (v0.11) a type folder's name is its type name character for
+// character, so the derivation is the identity function
+// (specs/022-reference-type-folders, contract C1).
+//
+// It stays a named function rather than being inlined because it is the one
+// place the rule is stated: it must never grow a lookup table, a pluralizing
+// suffix, or a case fold. The v0.10 implementation had the first two — a
+// Source→sources map plus a kind+"s" fallback — and the fallback is what
+// would have filed a domain profile's Thought nodes under Thoughts/. Contract
+// C1 holds identically for types the tool recognizes and types it does not,
+// which is exactly what having no transform at all buys.
+//
 // nodeFolder is never called with kind == "timeline": Apply's per-node loop
 // intercepts a patch-carried "timeline"-kind section before this function
 // is ever consulted, folding it into applyTimeline's own two-tier
@@ -44,13 +51,7 @@ var coreKindFolders = map[string]string{
 // serialization, so this generic per-kind folder derivation could never
 // produce a compatible file for that kind even if it recognized it.
 func nodeFolder(kind string) string {
-	if folder, ok := coreKindFolders[kind]; ok {
-		return folder
-	}
-	if strings.HasSuffix(kind, "s") {
-		return kind
-	}
-	return kind + "s"
+	return kind
 }
 
 func nodePath(node core.Node) string {

@@ -57,9 +57,9 @@ func TestRevertWholeCommitRemovesJustAppliedPatch(t *testing.T) {
 	afterCount := len(strings.Split(after, "\n"))
 	it.Then(t).Should(it.Equal(beforeCount+1, afterCount))
 
-	_, statErr := os.Stat(filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	_, statErr := os.Stat(filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
-	_, statErr = os.Stat(filepath.Join(dir, "entities", "Transport Layer Security.md"))
+	_, statErr = os.Stat(filepath.Join(dir, "Entity", "Transport Layer Security.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }
 
@@ -81,7 +81,7 @@ func TestRevertSucceedsAfterRetractReapplyCycle(t *testing.T) {
 	out, err := sut(forcedRevertCmd(t), []string{"rescorla-2026-tls13"})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	_, statErr := os.Stat(filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	_, statErr := os.Stat(filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 
 	// The whole-commit revert (`git revert`) undid the entire ingest
@@ -96,7 +96,7 @@ func TestRevertSucceedsAfterRetractReapplyCycle(t *testing.T) {
 	// trailer.
 	_, err = sut(NewApplyCmd(), []string{patch})
 	it.Then(t).Should(it.Nil(err))
-	assertIsFile(t, filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
 
 	before := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
 	beforeCount := len(strings.Split(before, "\n"))
@@ -111,7 +111,7 @@ func TestRevertSucceedsAfterRetractReapplyCycle(t *testing.T) {
 	afterCount := len(strings.Split(after, "\n"))
 	it.Then(t).Should(it.Equal(beforeCount+1, afterCount))
 
-	_, statErr = os.Stat(filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	_, statErr = os.Stat(filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }
 
@@ -172,7 +172,7 @@ func TestRevertOlderNonOverlappingPatchStillTakesWholeCommitPath(t *testing.T) {
 	it.Then(t).ShouldNot(it.Error(out, err))
 	it.Then(t).Should(it.String(out).Contain("whole-commit"))
 
-	_, statErr := os.Stat(filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	_, statErr := os.Stat(filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 
 	after := readFile(t, filepath.Join(dir, "Hypothesis", "Forward Secrecy Requires Ephemeral Keys.md"))
@@ -266,7 +266,7 @@ func TestRevertNodeEnrichedByLaterPatchTakesPerNodePath(t *testing.T) {
 	_, err = sut(NewApplyCmd(), []string{patchB})
 	it.Then(t).Should(it.Nil(err))
 
-	before := readFile(t, filepath.Join(dir, "entities", "TLS 1.3.md"))
+	before := readFile(t, filepath.Join(dir, "Entity", "TLS 1.3.md"))
 	it.Then(t).
 		Should(it.String(before).Contain("Introduced in RFC 8446.")).
 		Should(it.String(before).Contain("Widely deployed by 2026."))
@@ -275,14 +275,14 @@ func TestRevertNodeEnrichedByLaterPatchTakesPerNodePath(t *testing.T) {
 	it.Then(t).ShouldNot(it.Error(out, err))
 	it.Then(t).Should(it.String(out).Contain("per-node"))
 
-	assertIsFile(t, filepath.Join(dir, "entities", "TLS 1.3.md"))
-	after := readFile(t, filepath.Join(dir, "entities", "TLS 1.3.md"))
+	assertIsFile(t, filepath.Join(dir, "Entity", "TLS 1.3.md"))
+	after := readFile(t, filepath.Join(dir, "Entity", "TLS 1.3.md"))
 	it.Then(t).
 		ShouldNot(it.String(after).Contain("Introduced in RFC 8446.")).
 		Should(it.String(after).Contain("Widely deployed by 2026.")).
 		Should(it.String(after).Contain("deployed"))
 
-	_, statErr := os.Stat(filepath.Join(dir, "sources", "doc-2026-a.md"))
+	_, statErr := os.Stat(filepath.Join(dir, "Source", "doc-2026-a.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 }
 
@@ -308,7 +308,7 @@ func TestRevertVerboseReportsPerNodeReconciliationDetail(t *testing.T) {
 	_, stderr, err := sutCaptureStderr(t, forcedRevertCmd(t), []string{"doc-2026-a"})
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
-		Should(it.String(stderr).Contain("entities/TLS 1.3.md")).
+		Should(it.String(stderr).Contain("Entity/TLS 1.3.md")).
 		Should(it.String(stderr).Contain("reconciled")).
 		Should(it.String(stderr).Contain("paragraph"))
 }
@@ -391,16 +391,16 @@ func TestRevertExclusiveNodeRemovalSweepsCrossPatchBacklink(t *testing.T) {
 	_, err = sut(NewApplyCmd(), []string{patchS})
 	it.Then(t).Should(it.Nil(err))
 
-	widgetBefore := readFile(t, filepath.Join(dir, "entities", "Widget X.md"))
+	widgetBefore := readFile(t, filepath.Join(dir, "Entity", "Widget X.md"))
 	it.Then(t).Should(it.String(widgetBefore).Contain("RFC 9999"))
 
 	out, err := sut(forcedRevertCmd(t), []string{"doc-2026-r"})
 	it.Then(t).ShouldNot(it.Error(out, err))
 
-	_, statErr := os.Stat(filepath.Join(dir, "resources", "RFC 9999.md"))
+	_, statErr := os.Stat(filepath.Join(dir, "Resource", "RFC 9999.md"))
 	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 
-	widgetAfter := readFile(t, filepath.Join(dir, "entities", "Widget X.md"))
+	widgetAfter := readFile(t, filepath.Join(dir, "Entity", "Widget X.md"))
 	it.Then(t).ShouldNot(it.String(widgetAfter).Contain("RFC 9999"))
 }
 
@@ -473,7 +473,7 @@ func TestRevertWithoutForceRefusesNonInteractively(t *testing.T) {
 	after := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
 	it.Then(t).Should(it.Equal(before, after))
 
-	assertIsFile(t, filepath.Join(dir, "sources", "rescorla-2026-tls13.md"))
+	assertIsFile(t, filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
 }
 
 // arc revert --json rescorla-2026-tls13 --force
@@ -553,8 +553,189 @@ func TestRevertSkipsPatchDocumentLeftInGraphTree(t *testing.T) {
 			it.Then(t).Should(it.Equal(want, readFile(t, filepath.Join(dir, "docA.patch.md"))))
 
 			// while the nodes it contributed are gone
-			_, statErr := os.Stat(filepath.Join(dir, "sources", "doc-2026-a.md"))
+			_, statErr := os.Stat(filepath.Join(dir, "Source", "doc-2026-a.md"))
 			it.Then(t).Should(it.True(os.IsNotExist(statErr)))
 		})
 	}
+}
+
+// ---------------------------------------------------------------------------
+// specs/022-reference-type-folders — ARCNET-CORE v0.11
+// ---------------------------------------------------------------------------
+
+// v011RevertDocA and v011RevertDocB both contribute prose to the same
+// Resource and the same Reference. Reverting A therefore cannot take the
+// whole-commit path: B has since touched both nodes, so revert must
+// reconstruct each node's prose from the predicate the ingest wrote it to —
+// text for the Resource, relevance for the Reference (contract C4).
+const v011RevertDocA = `---
+"@type": patch
+document: doc-2026-a
+published: 2026-04-01
+title: "Document A"
+---
+# Source
+
+## doc-2026-a
+` + "```yaml" + `
+"@id": "doc-2026-a"
+"@type": Source
+title: "Document A"
+authors: [Author A]
+published: "2026-04-01"
+` + "```" + `
+
+First document.
+
+# Resource
+
+## handshake-fragment
+` + "```yaml" + `
+"@id": "handshake-fragment"
+"@type": Resource
+tags: [handshake]
+` + "```" + `
+
+Doc A's account of the handshake fragment.
+
+- mentionedIn:: [[doc-2026-a]]
+
+# Reference
+
+## rfc-8446
+` + "```yaml" + `
+"@id": "rfc-8446"
+"@type": Reference
+title: "The TLS 1.3 Protocol"
+ref: RFC 8446
+` + "```" + `
+
+Doc A's reason for keeping this pointer.
+`
+
+const v011RevertDocB = `---
+"@type": patch
+document: doc-2026-b
+published: 2026-04-02
+title: "Document B"
+---
+# Source
+
+## doc-2026-b
+` + "```yaml" + `
+"@id": "doc-2026-b"
+"@type": Source
+title: "Document B"
+authors: [Author B]
+published: "2026-04-02"
+` + "```" + `
+
+Second document.
+
+# Resource
+
+## handshake-fragment
+` + "```yaml" + `
+"@id": "handshake-fragment"
+"@type": Resource
+tags: [retrospective]
+` + "```" + `
+
+Doc B's account of the handshake fragment.
+
+- mentionedIn:: [[doc-2026-b]]
+
+# Reference
+
+## rfc-8446
+` + "```yaml" + `
+"@id": "rfc-8446"
+"@type": Reference
+title: "The TLS 1.3 Protocol"
+ref: RFC 8446
+` + "```" + `
+
+Doc B's reason for keeping this pointer.
+`
+
+// arc apply docA; arc apply docB; arc revert doc-2026-a --force
+// spec.md US2 Acceptance Scenario 3: reverting the ingesting source
+// reconstructs each node's prose from the same key the ingest wrote it
+// with, and leaves nothing orphaned. Read-side (revertLeadingKey) and
+// write-side (core.TextPredicateFor) must agree, or A's paragraph survives
+// the revert under a key revert never looked at.
+func TestRevertReconstructsResourceAndReferenceProseFromTheirOwnKeys(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+
+	patchA := writePatchFile(t, t.TempDir(), "docA.patch.md", v011RevertDocA)
+	_, err := sut(NewApplyCmd(), []string{patchA})
+	it.Then(t).Should(it.Nil(err))
+
+	patchB := writePatchFile(t, t.TempDir(), "docB.patch.md", v011RevertDocB)
+	_, err = sut(NewApplyCmd(), []string{patchB})
+	it.Then(t).Should(it.Nil(err))
+
+	resourcePath := filepath.Join(dir, "Resource", "handshake-fragment.md")
+	referencePath := filepath.Join(dir, "Reference", "rfc-8446.md")
+
+	beforeResource := readFile(t, resourcePath)
+	beforeReference := readFile(t, referencePath)
+	it.Then(t).
+		Should(it.String(beforeResource).Contain("Doc A's account of the handshake fragment.")).
+		Should(it.String(beforeResource).Contain("Doc B's account of the handshake fragment.")).
+		Should(it.String(beforeReference).Contain("Doc A's reason for keeping this pointer.")).
+		Should(it.String(beforeReference).Contain("Doc B's reason for keeping this pointer."))
+
+	out, err := sut(forcedRevertCmd(t), []string{"doc-2026-a"})
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).Should(it.String(out).Contain("per-node"))
+
+	afterResource := readFile(t, resourcePath)
+	afterReference := readFile(t, referencePath)
+	it.Then(t).
+		ShouldNot(it.String(afterResource).Contain("Doc A's account of the handshake fragment.")).
+		Should(it.String(afterResource).Contain("Doc B's account of the handshake fragment.")).
+		ShouldNot(it.String(afterReference).Contain("Doc A's reason for keeping this pointer.")).
+		Should(it.String(afterReference).Contain("Doc B's reason for keeping this pointer."))
+}
+
+// arc apply docA; arc apply docB; arc revert doc-2026-a --force
+// spec.md US3 Acceptance Scenario 6: revert locates every node the patch
+// created inside its type-named folder, removes the ones it exclusively
+// owns, and rewrites the surviving referrers in place.
+func TestRevertLocatesAndRewritesNodesInTypeNamedFolders(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+
+	patchA := writePatchFile(t, t.TempDir(), "docA.patch.md", v011RevertDocA)
+	_, err := sut(NewApplyCmd(), []string{patchA})
+	it.Then(t).Should(it.Nil(err))
+
+	patchB := writePatchFile(t, t.TempDir(), "docB.patch.md", v011RevertDocB)
+	_, err = sut(NewApplyCmd(), []string{patchB})
+	it.Then(t).Should(it.Nil(err))
+
+	assertNodeAt(t, dir, "Source", "doc-2026-a")
+
+	out, err := sut(forcedRevertCmd(t), []string{"doc-2026-a"})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	// The exclusively-owned Source is gone from Source/, and the shared
+	// nodes survive in their own type folders with doc-2026-a's backlink
+	// swept out of each.
+	sourceNames := dirEntryNames(t, filepath.Join(dir, "Source"))
+	it.Then(t).
+		ShouldNot(it.Seq(sourceNames).Contain("doc-2026-a.md")).
+		Should(it.Seq(sourceNames).Contain("doc-2026-b.md"))
+
+	assertNodeAt(t, dir, "Resource", "handshake-fragment")
+	assertNodeAt(t, dir, "Reference", "rfc-8446")
+
+	resource := readFile(t, filepath.Join(dir, "Resource", "handshake-fragment.md"))
+	it.Then(t).
+		ShouldNot(it.String(resource).Contain("[[doc-2026-a]]")).
+		Should(it.String(resource).Contain("[[doc-2026-b]]"))
 }

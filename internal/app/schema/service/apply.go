@@ -29,7 +29,7 @@ import (
 // metaIndex is the fixed schema every Property/Class document's own
 // predicates (role, merge, label, aligned, description, required,
 // optional, subClassOf) merge against — CORE's meta-vocabulary, seeded
-// into every graph's _schema/predicates/ by arc init and never varying per
+// into every graph's _schema/Property/ by arc init and never varying per
 // graph, so it is never resolved from a graph's own dynamic content schema
 // (research.md D5/D6, mirroring service/schema.go's Seed).
 var metaIndex = core.Index{Predicates: kernel.CorePredicateDefs, Types: kernel.CoreTypeDefs}
@@ -244,7 +244,7 @@ func buildApplySchemaCommitMessage(result kernel.ApplySchemaResult) string {
 // ApplyPatch mounts dir, reads the patch at source (a local path, URL, or
 // arcnet: reference, research.md D1/D1a), validates every node section is
 // Property/Class (spec FR-004/FR-005/FR-006), then creates or merges each
-// one into _schema/predicates/<name>.md or _schema/types/<name>.md,
+// one into _schema/Property/<name>.md or _schema/Class/<name>.md,
 // producing exactly one commit — or none at all when the patch is a no-op
 // re-apply (research.md D7). Any failure — a disallowed node type, a
 // malformed Property/Class document, a fetch/read failure — leaves

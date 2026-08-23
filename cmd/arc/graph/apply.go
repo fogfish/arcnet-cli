@@ -28,6 +28,16 @@ import (
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
 
+// pluralizeKind formats a node count for the human-readable ingest summary
+// ("+3 entities", "+1 Source"). It is display-only and has nothing to do
+// with folder derivation — that is graph/service.nodeFolder, which under
+// ARCNET-CORE §6 (v0.11) is the identity function.
+//
+// The distinction is worth stating because this function looks exactly like
+// the folder deriver it is not: it sits in a file named apply.go, it maps
+// Entity to "entities", and it appends an "s" — the very transforms
+// specs/022-reference-type-folders removed from the real path code. Making
+// this one the identity too would print "+3 Entity" (research.md D4).
 func pluralizeKind(kind string, count int) string {
 	if count == 1 {
 		return kind

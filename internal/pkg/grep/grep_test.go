@@ -21,7 +21,7 @@ import (
 
 func TestSearchLiteralAndRegexProduceIdenticalMatches(t *testing.T) {
 	fsys := fstest.MapFS{
-		"sources/a.md": &fstest.MapFile{Data: []byte("TLS 1.3 is great\nnothing here\n")},
+		"Source/a.md": &fstest.MapFile{Data: []byte("TLS 1.3 is great\nnothing here\n")},
 	}
 
 	literal, err := grep.Search(context.Background(), fsys, "TLS", grep.Options{})
@@ -33,7 +33,7 @@ func TestSearchLiteralAndRegexProduceIdenticalMatches(t *testing.T) {
 	it.Then(t).Should(it.Equal(len(literal.Matches), len(regex.Matches)))
 	it.Then(t).
 		Should(it.Equal(1, len(literal.Matches))).
-		Should(it.Equal("sources/a.md", literal.Matches[0].Path)).
+		Should(it.Equal("Source/a.md", literal.Matches[0].Path)).
 		Should(it.Equal(1, literal.Matches[0].Line))
 }
 

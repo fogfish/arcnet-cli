@@ -68,9 +68,9 @@ A note with no connections to anything else.
 // its backlink pool is {SSL}.
 func seedSubgraphFixture(t *testing.T, dir string) {
 	t.Helper()
-	writeGrepNode(t, dir, "entities/Transport Layer Security.md", subgraphEntityTLS)
-	writeGrepNode(t, dir, "sources/rescorla-2026-tls13.md", subgraphSourceTLS13)
-	writeGrepNode(t, dir, "entities/SSL.md", subgraphEntitySSL)
+	writeGrepNode(t, dir, "Entity/Transport Layer Security.md", subgraphEntityTLS)
+	writeGrepNode(t, dir, "Source/rescorla-2026-tls13.md", subgraphSourceTLS13)
+	writeGrepNode(t, dir, "Entity/SSL.md", subgraphEntitySSL)
 }
 
 // arc subgraph "Transport Layer Security"
@@ -103,7 +103,7 @@ func TestSubgraphDefaultDepthIncludesSeedAndDirectConnectionsGroupedByType(t *te
 func TestSubgraphSeedWithNoConnectionsYieldsOneNodeDocument(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	writeGrepNode(t, dir, "entities/Isolated Note.md", subgraphIsolatedNote)
+	writeGrepNode(t, dir, "Entity/Isolated Note.md", subgraphIsolatedNote)
 	chdir(t, dir)
 
 	out, err := sut(NewSubgraphCmd(), []string{"Isolated Note"})
@@ -181,10 +181,10 @@ const subgraphChainD = `---
 
 func seedSubgraphChainFixture(t *testing.T, dir string) {
 	t.Helper()
-	writeGrepNode(t, dir, "entities/ChainA.md", subgraphChainA)
-	writeGrepNode(t, dir, "entities/ChainB.md", subgraphChainB)
-	writeGrepNode(t, dir, "entities/ChainC.md", subgraphChainC)
-	writeGrepNode(t, dir, "entities/ChainD.md", subgraphChainD)
+	writeGrepNode(t, dir, "Entity/ChainA.md", subgraphChainA)
+	writeGrepNode(t, dir, "Entity/ChainB.md", subgraphChainB)
+	writeGrepNode(t, dir, "Entity/ChainC.md", subgraphChainC)
+	writeGrepNode(t, dir, "Entity/ChainD.md", subgraphChainD)
 }
 
 // arc subgraph ChainA --depth 2
@@ -281,10 +281,10 @@ const subgraphDiamondD = `---
 func TestSubgraphMultiPathNodeAppearsExactlyOnce(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	writeGrepNode(t, dir, "entities/DiamondA.md", subgraphDiamondA)
-	writeGrepNode(t, dir, "entities/DiamondB.md", subgraphDiamondB)
-	writeGrepNode(t, dir, "entities/DiamondC.md", subgraphDiamondC)
-	writeGrepNode(t, dir, "entities/DiamondD.md", subgraphDiamondD)
+	writeGrepNode(t, dir, "Entity/DiamondA.md", subgraphDiamondA)
+	writeGrepNode(t, dir, "Entity/DiamondB.md", subgraphDiamondB)
+	writeGrepNode(t, dir, "Entity/DiamondC.md", subgraphDiamondC)
+	writeGrepNode(t, dir, "Entity/DiamondD.md", subgraphDiamondD)
 	chdir(t, dir)
 
 	cmd := NewSubgraphCmd()
@@ -332,8 +332,8 @@ TLS is the successor to SSL.
 
 func seedSubgraphFilterFixture(t *testing.T, dir string) {
 	t.Helper()
-	writeGrepNode(t, dir, "entities/Transport Layer Security.md", subgraphEntityTLSWithTwoTargets)
-	writeGrepNode(t, dir, "sources/rescorla-2026-tls13.md", `---
+	writeGrepNode(t, dir, "Entity/Transport Layer Security.md", subgraphEntityTLSWithTwoTargets)
+	writeGrepNode(t, dir, "Source/rescorla-2026-tls13.md", `---
 "@id": rescorla-2026-tls13
 "@type": Source
 tags: [cryptography]
@@ -343,8 +343,8 @@ status: mature
 
 TLS 1.3 design rationale.
 `)
-	writeGrepNode(t, dir, "resources/RFC 8446.md", subgraphResourceRFC8446)
-	writeGrepNode(t, dir, "sources/other-2026.md", subgraphSourceOther)
+	writeGrepNode(t, dir, "Resource/RFC 8446.md", subgraphResourceRFC8446)
+	writeGrepNode(t, dir, "Source/other-2026.md", subgraphSourceOther)
 }
 
 // arc subgraph "Transport Layer Security" --type source
@@ -479,7 +479,7 @@ const subgraphDanglingEntity = `---
 func TestSubgraphDanglingLinkTargetExcludedCLI(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	writeGrepNode(t, dir, "entities/Dangling.md", subgraphDanglingEntity)
+	writeGrepNode(t, dir, "Entity/Dangling.md", subgraphDanglingEntity)
 	chdir(t, dir)
 
 	out, err := sut(NewSubgraphCmd(), []string{"Dangling"})
@@ -518,8 +518,8 @@ const subgraphCycleB = `---
 func TestSubgraphCycleDoesNotLoopOrDuplicateCLI(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	writeGrepNode(t, dir, "entities/CycleA.md", subgraphCycleA)
-	writeGrepNode(t, dir, "entities/CycleB.md", subgraphCycleB)
+	writeGrepNode(t, dir, "Entity/CycleA.md", subgraphCycleA)
+	writeGrepNode(t, dir, "Entity/CycleB.md", subgraphCycleB)
 	chdir(t, dir)
 
 	cmd := NewSubgraphCmd()
@@ -553,14 +553,14 @@ func TestSubgraphIsReadOnly(t *testing.T) {
 func TestSubgraphTruncatedPoolReportsStatsAndStderrNotice(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	writeGrepNode(t, dir, "entities/Hub.md", `---
+	writeGrepNode(t, dir, "Entity/Hub.md", `---
 "@id": Hub
 "@type": Entity
 ---
 # Hub
 `)
 	for _, id := range []string{"P1", "P2", "P3"} {
-		writeGrepNode(t, dir, "entities/"+id+".md", "---\n\"@id\": "+id+"\n\"@type\": Entity\n---\n# "+id+"\n\n- [[Hub]]\n")
+		writeGrepNode(t, dir, "Entity/"+id+".md", "---\n\"@id\": "+id+"\n\"@type\": Entity\n---\n# "+id+"\n\n- [[Hub]]\n")
 	}
 	writeGrepNode(t, dir, ".arc/config.yml", "subgraph:\n  backlinkCap: 2\n")
 	chdir(t, dir)
@@ -591,7 +591,7 @@ A published thing.
 func TestSubgraphPreservesPublishedValueUnchanged(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	writeGrepNode(t, dir, "entities/PublishedThing.md", subgraphEntityWithPublished)
+	writeGrepNode(t, dir, "Entity/PublishedThing.md", subgraphEntityWithPublished)
 	chdir(t, dir)
 
 	cmd := NewSubgraphCmd()
@@ -683,7 +683,7 @@ const subgraphEntityMixedShape = `---
 func TestSubgraphSchemaDrivenShapeAppliesEndToEndViaResolvedIndex(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	writeGrepNode(t, dir, "entities/MixedShapeEntity.md", subgraphEntityMixedShape)
+	writeGrepNode(t, dir, "Entity/MixedShapeEntity.md", subgraphEntityMixedShape)
 	chdir(t, dir)
 
 	cmd := NewSubgraphCmd()
@@ -750,9 +750,9 @@ func TestSubgraphEmittedPatchReappliesToFreshGraph(t *testing.T) {
 	applyOut, applyErr := sut(NewApplyCmd(), []string{patchPath})
 
 	it.Then(t).ShouldNot(it.Error(applyOut, applyErr))
-	assertIsFile(t, filepath.Join(fresh, "entities", "Transport Layer Security.md"))
-	assertIsFile(t, filepath.Join(fresh, "entities", "SSL.md"))
-	assertIsFile(t, filepath.Join(fresh, "sources", "rescorla-2026-tls13.md"))
+	assertIsFile(t, filepath.Join(fresh, "Entity", "Transport Layer Security.md"))
+	assertIsFile(t, filepath.Join(fresh, "Entity", "SSL.md"))
+	assertIsFile(t, filepath.Join(fresh, "Source", "rescorla-2026-tls13.md"))
 }
 
 // arc subgraph "Transport Layer Security" --json
@@ -785,4 +785,87 @@ func TestSubgraphJSONContractUnaffectedByManifestIdentity(t *testing.T) {
 	it.Then(t).Should(it.Seq(keys).Equal("document", "nodes", "published", "stats", "title"))
 	it.Then(t).ShouldNot(it.String(out).Contain(`"kind"`))
 	it.Then(t).ShouldNot(it.String(out).Contain(`"@type": "patch"`))
+}
+
+// ---------------------------------------------------------------------------
+// specs/022-reference-type-folders — ARCNET-CORE v0.11
+// ---------------------------------------------------------------------------
+
+// seedV011SubgraphFixture writes the same three-node fixture
+// seedSubgraphFixture builds, filed under the v0.11 type-named folders, plus
+// one Reference the entity points at — so the traversal has a node of the
+// new type to reach.
+func seedV011SubgraphFixture(t *testing.T, dir string) {
+	t.Helper()
+	writeGrepNode(t, dir, "Entity/Transport Layer Security.md", subgraphEntityTLS)
+	writeGrepNode(t, dir, "Source/rescorla-2026-tls13.md", subgraphSourceTLS13)
+	writeGrepNode(t, dir, "Entity/SSL.md", subgraphEntitySSL)
+}
+
+// arc subgraph "Transport Layer Security" | arc apply -
+// spec.md US3 Acceptance Scenario 8: exporting a subgraph from a
+// type-named-folder graph and applying it into a second freshly initialized
+// graph puts every node back at the path it occupied in the first — the
+// round trip is path-stable, because both ends derive the folder from the
+// node's own @type by the same identity function.
+func TestSubgraphExportReappliesPathStablyIntoFreshGraph(t *testing.T) {
+	source := t.TempDir()
+	initGraph(t, source)
+	seedV011SubgraphFixture(t, source)
+	chdir(t, source)
+
+	out, err := sut(NewSubgraphCmd(), []string{"Transport Layer Security"})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	patchPath := filepath.Join(t.TempDir(), "exported.patch.md")
+	it.Then(t).Should(it.Nil(os.WriteFile(patchPath, []byte(out), 0o644)))
+
+	fresh := t.TempDir()
+	initGraph(t, fresh)
+	chdir(t, fresh)
+
+	applyOut, applyErr := sut(NewApplyCmd(), []string{patchPath})
+	it.Then(t).ShouldNot(it.Error(applyOut, applyErr))
+
+	for _, want := range [][2]string{
+		{"Entity", "Transport Layer Security"},
+		{"Entity", "SSL"},
+		{"Source", "rescorla-2026-tls13"},
+	} {
+		assertNodeAt(t, source, want[0], want[1])
+		assertNodeAt(t, fresh, want[0], want[1])
+	}
+}
+
+// arc subgraph / arc grep / arc lint over a type-named-folder graph
+// spec.md US3 Acceptance Scenario 7: all three traverse the new layout and
+// keep excluding .arc/ and _schema/ from content traversal exactly as
+// before — the exclusion matches those two folder names, never a whitelist
+// of content folders, so renaming the content folders cannot change it.
+func TestTraversalOverTypeNamedFoldersStillExcludesArcAndSchema(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedV011SubgraphFixture(t, dir)
+	chdir(t, dir)
+
+	subgraphOut, err := sut(NewSubgraphCmd(), []string{"Transport Layer Security"})
+	it.Then(t).ShouldNot(it.Error(subgraphOut, err))
+	it.Then(t).
+		Should(it.String(subgraphOut).Contain("Transport Layer Security")).
+		ShouldNot(it.String(subgraphOut).Contain("_schema")).
+		ShouldNot(it.String(subgraphOut).Contain(".arc"))
+
+	// "Class" is the @type every seeded schema document carries. A grep
+	// that reached into _schema/ would match all of them.
+	grepOut, err := sut(NewGrepCmd(), []string{"TLS"})
+	it.Then(t).ShouldNot(it.Error(grepOut, err))
+	it.Then(t).
+		Should(it.String(grepOut).Contain("Transport Layer Security")).
+		ShouldNot(it.String(grepOut).Contain("_schema/"))
+
+	lintOut, _ := sut(lint.NewLintCmd(), nil)
+	it.Then(t).
+		ShouldNot(it.String(lintOut).Contain("_schema/Class/")).
+		ShouldNot(it.String(lintOut).Contain("_schema/Property/")).
+		ShouldNot(it.String(lintOut).Contain(".arc/"))
 }

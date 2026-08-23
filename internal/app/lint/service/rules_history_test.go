@@ -35,7 +35,7 @@ func TestCheckIngestCommitExactlyOneMatch(t *testing.T) {
 	vcs := historyMockVCS{commits: map[string][]string{"Source-Id: foo-2026-x": {"abc123"}}}
 	node := core.Node{Type: "Source", ID: "foo-2026-x"}
 
-	out, err := checkIngestCommit(context.Background(), vcs, "/graph", node, "sources/foo-2026-x.md")
+	out, err := checkIngestCommit(context.Background(), vcs, "/graph", node, "Source/foo-2026-x.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(0, len(out)))
@@ -45,7 +45,7 @@ func TestCheckIngestCommitZeroMatches(t *testing.T) {
 	vcs := historyMockVCS{commits: map[string][]string{}}
 	node := core.Node{Type: "Source", ID: "foo-2026-x"}
 
-	out, err := checkIngestCommit(context.Background(), vcs, "/graph", node, "sources/foo-2026-x.md")
+	out, err := checkIngestCommit(context.Background(), vcs, "/graph", node, "Source/foo-2026-x.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, len(out)))
@@ -58,7 +58,7 @@ func TestCheckIngestCommitMoreThanOneMatch(t *testing.T) {
 	vcs := historyMockVCS{commits: map[string][]string{"Source-Id: foo-2026-x": {"abc123", "def456"}}}
 	node := core.Node{Type: "Source", ID: "foo-2026-x"}
 
-	out, err := checkIngestCommit(context.Background(), vcs, "/graph", node, "sources/foo-2026-x.md")
+	out, err := checkIngestCommit(context.Background(), vcs, "/graph", node, "Source/foo-2026-x.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, len(out)))
@@ -69,7 +69,7 @@ func TestCheckIngestCommitNonSourceExempt(t *testing.T) {
 	vcs := historyMockVCS{}
 	node := core.Node{Type: "Entity", ID: "Widget"}
 
-	out, err := checkIngestCommit(context.Background(), vcs, "/graph", node, "entities/Widget.md")
+	out, err := checkIngestCommit(context.Background(), vcs, "/graph", node, "Entity/Widget.md")
 
 	it.Then(t).
 		Should(it.Nil(err)).
@@ -80,7 +80,7 @@ func TestCheckIngestCommitErrorPropagates(t *testing.T) {
 	vcs := historyMockVCS{err: errors.New("git log failed")}
 	node := core.Node{Type: "Source", ID: "foo-2026-x"}
 
-	_, err := checkIngestCommit(context.Background(), vcs, "/graph", node, "sources/foo-2026-x.md")
+	_, err := checkIngestCommit(context.Background(), vcs, "/graph", node, "Source/foo-2026-x.md")
 
 	it.Then(t).ShouldNot(it.Nil(err))
 }

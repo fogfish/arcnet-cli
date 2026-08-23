@@ -15,6 +15,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"testing"
 	"unicode"
@@ -22,6 +24,7 @@ import (
 	"github.com/fogfish/it/v2"
 	"github.com/spf13/cobra"
 
+	"github.com/fogfish/arcnet-cli/cmd/arc/lint"
 	"github.com/fogfish/arcnet-cli/internal/app/schema/kernel"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
@@ -108,6 +111,13 @@ func assertIsFile(t *testing.T, path string) {
 		Should(it.True(!info.IsDir()))
 }
 
+func readGraphFile(t *testing.T, path string) string {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	it.Then(t).Should(it.Nil(err))
+	return string(content)
+}
+
 func gitOutput(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)
@@ -129,11 +139,11 @@ func TestInitCurrentDirectoryCreatesLayout(t *testing.T) {
 		ShouldNot(it.Error(out, err)).
 		Should(it.String(out).Contain(dir))
 
-	for _, folder := range []string{"sources", "entities", "resources", filepath.Join("timeline", "yearly"), filepath.Join("timeline", "monthly"), filepath.Join("_schema", "types"), filepath.Join("_schema", "predicates")} {
+	for _, folder := range []string{"Source", "Entity", "Resource", filepath.Join("timeline", "yearly"), filepath.Join("timeline", "monthly"), filepath.Join("_schema", "Class"), filepath.Join("_schema", "Property")} {
 		assertIsDir(t, filepath.Join(dir, folder))
 	}
-	assertIsFile(t, filepath.Join(dir, "_schema", "types", "Entity.md"))
-	assertIsFile(t, filepath.Join(dir, "_schema", "predicates", "related.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "Class", "Entity.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "Property", "related.md"))
 	_, metaErr := os.Stat(filepath.Join(dir, "_meta"))
 	it.Then(t).Should(it.True(os.IsNotExist(metaErr)))
 	assertIsDir(t, filepath.Join(dir, ".arc"))
@@ -188,13 +198,14 @@ func TestInitCurrentDirectoryFoldersInHistory(t *testing.T) {
 
 	tracked := gitOutput(t, dir, "ls-files")
 	it.Then(t).
-		Should(it.String(tracked).Contain("sources/.gitkeep")).
-		Should(it.String(tracked).Contain("entities/.gitkeep")).
-		Should(it.String(tracked).Contain("resources/.gitkeep")).
+		Should(it.String(tracked).Contain("Source/.gitkeep")).
+		Should(it.String(tracked).Contain("Entity/.gitkeep")).
+		Should(it.String(tracked).Contain("Resource/.gitkeep")).
+		Should(it.String(tracked).Contain("Reference/.gitkeep")).
 		Should(it.String(tracked).Contain("timeline/yearly/.gitkeep")).
 		Should(it.String(tracked).Contain("timeline/monthly/.gitkeep")).
-		Should(it.String(tracked).Contain("_schema/types/Entity.md")).
-		Should(it.String(tracked).Contain("_schema/predicates/related.md"))
+		Should(it.String(tracked).Contain("_schema/Class/Entity.md")).
+		Should(it.String(tracked).Contain("_schema/Property/related.md"))
 }
 
 // arc init
@@ -211,7 +222,7 @@ func TestInitSeedsAllCoreKindsAndPredicates(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 
 	for name, def := range kernel.CoreTypeDefs {
-		path := filepath.Join(dir, "_schema", "types", name+".md")
+		path := filepath.Join(dir, "_schema", "Class", name+".md")
 		assertIsFile(t, path)
 
 		content, rerr := os.ReadFile(path)
@@ -225,7 +236,7 @@ func TestInitSeedsAllCoreKindsAndPredicates(t *testing.T) {
 	}
 
 	for name, def := range kernel.CorePredicateDefs {
-		path := filepath.Join(dir, "_schema", "predicates", name+".md")
+		path := filepath.Join(dir, "_schema", "Property", name+".md")
 		assertIsFile(t, path)
 
 		content, rerr := os.ReadFile(path)
@@ -239,7 +250,7 @@ func TestInitSeedsAllCoreKindsAndPredicates(t *testing.T) {
 
 // arc init
 // spec 017 US1 Acceptance Scenario 1: a freshly initialized graph seeds
-// _schema/types/Node.md (Required: published/created; Optional:
+// _schema/Class/Node.md (Required: published/created; Optional:
 // tags/text/updated/scoreZ/scoreC), and source/entity/resource/timeline's
 // own seeded documents each carry an explicit subClassOf:: [[Node]] edge
 // (aligned to rdfs:subClassOf).
@@ -250,7 +261,7 @@ func TestInitSeedsNodeTypeAndWiresContentTypesToIt(t *testing.T) {
 	_, err := sut(NewInitCmd(), []string{})
 	it.Then(t).Should(it.Nil(err))
 
-	nodePath := filepath.Join(dir, "_schema", "types", "Node.md")
+	nodePath := filepath.Join(dir, "_schema", "Class", "Node.md")
 	assertIsFile(t, nodePath)
 
 	nodeContent, rerr := os.ReadFile(nodePath)
@@ -263,7 +274,7 @@ func TestInitSeedsNodeTypeAndWiresContentTypesToIt(t *testing.T) {
 	}
 
 	for _, name := range []string{"Source", "Entity", "Resource", "Timeline"} {
-		content, rerr := os.ReadFile(filepath.Join(dir, "_schema", "types", name+".md"))
+		content, rerr := os.ReadFile(filepath.Join(dir, "_schema", "Class", name+".md"))
 		it.Then(t).Should(it.Nil(rerr))
 		it.Then(t).Should(it.String(string(content)).Contain("subClassOf:: [[Node]]"))
 	}
@@ -293,7 +304,7 @@ func TestInitSucceedsWithNoNetworkAccess(t *testing.T) {
 
 	out, err := sut(NewInitCmd(), []string{dir})
 	it.Then(t).ShouldNot(it.Error(out, err))
-	assertIsFile(t, filepath.Join(dir, "_schema", "types", "Entity.md"))
+	assertIsFile(t, filepath.Join(dir, "_schema", "Class", "Entity.md"))
 }
 
 // arc init <target-file>
@@ -367,7 +378,7 @@ func TestInitJSONOutput(t *testing.T) {
 		Should(it.Equal(dir, payload.Path)).
 		ShouldNot(it.Equal("", payload.Commit)).
 		Should(it.LessOrEqual(len(payload.Commit), 12)).
-		Should(it.Seq(payload.FoldersCreated).Contain("sources", "entities", "resources", "_schema/types", "_schema/predicates"))
+		Should(it.Seq(payload.FoldersCreated).Contain("Source", "Entity", "Resource", "_schema/Class", "_schema/Property"))
 }
 
 // arc init <dir>
@@ -419,7 +430,7 @@ func TestInitNamedDirectoryCreatesLayout(t *testing.T) {
 	out, err := sut(NewInitCmd(), []string{target})
 
 	it.Then(t).ShouldNot(it.Error(out, err))
-	assertIsDir(t, filepath.Join(target, "sources"))
+	assertIsDir(t, filepath.Join(target, "Source"))
 	assertIsDir(t, filepath.Join(target, ".arc"))
 
 	entries, rerr := os.ReadDir(cwd)
@@ -460,7 +471,7 @@ func TestInitRefusesReInitialization(t *testing.T) {
 
 // arc init
 // spec.md US2 Acceptance Scenarios 1-2: every class name arc init seeds
-// under _schema/types/ begins with an uppercase letter, and no two seeded
+// under _schema/Class/ begins with an uppercase letter, and no two seeded
 // class names differ only by casing.
 func TestInitSeededSchemaTypesAreAllCamelCase(t *testing.T) {
 	dir := t.TempDir()
@@ -469,7 +480,7 @@ func TestInitSeededSchemaTypesAreAllCamelCase(t *testing.T) {
 	_, err := sut(NewInitCmd(), []string{})
 	it.Then(t).Should(it.Nil(err))
 
-	entries, rerr := os.ReadDir(filepath.Join(dir, "_schema", "types"))
+	entries, rerr := os.ReadDir(filepath.Join(dir, "_schema", "Class"))
 	it.Then(t).Should(it.Nil(rerr))
 
 	seen := map[string]bool{}
@@ -484,5 +495,177 @@ func TestInitSeededSchemaTypesAreAllCamelCase(t *testing.T) {
 		lower := strings.ToLower(name)
 		it.Then(t).Should(it.True(!seen[lower]))
 		seen[lower] = true
+	}
+}
+
+// ---------------------------------------------------------------------------
+// specs/022-reference-type-folders — ARCNET-CORE v0.11
+// ---------------------------------------------------------------------------
+
+// schemaBullets returns every target of a `- <predicate>:: [[<target>]]`
+// bullet in a rendered schema document, in document order. It reads the
+// rendered bytes rather than re-deriving from kernel.CoreTypeDefs, so the
+// assertion covers seeding as well as the table.
+func schemaBullets(t *testing.T, content, predicate string) []string {
+	t.Helper()
+	re := regexp.MustCompile(`(?m)^- ` + regexp.QuoteMeta(predicate) + `:: \[\[([^\]]+)\]\]`)
+	var out []string
+	for _, m := range re.FindAllStringSubmatch(content, -1) {
+		out = append(out, m[1])
+	}
+	return out
+}
+
+// walkDirNames collects every directory under root as a slash-separated
+// path relative to root, reading the names the filesystem actually reports
+// rather than stat-ing a path the test constructed. Contract C7: os.Stat on
+// APFS answers yes to "Source", "source", and "SOURCE" alike, so a
+// stat-based assertion cannot detect a case defect. ReadDir returns the
+// stored name, so a string comparison against it can.
+func walkDirNames(t *testing.T, root string, skip map[string]bool) []string {
+	t.Helper()
+	var out []string
+
+	var walk func(dir, prefix string)
+	walk = func(dir, prefix string) {
+		entries, err := os.ReadDir(dir)
+		it.Then(t).Should(it.Nil(err))
+		for _, e := range entries {
+			if !e.IsDir() || skip[e.Name()] {
+				continue
+			}
+			rel := e.Name()
+			if prefix != "" {
+				rel = prefix + "/" + e.Name()
+			}
+			out = append(out, rel)
+			walk(filepath.Join(dir, e.Name()), rel)
+		}
+	}
+	walk(root, "")
+
+	sort.Strings(out)
+	return out
+}
+
+// arc init
+// spec.md US1 Acceptance Scenario 1: a freshly initialized graph's seeded
+// Resource type node requires exactly text, tags, and mentionedIn, and
+// offers exactly notes (CORE §11.4 v0.11, contract C2).
+func TestInitSeedsResourceWithIngestedFragmentContract(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	content := readGraphFile(t, filepath.Join(dir, "_schema", "Class", "Resource.md"))
+
+	it.Then(t).
+		Should(it.Seq(schemaBullets(t, content, "required")).Equal("text", "tags", "mentionedIn")).
+		// "indexed" joins §11.4's own sole optional "notes": it is not a
+		// CORE predicate but the arc extension arc apply stamps on every
+		// node it creates, so a Resource that did not permit it would fail
+		// its own conformance check on a graph the tool itself wrote.
+		Should(it.Seq(schemaBullets(t, content, "optional")).Equal("notes", "indexed")).
+		Should(it.Seq(schemaBullets(t, content, "subClassOf")).Equal("Node"))
+}
+
+// arc init
+// spec.md US1 Acceptance Scenario 2: the corrected Resource no longer
+// offers any of the external-work predicates that moved to Reference, in
+// either list (contract C2).
+func TestInitSeedsResourceWithoutExternalWorkPredicates(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	content := readGraphFile(t, filepath.Join(dir, "_schema", "Class", "Resource.md"))
+	declared := append(schemaBullets(t, content, "required"), schemaBullets(t, content, "optional")...)
+
+	for _, retired := range []string{"ref", "relevance", "url", "authors", "year", "doi", "status", "isCitedBy"} {
+		for _, got := range declared {
+			it.Then(t).Should(it.True(got != retired))
+		}
+	}
+}
+
+// arc init
+// spec.md US1 Acceptance Scenario 3: a Reference type node exists, carries
+// the CORE §11.6 predicate lists, and declares Node as its base type
+// exactly as the other four content types do (contract C3).
+func TestInitSeedsReferenceType(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	content := readGraphFile(t, filepath.Join(dir, "_schema", "Class", "Reference.md"))
+
+	it.Then(t).
+		Should(it.String(content).Contain(`"@type": Class`)).
+		Should(it.Seq(schemaBullets(t, content, "required")).Equal("title", "ref", "relevance")).
+		Should(it.Seq(schemaBullets(t, content, "optional")).Equal("url", "authors", "year", "doi", "status", "isCitedBy", "notes", "indexed")).
+		Should(it.String(content).Contain("subClassOf:: [[Node]]"))
+
+	// FR-006: every predicate Reference declares must itself be seeded,
+	// so the graph lints clean rather than citing an unregistered name.
+	for _, predicate := range append(schemaBullets(t, content, "required"), schemaBullets(t, content, "optional")...) {
+		assertIsFile(t, filepath.Join(dir, "_schema", "Property", predicate+".md"))
+	}
+}
+
+// arc init
+// spec.md US1 Acceptance Scenario 5: a freshly initialized graph lints
+// clean — the seeded schema is self-consistent and every seeded type's
+// predicates are themselves registered.
+func TestInitSeededGraphLintsClean(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	out, lintErr := sut(lint.NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(lintErr)).
+		Should(it.String(out).Contain("0 failing"))
+}
+
+// arc init
+// spec.md US3 Acceptance Scenario 1: init creates exactly the eight folders
+// of contract C3 and none of the six retired names. Asserted as exact
+// string set equality over the names the filesystem reports (contract C7),
+// never as a per-path os.Stat.
+func TestInitCreatesExactlyTheTypeNamedFolders(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	got := walkDirNames(t, dir, map[string]bool{".git": true, ".arc": true})
+
+	it.Then(t).Should(it.Seq(got).Equal(
+		"Entity",
+		"Reference",
+		"Resource",
+		"Source",
+		"_schema",
+		"_schema/Class",
+		"_schema/Property",
+		"timeline",
+		"timeline/monthly",
+		"timeline/yearly",
+	))
+
+	for _, retired := range []string{"sources", "entities", "resources", "references", "_schema/predicates", "_schema/types"} {
+		for _, name := range got {
+			it.Then(t).Should(it.True(name != retired))
+		}
 	}
 }

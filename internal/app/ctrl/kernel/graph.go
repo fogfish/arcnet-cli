@@ -28,15 +28,28 @@ type ArcNetCoreLayout struct {
 	SeedFiles map[string]string
 }
 
+// DefaultLayout is the canonical eight-folder layout arc init creates
+// (ARCNET-CORE §6 v0.11, specs/022-reference-type-folders contract C3): four
+// type folders each named for its type character for character, the two
+// timeline buckets, and the two _schema/ type folders.
+//
+// The four content-folder names must stay in agreement with
+// graph/service.nodeFolder, which is what arc apply writes through. Nothing
+// ties the two together at compile time and a disagreement raises no error
+// at runtime — fsys creates missing parent directories on write, so the
+// wrong folder would simply appear on first use, leaving a graph with two
+// parallel folder sets. ctrl/kernel's own graph_test.go enforces the
+// agreement as contract C6.
 var DefaultLayout = ArcNetCoreLayout{
 	Folders: []string{
-		"sources",
-		"entities",
-		"resources",
+		"Source",
+		"Entity",
+		"Resource",
+		"Reference",
 		"timeline/yearly",
 		"timeline/monthly",
-		"_schema/types",
-		"_schema/predicates",
+		"_schema/Class",
+		"_schema/Property",
 	},
 	SeedFiles: map[string]string{},
 }

@@ -21,7 +21,7 @@ import (
 
 func TestNodeGetReturnsMatchingNodeFullContent(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"entities/TLS.md": entityNode("TLS", "SSL"),
+		"Entity/TLS.md": entityNode("TLS", "SSL"),
 	})
 
 	node, err := service.NodeGet(context.Background(), mounter, "/graph", "TLS")
@@ -33,7 +33,7 @@ func TestNodeGetReturnsMatchingNodeFullContent(t *testing.T) {
 
 func TestNodeGetUnknownIDReturnsErrSeedNotFound(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"entities/TLS.md": entityNode("TLS"),
+		"Entity/TLS.md": entityNode("TLS"),
 	})
 
 	_, err := service.NodeGet(context.Background(), mounter, "/graph", "No Such Node")
@@ -51,7 +51,7 @@ func TestNodeGetNotAGraphReturnsErrNotAGraphBeforeLookup(t *testing.T) {
 
 func TestEnsureGraphValidGraphReturnsNil(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
-		"entities/TLS.md": entityNode("TLS"),
+		"Entity/TLS.md": entityNode("TLS"),
 	})
 
 	err := service.EnsureGraph(context.Background(), mounter, "/graph")

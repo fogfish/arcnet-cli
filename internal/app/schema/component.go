@@ -8,7 +8,7 @@
 
 // Package schema is the graph schema domain use-case: it isolates
 // ARCNET-CORE's declared vocabulary of predicates and types as
-// _schema/predicates/*.md and _schema/types/*.md — one versioned,
+// _schema/Property/*.md and _schema/Class/*.md — one versioned,
 // human-readable document per predicate and type. No port/adapter
 // subdirectory: its only I/O is the already-shared internal/adapter/fsys,
 // consumed directly.

@@ -77,7 +77,7 @@ func runGit(t *testing.T, dir string, args ...string) string {
 // validation never rejects this fixture.
 func initGraph(t *testing.T, dir string) {
 	t.Helper()
-	for _, folder := range []string{"sources", "entities", "resources", "timeline/yearly", "timeline/monthly", "_schema/types", "_schema/predicates"} {
+	for _, folder := range []string{"Source", "Entity", "Resource", "timeline/yearly", "timeline/monthly", "_schema/Class", "_schema/Property"} {
 		it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, folder), 0o755)))
 	}
 	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, ".arc"), 0o755)))
@@ -105,7 +105,7 @@ func writeNode(t *testing.T, dir, relPath, content string) {
 // §11.3), so RuleIngestCommit's check finds exactly one matching commit.
 func ingestSource(t *testing.T, dir, id, title, content string) {
 	t.Helper()
-	writeNode(t, dir, "sources/"+id+".md", content)
+	writeNode(t, dir, "Source/"+id+".md", content)
 	runGit(t, dir, "add", "-A")
 	runGit(t, dir, "commit", "-m", "graph(ingest): "+id+" — "+title+"\n\nSource-Id: "+id+"\n")
 }
@@ -156,7 +156,7 @@ func buildConformantGraph(t *testing.T, dir string) {
 	t.Helper()
 	initGraph(t, dir)
 	ingestSource(t, dir, "foo-2026-x", "A Test Document", conformantSource)
-	writeNode(t, dir, "entities/Widget.md", conformantEntity)
+	writeNode(t, dir, "Entity/Widget.md", conformantEntity)
 	commitAll(t, dir, "seed: Widget entity")
 }
 
@@ -193,13 +193,13 @@ func TestLintExcludesSchemaDocumentsFromCheckedCount(t *testing.T) {
 
 // arc lint
 // spec.md Clarifications Q3: an ordinary content node sharing a basename
-// with a schema document (e.g. entities/hypothesis.md vs.
-// _schema/types/hypothesis.md) is not reported as a basename collision.
+// with a schema document (e.g. Entity/hypothesis.md vs.
+// _schema/Class/hypothesis.md) is not reported as a basename collision.
 func TestLintSchemaBasenameDoesNotCollideWithContentNode(t *testing.T) {
 	dir := t.TempDir()
 	buildConformantGraph(t, dir)
-	writeNode(t, dir, "_schema/types/Hypothesis.md", "---\n\"@id\": Hypothesis\n\"@type\": Class\nmerge: union\n---\n# Hypothesis\n\nA domain type registered by this test fixture.\n")
-	writeNode(t, dir, "entities/Hypothesis.md", "---\n\"@id\": Hypothesis\n\"@type\": Entity\ncategory: [independent, abstract, occurrent, script]\npublished: \"2026-04-12\"\ncreated: \"2026-04-12\"\n---\n# Hypothesis\n\nA namesake entity, unrelated to the schema kind of the same name.\n\n## MentionedIn\n- mentionedIn:: [[foo-2026-x]]\n")
+	writeNode(t, dir, "_schema/Class/Hypothesis.md", "---\n\"@id\": Hypothesis\n\"@type\": Class\nmerge: union\n---\n# Hypothesis\n\nA domain type registered by this test fixture.\n")
+	writeNode(t, dir, "Entity/Hypothesis.md", "---\n\"@id\": Hypothesis\n\"@type\": Entity\ncategory: [independent, abstract, occurrent, script]\npublished: \"2026-04-12\"\ncreated: \"2026-04-12\"\n---\n# Hypothesis\n\nA namesake entity, unrelated to the schema kind of the same name.\n\n## MentionedIn\n- mentionedIn:: [[foo-2026-x]]\n")
 	commitAll(t, dir, "seed: hypothesis entity and schema doc")
 	chdir(t, dir)
 
@@ -232,7 +232,7 @@ A test entity.
 - mentions:: [[foo-2026-x]]
 - mentions:: [[Nonexistent Node]]
 `
-	writeNode(t, dir, "entities/Widget.md", broken)
+	writeNode(t, dir, "Entity/Widget.md", broken)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
@@ -267,14 +267,14 @@ A test entity.
 - mentions:: [[foo-2026-x]]
 - mentions:: [[Not A Real Node]]
 `
-	writeNode(t, dir, "entities/Widget.md", broken)
+	writeNode(t, dir, "Entity/Widget.md", broken)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
 
 	it.Then(t).
 		ShouldNot(it.Nil(err)).
-		Should(it.String(out).Contain("entities/Widget.md:")).
+		Should(it.String(out).Contain("Entity/Widget.md:")).
 		Should(it.String(out).Contain("[linkResolves]")).
 		Should(it.String(out).Contain(`target "Not A Real Node" does not exist`)).
 		Should(it.String(out).Contain("2 nodes checked, 1 passing, 1 failing")).
@@ -302,8 +302,8 @@ func TestLintBasenameCollisionNamesBothFiles(t *testing.T) {
 	dir := t.TempDir()
 	buildConformantGraph(t, dir)
 
-	widget := readFile(t, filepath.Join(dir, "entities", "Widget.md"))
-	writeNode(t, dir, "resources/Widget.md", widget)
+	widget := readFile(t, filepath.Join(dir, "Entity", "Widget.md"))
+	writeNode(t, dir, "Resource/Widget.md", widget)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
@@ -312,8 +312,8 @@ func TestLintBasenameCollisionNamesBothFiles(t *testing.T) {
 		ShouldNot(it.Nil(err)).
 		Should(it.String(out).Contain("[uniqueBasename]")).
 		Should(it.String(out).Contain(`basename "Widget" is used by more than one file`)).
-		Should(it.String(out).Contain("entities/Widget.md")).
-		Should(it.String(out).Contain("resources/Widget.md")).
+		Should(it.String(out).Contain("Entity/Widget.md")).
+		Should(it.String(out).Contain("Resource/Widget.md")).
 		Should(it.String(out).Contain("3 nodes checked"))
 }
 
@@ -326,14 +326,14 @@ func TestLintUnresolvedMergeConflictReportedOnce(t *testing.T) {
 	buildConformantGraph(t, dir)
 
 	conflicted := "<<<<<<< HEAD\nkind: entity\n=======\nkind: entity\ncategory: [independent, abstract, occurrent, script]\n>>>>>>> feature-branch\n"
-	writeNode(t, dir, "entities/Broken.md", conflicted)
+	writeNode(t, dir, "Entity/Broken.md", conflicted)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
 
 	it.Then(t).
 		ShouldNot(it.Nil(err)).
-		Should(it.String(out).Contain("entities/Broken.md:1")).
+		Should(it.String(out).Contain("Entity/Broken.md:1")).
 		Should(it.String(out).Contain("[mergeConflict]")).
 		Should(it.String(out).Contain("3 nodes checked, 2 passing, 1 failing")).
 		ShouldNot(it.String(out).Contain("frontMatter"))
@@ -365,7 +365,7 @@ func TestLintOldFormatKindFieldReportsFrontMatterViolation(t *testing.T) {
 	buildConformantGraph(t, dir)
 
 	legacy := "---\nkind: entity\ntitle: Legacy\ncategory: [independent]\n---\n# Legacy\n\nAn entity written before this feature shipped.\n"
-	writeNode(t, dir, "entities/Legacy.md", legacy)
+	writeNode(t, dir, "Entity/Legacy.md", legacy)
 	chdir(t, dir)
 
 	before := runGit(t, dir, "status", "--porcelain")
@@ -374,7 +374,7 @@ func TestLintOldFormatKindFieldReportsFrontMatterViolation(t *testing.T) {
 
 	it.Then(t).
 		ShouldNot(it.Nil(err)).
-		Should(it.String(out).Contain("entities/Legacy.md")).
+		Should(it.String(out).Contain("Entity/Legacy.md")).
 		Should(it.String(out).Contain("[frontMatter]")).
 		Should(it.String(out).Contain(`legacy "kind" field present`))
 
@@ -392,14 +392,14 @@ func TestLintMissingIdReportsFrontMatterViolation(t *testing.T) {
 	buildConformantGraph(t, dir)
 
 	missingID := "---\n\"@type\": Entity\ntitle: Legacy\ncategory: [independent]\n---\n# Legacy\n\nAn entity missing its mandatory \"@id\" field.\n"
-	writeNode(t, dir, "entities/Legacy.md", missingID)
+	writeNode(t, dir, "Entity/Legacy.md", missingID)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
 
 	it.Then(t).
 		ShouldNot(it.Nil(err)).
-		Should(it.String(out).Contain("entities/Legacy.md")).
+		Should(it.String(out).Contain("Entity/Legacy.md")).
 		Should(it.String(out).Contain("[frontMatter]")).
 		Should(it.String(out).Contain(`missing mandatory "@id" field`))
 }
@@ -427,14 +427,14 @@ published: "2026-04-12"
 
 A source whose "@id" does not equal its own filename basename.
 `
-	writeNode(t, dir, "sources/mismatched-2026-x.md", mismatched)
+	writeNode(t, dir, "Source/mismatched-2026-x.md", mismatched)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
 
 	it.Then(t).
 		ShouldNot(it.Nil(err)).
-		Should(it.String(out).Contain("sources/mismatched-2026-x.md")).
+		Should(it.String(out).Contain("Source/mismatched-2026-x.md")).
 		Should(it.String(out).Contain("[frontMatter]")).
 		Should(it.String(out).Contain(`"@id" wrong-id does not match this file's basename mismatched-2026-x`))
 }
@@ -460,7 +460,7 @@ A test entity.
 - mentions:: [[foo-2026-x]]
 - mentions:: [[Not A Real Node]]
 `
-	writeNode(t, dir, "entities/Widget.md", broken)
+	writeNode(t, dir, "Entity/Widget.md", broken)
 	chdir(t, dir)
 
 	defaultOut, err := sut(NewLintCmd(), nil)
@@ -475,7 +475,7 @@ A test entity.
 	verboseOut, err := sut(NewLintCmd(), nil)
 	it.Then(t).ShouldNot(it.Nil(err))
 	it.Then(t).
-		Should(it.String(verboseOut).Contain("sources/foo-2026-x.md")).
+		Should(it.String(verboseOut).Contain("Source/foo-2026-x.md")).
 		Should(it.String(verboseOut).Contain("[linkResolves]")).
 		Should(it.String(verboseOut).Contain("2 nodes checked, 1 passing, 1 failing"))
 }
@@ -502,13 +502,13 @@ func TestLintMalformedSchemaDocumentRefuses(t *testing.T) {
 	// field is no longer validated as mandatory, so corrupting it (as this
 	// test previously did via "merge: bogus") no longer makes the document
 	// malformed — its mandatory descriptive body is corrupted instead.
-	entityDoc := readFile(t, filepath.Join(dir, "_schema", "types", "Entity.md"))
-	writeNode(t, dir, "_schema/types/Entity.md", strings.ReplaceAll(entityDoc, "A node for a subject occurring in sources, typed by Sowa category.", ""))
+	entityDoc := readFile(t, filepath.Join(dir, "_schema", "Class", "Entity.md"))
+	writeNode(t, dir, "_schema/Class/Entity.md", strings.ReplaceAll(entityDoc, "A node for a subject occurring in sources, typed by Sowa category.", ""))
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
 
-	it.Then(t).Should(it.Error(out, err).Contain("_schema/types/Entity.md"))
+	it.Then(t).Should(it.Error(out, err).Contain("_schema/Class/Entity.md"))
 }
 
 // arc lint --json
@@ -555,14 +555,14 @@ published: "2026-04-12"
 
 A test document.
 `
-	writeNode(t, dir, "sources/foo-2026-x.md", missingMentions)
+	writeNode(t, dir, "Source/foo-2026-x.md", missingMentions)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
 
 	it.Then(t).
 		ShouldNot(it.Nil(err)).
-		Should(it.String(out).Contain("sources/foo-2026-x.md")).
+		Should(it.String(out).Contain("Source/foo-2026-x.md")).
 		Should(it.String(out).Contain("[typeRequires]")).
 		Should(it.String(out).Contain(`type "Source" requires predicate "mentions", but this node does not carry it`))
 }
@@ -625,7 +625,7 @@ A test document.
 ## Mentions
 - mentions:: [[Widget]]
 `
-	writeNode(t, dir, "sources/foo-2026-x.md", extraPredicate)
+	writeNode(t, dir, "Source/foo-2026-x.md", extraPredicate)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
@@ -683,14 +683,14 @@ func TestLintMissingTypeReportsFrontMatterViolation(t *testing.T) {
 	buildConformantGraph(t, dir)
 
 	missingType := "---\n\"@id\": Legacy\ntitle: Legacy\ncategory: [independent]\n---\n# Legacy\n\nAn entity missing its mandatory \"@type\" field.\n"
-	writeNode(t, dir, "entities/Legacy.md", missingType)
+	writeNode(t, dir, "Entity/Legacy.md", missingType)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
 
 	it.Then(t).
 		ShouldNot(it.Nil(err)).
-		Should(it.String(out).Contain("entities/Legacy.md")).
+		Should(it.String(out).Contain("Entity/Legacy.md")).
 		Should(it.String(out).Contain("[frontMatter]")).
 		Should(it.String(out).Contain(`missing mandatory "@type" field`))
 }
@@ -718,14 +718,14 @@ A test document.
 ## Mentions
 - mentions:: [[Widget]]
 `
-	writeNode(t, dir, "sources/foo-2026-x.md", unquotedID)
+	writeNode(t, dir, "Source/foo-2026-x.md", unquotedID)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
 
 	it.Then(t).
 		ShouldNot(it.Nil(err)).
-		Should(it.String(out).Contain("sources/foo-2026-x.md")).
+		Should(it.String(out).Contain("Source/foo-2026-x.md")).
 		Should(it.String(out).Contain("[identityQuoting]")).
 		Should(it.String(out).Contain(`"@id" must be a quoted YAML string key, found it unquoted`)).
 		ShouldNot(it.String(out).Contain("[frontMatter]"))
@@ -751,7 +751,7 @@ func TestLintQuotedIdentityKeysNoViolation(t *testing.T) {
 // (research.md D3) — and commits it.
 func registerCitesAsExample(t *testing.T, dir string) {
 	t.Helper()
-	writeNode(t, dir, "_schema/predicates/citesAsExample.md", `---
+	writeNode(t, dir, "_schema/Property/citesAsExample.md", `---
 "@id": citesAsExample
 "@type": Property
 aligned: "cito:citesAsExample"
@@ -788,7 +788,7 @@ A test document. [citesAsExample:: [[Widget]]]
 ## Mentions
 - mentions:: [[Widget]]
 `
-	writeNode(t, dir, "sources/foo-2026-x.md", citing)
+	writeNode(t, dir, "Source/foo-2026-x.md", citing)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
@@ -819,7 +819,7 @@ A test document. [bogusCite:: [[Widget]]]
 ## Mentions
 - mentions:: [[Widget]]
 `
-	writeNode(t, dir, "sources/foo-2026-x.md", citing)
+	writeNode(t, dir, "Source/foo-2026-x.md", citing)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
@@ -838,10 +838,10 @@ func TestLintZeroCitoAlignedPredicatesRejectsEveryCitation(t *testing.T) {
 	dir := t.TempDir()
 	buildConformantGraph(t, dir)
 
-	entries, err := os.ReadDir(filepath.Join(dir, "_schema", "predicates"))
+	entries, err := os.ReadDir(filepath.Join(dir, "_schema", "Property"))
 	it.Then(t).Should(it.Nil(err))
 	for _, e := range entries {
-		path := filepath.Join(dir, "_schema", "predicates", e.Name())
+		path := filepath.Join(dir, "_schema", "Property", e.Name())
 		content := readFile(t, path)
 		if !strings.Contains(content, "cito:") {
 			continue
@@ -864,7 +864,7 @@ A test document. [cites:: [[Widget]]]
 ## Mentions
 - mentions:: [[Widget]]
 `
-	writeNode(t, dir, "sources/foo-2026-x.md", citing)
+	writeNode(t, dir, "Source/foo-2026-x.md", citing)
 	chdir(t, dir)
 
 	out, err2 := sut(NewLintCmd(), nil)
@@ -880,7 +880,7 @@ A test document. [cites:: [[Widget]]]
 // position (an edge bullet instead of prose) for the predicateRole check.
 func registerHighlightPredicate(t *testing.T, dir string) {
 	t.Helper()
-	writeNode(t, dir, "_schema/predicates/highlight.md", `---
+	writeNode(t, dir, "_schema/Property/highlight.md", `---
 "@id": highlight
 "@type": Property
 merge: union
@@ -890,7 +890,7 @@ role: text
 
 A short highlighted note about the entity, always written as prose.
 `)
-	writeNode(t, dir, "_schema/types/Entity.md", `---
+	writeNode(t, dir, "_schema/Class/Entity.md", `---
 "@id": Entity
 "@type": Class
 merge: union
@@ -934,14 +934,14 @@ A test entity.
 - mentionedIn:: [[foo-2026-x]]
 - highlight:: [[foo-2026-x]]
 `
-	writeNode(t, dir, "entities/Widget.md", misplaced)
+	writeNode(t, dir, "Entity/Widget.md", misplaced)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
 
 	it.Then(t).
 		ShouldNot(it.Nil(err)).
-		Should(it.String(out).Contain("entities/Widget.md")).
+		Should(it.String(out).Contain("Entity/Widget.md")).
 		Should(it.String(out).Contain("[predicateRole]")).
 		Should(it.String(out).Contain(`predicate "highlight" is registered with role "text", but appears as a edge occurrence`))
 }
@@ -982,7 +982,7 @@ A test entity.
 - mentionedIn:: [[foo-2026-x]]
 - totallyUnknownPred:: [[foo-2026-x]]
 `
-	writeNode(t, dir, "entities/Widget.md", unregistered)
+	writeNode(t, dir, "Entity/Widget.md", unregistered)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
@@ -1020,7 +1020,7 @@ Additional prose about the entity.
 ## MentionedIn
 - mentionedIn:: [[foo-2026-x]]
 `
-	writeNode(t, dir, "entities/Widget.md", widget)
+	writeNode(t, dir, "Entity/Widget.md", widget)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
@@ -1031,10 +1031,22 @@ Additional prose about the entity.
 }
 
 // arc lint
-// BUG-001 regression: a resource node using a §10.5 semantic predicate
-// produces no [typeOptional] violation, per this bugfix's explicit scope
-// decision that semantic predicates are usable on entity or resource nodes.
-func TestLintResourceSemanticPredicateNoTypeOptionalViolation(t *testing.T) {
+// BUG-001 regression, narrowed by ARCNET-CORE v0.11
+// (specs/022-reference-type-folders): BUG-001's scope decision was that
+// §10.5 semantic predicates are usable on entity *or resource* nodes. The
+// entity half still holds and is asserted above. The resource half does not
+// survive v0.11: CORE §11.4 redefines Resource as a fragment of an ingested
+// document and lists "notes" as its sole optional, so the structural and
+// semantic optionals it used to carry are not carried over
+// (data-model.md §1.1, contract C2). §11.6 gives Reference none of them
+// either, so under v0.11 semantic predicates are permitted on Entity alone.
+//
+// This asserts that narrowed contract directly rather than deleting the
+// case: a conformsTo on a Resource is now a real [typeOptional] violation,
+// and the required text/tags/mentionedIn it omits are real [typeRequires]
+// ones. Restoring the old optionals to Resource would silently turn this
+// test red, which is the point.
+func TestLintResourceSemanticPredicateIsNoLongerPermitted(t *testing.T) {
 	dir := t.TempDir()
 	buildConformantGraph(t, dir)
 
@@ -1051,14 +1063,57 @@ A normative specification.
 
 - conformsTo:: [[foo-2026-x]]
 `
-	writeNode(t, dir, "resources/RFC 8446.md", resource)
+	writeNode(t, dir, "Resource/RFC 8446.md", resource)
+	chdir(t, dir)
+
+	// The error is the bios.ErrSilent sentinel arc lint returns to carry a
+	// non-zero exit code once it has findings; the findings themselves are
+	// on stdout, which is what this asserts.
+	out, _ := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.String(out).Contain(`predicate "conformsTo" is not permitted by type "Resource"`)).
+		Should(it.String(out).Contain(`predicate "ref" is not permitted by type "Resource"`)).
+		Should(it.String(out).Contain(`type "Resource" requires predicate "tags"`)).
+		Should(it.String(out).Contain(`type "Resource" requires predicate "mentionedIn"`))
+}
+
+// arc lint
+// specs/022-reference-type-folders US1 Acceptance Scenario 6: the
+// external-work shape the retired Resource carried is conformant again once
+// the node is typed Reference — which is where those predicates went. The
+// node below is the one above, retyped and given the title §11.6 requires;
+// its leading prose supplies the third required predicate, relevance.
+//
+// The isCitedBy backlink does double duty: it is one of Reference's own
+// §11.6 optionals, and it is the link to a source node checkDerivedProvenance
+// requires of every non-Source, non-Timeline node.
+func TestLintReferenceCarriesExternalWorkPredicatesConformantly(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	reference := `---
+"@id": RFC 8446
+"@type": Reference
+title: The TLS 1.3 Protocol
+ref: standard
+status: backlog
+published: "2026-04-12"
+created: "2026-04-12"
+---
+# RFC 8446
+
+Why this un-ingested work is worth pointing at.
+
+- isCitedBy:: [[foo-2026-x]]
+`
+	writeNode(t, dir, "Reference/RFC 8446.md", reference)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
 
-	it.Then(t).
-		Should(it.Nil(err)).
-		ShouldNot(it.String(out).Contain("typeOptional"))
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.String(out).Contain("RFC 8446.md"))
 }
 
 // arc lint
@@ -1085,19 +1140,19 @@ A test document.
 ## Mentions
 - mentions:: [[Widget]]
 `
-	writeNode(t, dir, "sources/foo-2026-x.md", missingPublished)
+	writeNode(t, dir, "Source/foo-2026-x.md", missingPublished)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
 
 	it.Then(t).
 		ShouldNot(it.Nil(err)).
-		Should(it.String(out).Contain("sources/foo-2026-x.md")).
+		Should(it.String(out).Contain("Source/foo-2026-x.md")).
 		Should(it.String(out).Contain("[typeRequires]")).
 		Should(it.String(out).Contain(`type "Source" requires predicate "published", but this node does not carry it`))
 
 	restored := strings.Replace(missingPublished, "created: \"2026-04-12\"", "published: \"2026-04-12\"\ncreated: \"2026-04-12\"", 1)
-	writeNode(t, dir, "sources/foo-2026-x.md", restored)
+	writeNode(t, dir, "Source/foo-2026-x.md", restored)
 
 	out, err = sut(NewLintCmd(), nil)
 
@@ -1125,7 +1180,7 @@ func registerType(t *testing.T, dir, name string, required []string, subClassOf 
 		}
 	}
 	body.WriteString("\n## Optional\n- optional:: [[mentions]]\n")
-	writeNode(t, dir, "_schema/types/"+name+".md", body.String())
+	writeNode(t, dir, "_schema/Class/"+name+".md", body.String())
 }
 
 // arc lint
@@ -1154,7 +1209,7 @@ A dataset missing both inherited predicates.
 
 - mentions:: [[foo-2026-x]]
 `
-	writeNode(t, dir, "resources/widget-dataset.md", missingBoth)
+	writeNode(t, dir, "Resource/widget-dataset.md", missingBoth)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
@@ -1178,7 +1233,7 @@ A dataset carrying every inherited predicate from both bases.
 
 - mentions:: [[foo-2026-x]]
 `
-	writeNode(t, dir, "resources/widget-dataset.md", complete)
+	writeNode(t, dir, "Resource/widget-dataset.md", complete)
 
 	out, err = sut(NewLintCmd(), nil)
 
@@ -1212,7 +1267,7 @@ Missing the ancestor-required predicate.
 
 - mentions:: [[foo-2026-x]]
 `
-	writeNode(t, dir, "resources/bottom-of-chain.md", missingYear)
+	writeNode(t, dir, "Resource/bottom-of-chain.md", missingYear)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
@@ -1247,7 +1302,7 @@ Missing the common ancestor's required predicate.
 
 - mentions:: [[foo-2026-x]]
 `
-	writeNode(t, dir, "resources/diamond-bottom.md", missingStatus)
+	writeNode(t, dir, "Resource/diamond-bottom.md", missingStatus)
 	chdir(t, dir)
 
 	out, err := sut(NewLintCmd(), nil)
