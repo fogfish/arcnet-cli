@@ -15,7 +15,6 @@ go build -o arc ./cmd/arc
 ./arc --help
 ./arc --version
 ./arc init
-./arc upgrade
 ./arc apply rescorla-2026-tls13.patch.md
 ./arc apply batch ./patches
 ./arc apply schema arcnet:media.schema.md
@@ -30,9 +29,7 @@ go build -o arc ./cmd/arc
 
 Every seeded predicate declares its merge behaviour from CORE §9.3's closed set of six — `immutable`, `union`, `firstWriteWin`, `fillIfEmpty`, `lastWriteWin`, `append` — and a schema document declaring anything else is refused outright. Type definitions carry no merge declaration at all: merge is a property of a predicate, not of a type. Type-specific prose (a document's `abstract`, an entity's `definition`, a reference's `relevance`, a definition's `description`) is single-valued and first-fixed, so re-ingesting a lightly edited document preserves the established text and flags the divergence for review rather than accumulating paragraphs. The universal base type requires no predicates; a document requires its own `title`, `published`, `abstract`, and `mentions`, a timeline period requires only its `cites`, and an external-work reference requires only its `title`.
 
-`arc upgrade` brings an existing graph's built-in vocabulary up to date with the installed release, in exactly one commit. It replaces the built-in definitions outright rather than merging them — every correction is a *retraction* (dropping a required predicate, changing a merge behaviour) that the additive `arc apply schema` path cannot express. Your content is never touched: every file outside `_schema/`, and every `_schema/` document you wrote yourself, is left exactly as it is. A built-in document you have hand-edited **is** replaced; extend the vocabulary by adding your own documents instead. Running it on an already-current graph changes nothing and creates no commit, so it is safe to repeat. Use `--dry-run` to see what would change first.
-
-> **Upgrading from a release before the v0.11 vocabulary correction?** Run `arc upgrade` first. Graphs seeded by an earlier release declare a retired seventh merge value on their own analytics-score predicates, so every other command will refuse to load them until the vocabulary is replaced — the error says so and names `arc upgrade` as the remedy. `arc upgrade` itself is deliberately able to run on such a graph: it writes the corrected vocabulary *before* it reads anything. Nodes whose prose looks like it accumulated under the old merge behaviour are listed for you to review; they are never rewritten, because the boundary between the original text and what was appended to it is unrecoverable.
+> `arc` is pre-1.0 and experimental. This vocabulary correction is a breaking change for a graph seeded by an earlier release — no migration path is provided, by design; re-initialize instead.
 
 `arc apply` ingests a document patch into an already-initialized graph: it creates or merges every node the patch carries, derives and appends timeline entries, auto-registers any previously-unseen node kind or predicate into `_schema/` in the same commit, and produces exactly one commit. Re-applying an already-tracked document is a safe no-op.
 

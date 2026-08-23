@@ -192,30 +192,14 @@ is what makes User Story 3 safe to ship independently of the migration.
 
 ---
 
-## 6. `kernel.UpgradeResult` — new domain value
+## 6. `kernel.UpgradeResult` — REMOVED
 
-`internal/app/ctrl/kernel/graph.go`
-
-```go
-type UpgradeResult struct {
-	Root         GraphRoot `json:"path"`
-	CommitHash   string    `json:"commit"`
-	Replaced     []string  `json:"replaced"`
-	Added        []string  `json:"added"`
-	Removed      []string  `json:"removed"`
-	NeedsReview  []string  `json:"needsReview"`
-	DryRun       bool      `json:"dryRun"`
-}
-```
-
-- `Replaced`/`Added`/`Removed` — built-in schema document paths, relative to graph root, sorted.
-  `Removed` covers a built-in document that existed under a name this release no longer seeds.
-- `NeedsReview` — content-node paths whose `firstWriteWin` text predicate holds more than one
-  paragraph (research D12). Advisory; never affects exit code.
-- `CommitHash` is `""` when nothing changed or `DryRun` is set — mirroring
-  `ApplySchemaResult`'s existing "introduced no schema changes" contract.
-
-Rendered by a `bios.Registry[UpgradeResult]`, human and JSON, per Principle X.
+> **Removed 2026-08-23, post-implementation.** This section described the domain value for an
+> `arc upgrade` migration command. The command was implemented, then removed: `arc` is pre-1.0
+> and experimental, and a dedicated compatibility/migration path for graphs seeded by a
+> previous release was judged unnecessary tech debt. No replacement value exists — the
+> merge-vocabulary closure this feature makes (§1) is a plain breaking change with no remedy
+> command.
 
 ---
 
@@ -223,7 +207,7 @@ Rendered by a `bios.Registry[UpgradeResult]`, human and JSON, per Principle X.
 
 | Rule | Where | Behaviour |
 | --- | --- | --- |
-| Merge value ∈ menu of six | `decodePredicateDef` via `validMergeOps` | reject; error names the value, the file, and the six legal values, **and names `arc upgrade` as the remedy** |
+| Merge value ∈ menu of six | `decodePredicateDef` via `validMergeOps` | reject; error names the offending document |
 | Merge value on a `Class` node | `decodeTypeDef` | ignored, never rejected, never linted (FR-006) |
 | Role ∈ meta/text/href/edge/link | `validRoles` | unchanged |
 | `Class` description non-empty | `decodeTypeDef` | unchanged — now also expressed as `Class.Requires` |

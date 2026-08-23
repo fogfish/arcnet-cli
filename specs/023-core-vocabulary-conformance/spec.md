@@ -92,38 +92,20 @@ Today none of the three is registered, and because all three are front-matter at
 
 ---
 
-### User Story 5 - An existing graph can adopt the corrected vocabulary (Priority: P5)
+### User Story 5 - REMOVED
 
-An author with a graph created by an earlier release brings its vocabulary up to date in one deliberate, reviewable step. Afterwards the graph's seeded definitions match those of a freshly initialized graph, the change is recorded as a single commit, and the author's own content nodes are untouched.
-
-Today there is no path at all: initialization refuses to run on an existing graph, and importing definitions combines them with what is already there rather than replacing them — which cannot remove a required predicate and cannot change a merge declaration, because both are governed by combine-only behaviour. Every one of this feature's corrections is a retraction, so the combining path can never deliver any of them.
-
-**Why this priority**: It is the highest-effort story and the only one that touches an author's existing data, so it ships last. Every earlier story delivers value to new graphs on its own.
-
-**Independent Test**: Take a graph seeded by the previous release, run the adoption step, and confirm its vocabulary is identical to a freshly initialized graph's while every content node is byte-identical to before.
-
-**Acceptance Scenarios**:
-
-1. **Given** a graph whose seeded vocabulary predates this feature, **When** the author runs the vocabulary adoption step, **Then** every seeded definition afterwards matches the corresponding definition in a freshly initialized graph.
-2. **Given** the same graph, **When** the author runs the adoption step, **Then** no content node outside the vocabulary folders is modified.
-3. **Given** the same graph, **When** the author runs the adoption step, **Then** the change is recorded as exactly one commit whose message identifies it as a vocabulary migration.
-4. **Given** a graph whose vocabulary the author has extended with their own definitions, **When** the author runs the adoption step, **Then** those author-authored definitions are preserved and only the built-in ones are replaced.
-5. **Given** a graph that has already adopted the corrected vocabulary, **When** the author runs the adoption step again, **Then** nothing changes and no commit is created.
-6. **Given** a graph containing documents whose summaries were already duplicated by the previous appending behaviour, **When** the author runs the adoption step, **Then** the affected documents are listed for manual review and none is silently rewritten.
-7. **Given** a graph whose vocabulary declares the retired seventh merge value, **When** the author runs the adoption step, **Then** the step completes successfully — it is not blocked by the very declaration it exists to remove.
+> **Removed 2026-08-23, post-implementation.** This story specified an `arc upgrade` adoption step that migrated a graph seeded by a previous release to the corrected vocabulary. It was implemented, then removed by explicit decision: `arc` is pre-1.0 and experimental, and carrying a dedicated compatibility/migration path for graphs seeded by earlier releases is tech debt the project does not want yet. The merge-vocabulary closure (FR-001/FR-004) is accepted as a plain breaking change — an existing graph seeded by a previous release simply no longer loads; there is no in-place remedy, and none is planned before 1.0. See [Out of Scope](#out-of-scope).
+>
+> Every requirement this story owned (FR-017–FR-024) and its acceptance scenarios are struck. US1–US4 are unaffected: none of them ever depended on this story.
 
 ---
 
 ### Edge Cases
 
-- **The migration deadlock.** Tightening the accepted merge vocabulary turns any graph seeded by a previous release into one that fails to load, because its own seeded analytics predicates declare the retired seventh value. The adoption step must therefore be reachable on a graph whose vocabulary does not yet validate; otherwise the only remedy for an unloadable graph is hand-editing it.
-- **Prose already accumulated in the field.** Correcting the merge behaviour stops future accumulation but cannot undo past accumulation — the boundary between the original text and what was appended to it is unrecoverable, and the paragraphs are not necessarily even similar. Affected nodes are reported, never repaired.
 - **Near-identical prose today.** The tool already drops an incoming paragraph closely resembling one present, so a byte-identical re-apply is harmless before this feature. Any test asserting the corrected behaviour must therefore use *reworded* prose, or it passes without a fix (see [plan.md](plan.md) F2).
-- **Stale type-level merge declarations.** Reading tolerates a type definition that still carries a merge declaration; writing never emits one. No lint rule reports the stale declaration, because an unmigrated graph would otherwise report one violation per type definition for a field that has no effect.
+- **Stale type-level merge declarations.** Reading tolerates a type definition that still carries a merge declaration; writing never emits one. This falls out of the data model itself (`core.TypeDef` carries no `Merge` field to populate) rather than from any dedicated compatibility code.
 - **Relaxing a requirement on an existing graph.** Moving the publication-date requirement off the universal base type and onto the document type removes it from subject, resource, reference, and timeline nodes. Nodes that already carry the attribute keep it; nothing is rewritten and only the lint expectation changes.
-- **Author-extended vocabulary that shadows a built-in name.** If an author has hand-edited a built-in definition, the adoption step replaces it — the built-in vocabulary is not a starting point to be customized in place. This is stated so it is not a surprise.
 - **The retired seventh merge value in an author's own definition.** A hand-written definition declaring it is rejected with the same error as any other illegal value; it is not silently rewritten.
-- **A patch using the newly registered predicates against an un-upgraded graph.** The three stay unregistered and lint keeps reporting them, exactly as today — front-matter predicates never reach auto-registration at all. Nothing new breaks; the graph is simply not yet corrected.
 
 ## Requirements *(mandatory)*
 
@@ -132,7 +114,7 @@ Today there is no path at all: initialization refuses to run on an existing grap
 #### The merge vocabulary
 
 - **FR-001**: The set of merge behaviours the system recognizes MUST be exactly `immutable`, `union`, `firstWriteWin`, `fillIfEmpty`, `lastWriteWin`, `append`.
-- **FR-002**: A vocabulary document declaring a merge value outside that set MUST be rejected, with an error naming the offending value, the document it appears in, and the six legal values.
+- **FR-002**: A vocabulary document declaring a merge value outside that set MUST be rejected, with an error naming the offending document.
 - **FR-003**: The two analytics score predicates MUST declare a merge behaviour drawn from the set in FR-001.
 - **FR-004**: The system MUST NOT retain any recognized merge behaviour beyond the six in FR-001, including for backwards compatibility.
 
@@ -162,17 +144,6 @@ Today there is no path at all: initialization refuses to run on an existing grap
 - **FR-026**: Every predicate the specification aligns to a standard-vocabulary term MUST declare that term — specifically the title, summary, location, identifier, alternative-name, and authorship predicates, none of which declares one today.
 - **FR-027**: The publication-year predicate MUST declare merge `immutable`, not `fillIfEmpty`.
 
-#### Adoption by existing graphs
-
-- **FR-017**: The system MUST provide a single, explicitly invoked step that replaces a graph's built-in vocabulary documents with the corrected ones.
-- **FR-018**: The adoption step MUST replace built-in vocabulary documents outright rather than combining them with what is already present, because every correction in this feature is a retraction that combining cannot express.
-- **FR-019**: The adoption step MUST leave every node outside the vocabulary folders unmodified.
-- **FR-020**: The adoption step MUST preserve vocabulary documents that are not part of the built-in set.
-- **FR-021**: The adoption step MUST record its changes as exactly one commit identified as a vocabulary migration, and MUST create no commit when the graph is already current.
-- **FR-022**: The adoption step MUST run to completion on a graph whose existing vocabulary declares the retired seventh merge value.
-- **FR-023**: The adoption step MUST report every node whose first-fixed prose value shows evidence of prior accumulation, and MUST NOT attempt to repair any of them.
-- **FR-024**: Running the adoption step twice MUST be indistinguishable from running it once.
-
 #### Documentation
 
 - **FR-025**: User-facing documentation describing the seeded vocabulary MUST be updated to match the corrected vocabulary, including the merge menu of six and the corrected type requirements.
@@ -182,8 +153,7 @@ Today there is no path at all: initialization refuses to run on an existing grap
 - **Predicate definition**: A registered predicate's own record in the graph, declaring its serialization role, its merge behaviour, an optional human-readable label, an optional aligned standard-vocabulary term, and a descriptive body. The merge behaviour is the field this feature corrects.
 - **Type definition**: A registered node type's own record in the graph, declaring which predicates a conforming instance must and may carry, an optional base type, and a descriptive body. The merge declaration is the field this feature removes.
 - **Merge behaviour**: The named rule by which two contributions to the same predicate on the same node are combined. A closed set of six.
-- **Built-in vocabulary**: The predicate and type definitions the tool seeds into every new graph, and the set the adoption step replaces.
-- **Adoption step**: The explicitly invoked operation that brings an existing graph's built-in vocabulary up to date.
+- **Built-in vocabulary**: The predicate and type definitions the tool seeds into every new graph.
 
 ## Success Criteria *(mandatory)*
 
@@ -195,7 +165,6 @@ Today there is no path at all: initialization refuses to run on an existing grap
 - **SC-003**: A freshly initialized graph lints clean, and remains clean after a representative patch is applied to it.
 - **SC-004**: A hand-built graph whose nodes carry exactly the predicates ARCNET-CORE requires produces zero missing-required-predicate diagnostics.
 - **SC-005**: A patch using the authorship, aboutness, and genre predicates reports zero predicates created when applied to a freshly initialized graph.
-- **SC-006**: An author can bring a graph seeded by the previous release fully up to date in a single command, with every content node byte-identical afterwards.
 - **SC-007**: Every seeded predicate and type definition matches its ARCNET-CORE v0.10 declaration, verified against a checked-in snapshot of the complete seeded vocabulary so that a future change to it cannot pass review unnoticed.
 
 ## Assumptions
@@ -210,8 +179,8 @@ Today there is no path at all: initialization refuses to run on an existing grap
 - **Prose duplication is reported, not repaired.** Where an existing graph's summary has already accumulated paragraphs under the previous appending behaviour, the original boundary is unrecoverable and any repair would be a guess. Detection is best-effort — a first-fixed prose value holding more than one paragraph — and its output is advisory.
 - **Predicates the specification uses but never registers.** Under v0.10 seven predicates were used by the core types yet unregistered. v0.11's new §10.7 registers six of them, so those six are now validated against upstream rather than exempt — which is how the publication-year defect (FR-027) surfaced. Only the timeline granularity predicate remains unregistered upstream; the tool keeps registering it, which is more conformant than the specification.
 - **The universal base type itself stays.** Inventing a base type is not a violation — the specification permits any registered type to exist, and the inheritance predicate is itself registered. Only the base type's over-broad requirements are non-conformant. Removing the inheritance mechanism is a separate, larger decision and is out of scope.
-- **Compatibility policy.** Readers stay lenient for one release and warn on the old form; writers emit only the new form; anything the combining behaviour cannot express is done by the adoption step, never silently. This is the policy adopted across the whole v0.10 conformance program.
-- **Sequencing.** This feature builds on the merged `022-reference-type-folders` work, which established the five-type vocabulary and type-named folders. No migration mechanism exists — `022` explicitly declined to build one — so FR-017's adoption step is new here rather than an extension of something already present, and it must be able to run on a graph the tightened merge vocabulary would otherwise refuse to load.
+- **No compatibility path for graphs seeded by a previous release.** `arc` is pre-1.0 and experimental; carrying a migration/adoption command for this correction was judged unnecessary tech debt and removed after being implemented (see User Story 5). An existing graph whose seeded vocabulary declares the retired seventh merge value simply stops loading — there is no in-place remedy.
+- **Sequencing.** This feature builds on the merged `022-reference-type-folders` work, which established the five-type vocabulary and type-named folders.
 
 ## Out of Scope
 
@@ -220,6 +189,7 @@ Today there is no path at all: initialization refuses to run on an existing grap
 - Any change to how a node's type is classified, to folder layout, or to the exchange format's manifest.
 - The lint gaps tracked separately as combinatorial category validation and identity-charset checking.
 - Repairing content already damaged by the previous appending behaviour.
+- **Migrating, or otherwise preserving compatibility for, a graph seeded by a previous release.** The merge-vocabulary closure (FR-001/FR-004) is a breaking change to graph data; existing graphs are not supported. Removed post-implementation per explicit decision — `arc` is pre-1.0/experimental and a dedicated migration path was judged unnecessary tech debt at this stage.
 
 ## Dependencies
 

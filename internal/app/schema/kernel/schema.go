@@ -223,18 +223,3 @@ var CoreTypeBases = map[string][]string{
 	"Timeline":  {"Node"},
 	"Reference": {"Node"},
 }
-
-// RetiredBuiltIns names every _schema/ document a PREVIOUS release seeded
-// that this one does not — the set arc upgrade deletes from an existing
-// graph (contract C3.3, kernel.UpgradeResult.Removed).
-//
-// It is a historical record, not a derived value: once a name leaves
-// CorePredicateDefs/CoreTypeDefs there is nothing left in the code to
-// discover that it was ever built in, so an entry must be added here at the
-// same time the definition is removed, or graphs in the field keep an
-// orphaned document forever.
-//
-// Empty today: specs/023-core-vocabulary-conformance only corrects and adds
-// definitions — it retires none. (Spec 022's folder renames are a different
-// migration and are explicitly out of scope for arc upgrade, contract C3.9.)
-var RetiredBuiltIns = []string{}

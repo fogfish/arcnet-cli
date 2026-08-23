@@ -168,14 +168,7 @@ func planSchemaNode(store fsys.Store, node core.Node, sourceID string) (schemaNo
 	// definition still independently requires every mandatory field.
 	switch node.Type {
 	case propertyType:
-		// An out-of-menu merge value gets the specific C1.2 rejection here
-		// too: an imported Property definition declaring the retired
-		// seventh value is refused with the same message, and the same
-		// remedy, as one already on disk.
-		if _, invalid, badMerge := decodePredicateDef(final); invalid != "" {
-			if badMerge != "" {
-				return schemaNodePlan{}, ErrSchemaMergeInvalid.With(errNoCause, node.ID, badMerge)
-			}
+		if _, invalid := decodePredicateDef(final); invalid != "" {
 			return schemaNodePlan{}, ErrSchemaInvalid.With(errNoCause, node.ID, invalid)
 		}
 	case classType:

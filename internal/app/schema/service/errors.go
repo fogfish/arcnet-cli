@@ -10,7 +10,6 @@ package service
 
 import (
 	"errors"
-	"strings"
 
 	"github.com/fogfish/faults"
 )
@@ -67,31 +66,3 @@ const (
 	// before any fetch attempt.
 	ErrEmptyArcnetReference = faults.Type(`"arcnet:" must be followed by a catalog path, e.g. arcnet:media.schema.md`)
 )
-
-// ErrSchemaMergeInvalid is returned when a predicate schema document
-// declares a merge value outside CORE §9.3's closed set of six
-// (specs/023-core-vocabulary-conformance FR-002, contract C1.2).
-//
-// Its message names four things, in order: the offending document, the
-// offending value, the six legal values, and `arc upgrade` as the remedy.
-// The fourth is MANDATORY, not decoration. A graph seeded by a release
-// before spec 023 carries "validatedOverwrite" on its own scoreZ.md and
-// scoreC.md, so this error is the FIRST thing an existing user sees after
-// upgrading the binary — every other command hard-fails on it. Without the
-// remedy the failure is a dead end whose only escape is hand-editing.
-//
-// The legal-value list is built from mergeMenu rather than written out, so
-// the message can never advertise a menu the gate does not enforce.
-var ErrSchemaMergeInvalid = faults.Safe2[string, string](
-	"schema document %s declares merge %q; must be one of " + mergeMenuList() +
-		". Run `arc upgrade` to bring this graph's built-in schema up to date",
-)
-
-// mergeMenuList renders mergeMenu as a comma-separated list.
-func mergeMenuList() string {
-	names := make([]string, 0, len(mergeMenu))
-	for _, op := range mergeMenu {
-		names = append(names, string(op))
-	}
-	return strings.Join(names, ", ")
-}

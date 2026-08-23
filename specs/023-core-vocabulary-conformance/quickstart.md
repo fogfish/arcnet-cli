@@ -19,7 +19,6 @@ git config --global user.email >/dev/null || git config --global user.email you@
 go test ./...                              # full suite
 go test ./internal/core/... -run Merge      # C1.4 dispatch after removal
 go test ./internal/app/schema/... -run Seed # C2.1 golden snapshot
-go test ./cmd/arc/... -run Upgrade          # C3 command contract
 ```
 
 Refresh the golden snapshot only after reading its diff:
@@ -74,9 +73,7 @@ arc lint     # ✓ no violations
 ```sh
 sed -i.bak 's/^merge: union/merge: validatedOverwrite/' _schema/Property/tags.md
 arc lint
-# schema document invalid: _schema/Property/tags.md declares merge "validatedOverwrite";
-# must be one of immutable, union, firstWriteWin, fillIfEmpty, lastWriteWin, append.
-# Run `arc upgrade` to bring this graph's built-in schema up to date.
+# schema document _schema/Property/tags.md has a missing or invalid merge
 mv _schema/Property/tags.md.bak _schema/Property/tags.md
 ```
 
@@ -247,62 +244,11 @@ grep '^aligned:' _schema/Property/author.md _schema/Property/authors.md
 
 ---
 
-## US5 — an existing graph adopts the corrected vocabulary (P5)
+## US5 — REMOVED
 
-Build a graph with the **previous** binary, then upgrade with the new one.
-
-```sh
-git stash && go build -o /tmp/arc-old ./cmd/arc && git stash pop
-go build -o /tmp/arc-new ./cmd/arc
-mkdir /tmp/old && cd /tmp/old && /tmp/arc-old init && /tmp/arc-old apply /tmp/p1.md
-```
-
-**Expect** — the old graph is now unloadable by the new binary, with an actionable error (C1.2):
-
-```sh
-/tmp/arc-new lint
-# schema document invalid: _schema/Property/scoreZ.md declares merge "validatedOverwrite" …
-# Run `arc upgrade` to bring this graph's built-in schema up to date.
-```
-
-**Expect** — `arc upgrade` runs anyway (FR-022, [C3.2](contracts/upgrade-command-contract.md)):
-
-```sh
-/tmp/arc-new upgrade --dry-run     # lists replacements, writes nothing, exit 0
-/tmp/arc-new upgrade
-# ✓ Applied ARCNET-CORE v0.11 schema: 57 predicates, 8 types (commit abc1234)
-# ⚠ 1 node may carry prose accumulated by the previous merge behaviour — review manually:
-#     Source/rescorla-2026-tls13.md  (abstract: 2 paragraphs)
-```
-
-**Expect** — vocabulary now matches a fresh graph (FR-017, SC-006):
-
-```sh
-diff -r /tmp/old/_schema /tmp/g/_schema     # no differences
-```
-
-**Expect** — content untouched (FR-019), one commit (FR-021), idempotent (FR-024):
-
-```sh
-git -C /tmp/old log --oneline -1            # graph(migrate): adopt ARCNET-CORE v0.11 …
-git -C /tmp/old show --stat HEAD | grep -c '^ Source/'   # 0
-/tmp/arc-new upgrade                        # ✓ already up to date — nothing to commit
-git -C /tmp/old log --oneline | wc -l       # unchanged
-```
-
-**Expect** — author-authored vocabulary preserved (FR-020):
-
-```sh
-cd /tmp/old && cat > _schema/Property/myOwn.md <<'X'
----
-"@id": myOwn
-"@type": Property
-role: edge
-merge: union
----
-# myOwn
-
-A predicate of my own.
-X
-/tmp/arc-new upgrade && test -f _schema/Property/myOwn.md && echo preserved
-```
+> **Removed 2026-08-23, post-implementation.** This section walked through building a graph
+> with a previous binary and upgrading it with `arc upgrade`. That command was implemented, then
+> removed by explicit decision: `arc` is pre-1.0/experimental, and the compatibility/migration
+> machinery it required was judged unnecessary tech debt. A graph seeded by a previous release
+> now simply fails to load once it declares the retired seventh merge value — there is no
+> remedy; re-initialize instead.

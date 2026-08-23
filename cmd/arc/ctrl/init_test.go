@@ -790,12 +790,7 @@ func TestInitSeedsConformantScorePredicates(t *testing.T) {
 // arc init, then hand-edit _schema/Property/scoreZ.md, then arc lint
 // Scenario 4 from spec.md US2 (023): a hand-written predicate definition
 // declaring an out-of-menu merge value is rejected by any command that
-// reads the vocabulary, with an error naming the offending value, the
-// document it appears in, and the six legal values (FR-002; contract C1.2).
-//
-// Delivered by Phase 8, not Phase 4 — tightening validMergeOps is the
-// breaking half of US2 and is deliberately sequenced after arc upgrade
-// exists to remedy it.
+// reads the vocabulary, naming the offending document and field (FR-002).
 func TestInitOutOfMenuMergeValueIsRejected(t *testing.T) {
 	dir := t.TempDir()
 	chdir(t, dir)
@@ -816,15 +811,7 @@ func TestInitOutOfMenuMergeValueIsRejected(t *testing.T) {
 	message := lintErr.Error()
 	it.Then(t).
 		Should(it.String(message).Contain("scoreZ.md")).
-		Should(it.String(message).Contain("validatedOverwrite"))
-	for _, op := range conformantMergeOps {
-		it.Then(t).Should(it.String(message).Contain(op))
-	}
-
-	// contract C1.2 item 4: naming the remedy is mandatory. This error is
-	// the FIRST thing an existing user sees after upgrading the binary, so
-	// without it the failure is a dead end.
-	it.Then(t).Should(it.String(message).Contain("arc upgrade"))
+		Should(it.String(message).Contain("merge"))
 }
 
 // arc init, then hand-add a legacy merge attribute to a Class document

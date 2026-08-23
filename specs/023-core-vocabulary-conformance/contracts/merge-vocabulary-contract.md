@@ -16,33 +16,24 @@ exhaustive comparison against a literal set, that no seventh constant exists.
 ## C1.2 Rejection of an out-of-menu value
 
 Given a `_schema/Property/<name>.md` whose `merge` front-matter field holds a value outside
-C1.1, `schema/service.Resolve` MUST fail with `ErrSchemaInvalid`.
+C1.1, `schema/service.Resolve` MUST fail with `ErrSchemaInvalid`, naming the offending
+document's path.
 
-The rendered message MUST name, in this order:
-
-1. the offending document's path,
-2. the offending value,
-3. the six legal values,
-4. `arc upgrade` as the remedy.
-
-Item 4 is mandatory: a graph seeded by a previous release carries `validatedOverwrite` on
-`scoreZ.md`/`scoreC.md`, so this error is the *first thing* an existing user sees after
-upgrading the binary. Without the remedy the failure is a dead end.
-
-```
-schema document invalid: _schema/Property/scoreZ.md declares merge "validatedOverwrite";
-must be one of immutable, union, firstWriteWin, fillIfEmpty, lastWriteWin, append.
-Run `arc upgrade` to bring this graph's built-in schema up to date.
-```
+> **Simplified 2026-08-23, post-implementation.** An earlier revision of this contract required
+> the message to also name the offending value, the six legal values, and `arc upgrade` as a
+> remedy — supporting a dedicated `arc upgrade` migration command for graphs seeded by a
+> previous release. That command was implemented, then removed: `arc` is pre-1.0/experimental,
+> and the compatibility/migration machinery it required was judged unnecessary tech debt. A
+> graph carrying `validatedOverwrite` (e.g. on `scoreZ.md`/`scoreC.md`) now simply fails to load,
+> with no remedy beyond re-initializing.
 
 ## C1.3 Tolerance on `Class` nodes
 
 Given a `_schema/Class/<name>.md` carrying **any** `merge` front-matter value — legal, illegal,
 or malformed — `Resolve` MUST succeed and MUST ignore the field.
 
-No lint rule reports it. Rationale: an un-upgraded graph carries the attribute on all eight
-seeded type documents, where it is inert; reporting it would produce eight actionable-looking
-violations with no user-visible consequence.
+No lint rule reports it. This falls out of the data model itself (`core.TypeDef` carries no
+`Merge` field to populate), not from dedicated compatibility code.
 
 ## C1.4 Dispatch behaviour after removal
 

@@ -279,6 +279,14 @@ document with an empty description, so no loadable graph can violate it.
 
 ---
 
+> **REMOVED 2026-08-23, post-implementation.** D10–D12 designed an `arc upgrade` migration
+> command for graphs seeded by a previous release. It was implemented, then removed by explicit
+> decision: `arc` is pre-1.0/experimental, and the compatibility/migration machinery is
+> unnecessary tech debt at this stage. The merge-vocabulary closure (removing
+> `MergeValidatedOverwrite`) is a plain breaking change with no remedy path; see spec.md's
+> Out of Scope and ARCHITECTURE.md's Compatibility Policy. D10–D12 are retained below as a
+> historical record of the reasoning, not as a description of current behaviour.
+
 ## D10. The migration deadlock, and the ordering that resolves it
 
 Tightening `validMergeOps` to six (spec FR-002) makes **every graph seeded by a previous

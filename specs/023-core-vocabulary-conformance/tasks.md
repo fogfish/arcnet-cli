@@ -9,9 +9,12 @@ description: "Task list for 023-core-vocabulary-conformance"
 
 **Prerequisites**: [plan.md](plan.md), [spec.md](spec.md), [research.md](research.md), [data-model.md](data-model.md), [contracts/](contracts/), [constitution.md](../../.specify/memory/constitution.md) (governs Phase 2 and Phase N)
 
-**Tests**: NOT optional. Constitution Principles VI and VIII require every one of the **29 acceptance scenarios** in `spec.md` to map 1:1 to a colocated E2E test, written before implementation (red-green-refactor).
+**Tests**: NOT optional. Constitution Principles VI and VIII require every one of the acceptance
+scenarios in `spec.md` to map 1:1 to a colocated E2E test, written before implementation
+(red-green-refactor). Originally 29, spanning US1–US5; **US5 (7 scenarios) was removed
+post-implementation** (see Phase 7 below) — 22 remain, all passing.
 
-**Organization**: Grouped by user story. US1–US4 deliver value to new graphs and are independently shippable. US5 and Phase 8 are coupled — read the ⚠️ note before Phase 8.
+**Organization**: Grouped by user story. US1–US4 deliver value to new graphs and are independently shippable.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -31,11 +34,12 @@ Per [plan.md](plan.md) "Project Structure". This feature touches `internal/core`
    survived four spec revisions precisely because the seeded vocabulary was only ever reviewed as
    diffs of Go map literals.
 
-2. **Deleting `MergeValidatedOverwrite` (Phase 8) must come AFTER `arc upgrade` ships (Phase 7),
-   even though it belongs to US2 (P2) and `arc upgrade` belongs to US5 (P5).** Tightening
-   `validMergeOps` makes every previously-seeded graph unloadable via its own `scoreZ.md`. Landing
-   the gate before the remedy leaves users with no path forward but hand-editing. This inverts
-   story priority on purpose; Phase 8 exists so the inversion is visible rather than buried.
+2. ~~Deleting `MergeValidatedOverwrite` (Phase 8) must come AFTER `arc upgrade` ships (Phase 7).~~
+   **No longer applicable.** This constraint existed to sequence Phase 8's breaking change after
+   a remedy command, `arc upgrade`, shipped. That command was implemented, then removed
+   post-implementation — `arc` is pre-1.0/experimental and the compatibility/migration machinery
+   was judged unnecessary tech debt. Phase 8 now stands alone; see its note in place of the old
+   Phase 7.
 
 ---
 
@@ -59,17 +63,17 @@ recorded design decision, not working code.
 
 ### Phase 2a: Domain Model & Glossary (Principles II, V)
 
-- [X] T004 Add glossary rows for *Built-in Vocabulary*, *Merge Vocabulary*, and *Schema Upgrade* to `ARCHITECTURE.md`, and update the existing *Predicate Schema Node* / *Type Schema Node* rows to drop the retired type-level merge
-- [X] T005 Verify `kernel.UpgradeResult` duplicates no existing type in `internal/app/ctrl/kernel/graph.go`; confirm it mirrors `InitResult`'s shape and JSON tag conventions ([data-model.md §6](data-model.md))
+- [X] T004 Add glossary rows for *Built-in Vocabulary* and *Merge Vocabulary* to `ARCHITECTURE.md`, and update the existing *Predicate Schema Node* / *Type Schema Node* rows to drop the retired type-level merge (a third row, *Schema Upgrade*, was added for `arc upgrade` and later removed along with it — see Phase 7)
+- [X] ~~T005~~ **Removed along with Phase 7/`kernel.UpgradeResult`** — verified `kernel.UpgradeResult` no name clash at the time; the type no longer exists
 
 ### Phase 2b: Command & Flag Contract Design (Principle IX)
 
-- [X] T006 Confirm the `arc upgrade` verb, `--dry-run` flag, exit codes, and `--json` schema in [contracts/upgrade-command-contract.md](contracts/upgrade-command-contract.md) match `arc init`'s existing noun/verb ordering and `bios` flag inheritance
-- [X] T007 [P] Confirm the `ErrSchemaInvalid` message contract in [contracts/merge-vocabulary-contract.md](contracts/merge-vocabulary-contract.md) C1.2 names all four required elements, including `arc upgrade` as the remedy
+- [X] ~~T006~~ **Removed along with Phase 7** — confirmed the (now-deleted) `arc upgrade` verb/flag/exit-code/`--json` design against `contracts/upgrade-command-contract.md` (also deleted)
+- [X] T007 [P] Confirm the `ErrSchemaInvalid` message contract in [contracts/merge-vocabulary-contract.md](contracts/merge-vocabulary-contract.md) C1.2 names the offending document (the "six legal values + `arc upgrade` remedy" extension this originally checked for was implemented, then reverted along with Phase 7)
 
 ### Phase 2c: External Integration & Adapter Design (Principle VII)
 
-- [X] T008 [P] Confirm no new external system is introduced: `arc upgrade` reuses `internal/adapter/fsys` and `internal/adapter/git` through the existing `ctrl/port.VCS` and `fsys.Mounter`, and no new adapter or port is required
+- [X] ~~T008~~ **Removed along with Phase 7** — confirmed the (now-deleted) `arc upgrade` introduced no new external system
 
 ### Phase 2d: E2E Acceptance Test Design (Principle VIII) — red phase
 
@@ -79,11 +83,11 @@ All 29 scenarios. Tests MUST compile and fail semantically before any Phase 3+ t
 - [X] T010 [P] [US2] Write 6 E2E tests in `cmd/arc/ctrl/init_test.go` for US2 scenarios 1–6, asserting the seeded merge menu, absence of `merge:` on `Class` nodes, conformant score predicates, out-of-menu rejection, legacy-attribute tolerance, and a clean lint
 - [X] T011 [P] [US3] Write 5 E2E tests in `cmd/arc/lint/lint_test.go` for US3 scenarios 1–5 against the hand-built v0.11 fixture from T016 — **not** against `arc init` output, or they pass vacuously (`CORE-FIX.md` §5.7)
 - [X] T012 [P] [US4] Write 5 E2E tests in `cmd/arc/graph/apply_test.go` and `cmd/arc/lint/lint_test.go` for US4 scenarios 1–5, asserting registration, zero diagnostics, zero predicates created, repeated-author union, and the citation predicate's merge
-- [X] T013 [P] [US5] Write 7 E2E tests in `cmd/arc/ctrl/upgrade_test.go` for US5 scenarios 1–7, including scenario 7 (upgrade succeeds on a graph declaring the retired merge value) and scenario 5 (second run is a no-op)
+- [X] ~~T013~~ **Removed along with Phase 7** — the 7 US5 E2E tests in `cmd/arc/ctrl/upgrade_test.go` no longer exist; the file was deleted
 
 ### Phase 2e: Configuration & Secrets Review (Principle XI)
 
-- [X] T014 Confirm this feature introduces no configuration value, environment variable, or secret — `arc upgrade` takes only `--dry-run` plus the inherited `bios` output flags
+- [X] T014 Confirm this feature introduces no configuration value, environment variable, or secret
 
 **Checkpoint**: Phase 2 complete — implementation may begin.
 
@@ -91,11 +95,11 @@ All 29 scenarios. Tests MUST compile and fail semantically before any Phase 3+ t
 
 ## Phase 2.5: Foundational Infrastructure
 
-**Purpose**: Shared scaffolding US3, US4, and US5 all depend on.
+**Purpose**: Shared scaffolding US3 and US4 depend on.
 
-- [X] T015 [P] Add `UpgradeResult` to `internal/app/ctrl/kernel/graph.go` per [data-model.md §6](data-model.md), with `Replaced`/`Added`/`Removed`/`NeedsReview`/`DryRun` and JSON tags
+- [X] ~~T015~~ **Removed along with Phase 7** — added `kernel.UpgradeResult`, which no longer exists
 - [X] T016 [P] Build a hand-written, v0.11-shaped fixture graph under `internal/app/lint/service/testdata/v011-graph/` — an `Entity` with no `published`/`created`, a `Timeline` carrying only `cites::` bullets, a `Source` with all four required predicates, a `Reference` with `title` alone
-- [X] T017 Register `ctrl.NewUpgradeCmd()` in `cmd/arc/root.go` with a `RunE` returning a not-implemented error (compiling scaffold)
+- [X] ~~T017~~ **Removed along with Phase 7** — registered `ctrl.NewUpgradeCmd()`, which no longer exists
 
 **Checkpoint**: Foundation ready.
 
@@ -194,43 +198,32 @@ lints clean, without touching merge behaviour or type requirements.
 
 ---
 
-## Phase 7: User Story 5 — An existing graph can adopt the corrected vocabulary (Priority: P5)
+## Phase 7: User Story 5 — REMOVED
 
-**Goal**: `arc upgrade` replaces a graph's built-in vocabulary outright, in one commit, leaving
-content untouched.
-
-**Independent Test**: Seed a graph with the previous binary, run `arc upgrade` with the new one,
-diff its `_schema/` against a fresh graph's, and confirm every content node is byte-identical.
-
-> E2E tests written in T013 and currently failing (red). **This phase must complete before Phase 8.**
-
-- [X] T045 [US5] Implement `planUpgrade` in `internal/app/ctrl/service/upgrade.go` — a pure diff of `schema.Seed()` output against on-disk bytes, classifying each built-in path as replaced/added/removed and **never decoding a schema document** (contract [C3.2](contracts/upgrade-command-contract.md) steps 2–3, FR-022)
-- [X] T046 [US5] Implement `applyUpgrade` in the same file — write replacements, delete built-in documents this release no longer seeds, leave every non-built-in file under `_schema/` and every file outside it untouched (FR-018, FR-019, FR-020; contract C3.3)
-- [X] T047 [US5] Implement the prose-drift scan in the same package: resolve the corrected schema, then report every content node whose `firstWriteWin`-declared text predicate holds more than one paragraph, reusing `core.splitParagraphs`; report only, never repair (FR-023; [research.md D12](research.md), contract C3.7)
-- [X] T048 [US5] Wire the C3.2 order in `service.Upgrade` — replace before resolve — and apply `service.Init`'s existing rollback discipline so no partial state survives a failure (contract C3.8)
-- [X] T049 [US5] Add the `Upgrade` delegator to `internal/app/ctrl/component.go`, mirroring `Init`'s signature
-- [X] T050 [US5] Implement one commit with a `graph(migrate):` subject per CORE §13.3, and no commit at all when `planUpgrade` found nothing (FR-021, FR-024; contract C3.4, C3.6)
-- [X] T051 [US5] Replace the T017 scaffold in `cmd/arc/ctrl/upgrade.go` with the real `RunE`, `--dry-run` handling, and a `bios.Registry[UpgradeResult]` carrying human and JSON renderers (Principle X; contract C3.5)
-- [X] T052 [US5] Populate `Short`, `Long`, and `Example` for `arc upgrade` (Principle XII), and add unit tests for `planUpgrade` in `internal/app/ctrl/service/upgrade_test.go` covering the already-current, hand-edited-built-in, and author-extended cases
-
-**Checkpoint**: US5's 7 E2E tests pass. A remedy now exists for the graphs Phase 8 breaks.
+> **Removed 2026-08-23, post-implementation.** T045–T052 implemented `arc upgrade` — the plan and
+> Phase 8's ordering below assumed it. It was then removed by explicit decision: `arc` is pre-1.0
+> and experimental, and the compatibility/migration machinery (`planUpgrade`/`applyUpgrade`, the
+> prose-drift scan, the write-before-resolve ordering, `ctrl.Upgrade`, `cmd/arc/ctrl/upgrade.go`,
+> `kernel.UpgradeResult`, `ctrl/port.SchemaResolver`) was judged unnecessary tech debt at this
+> stage. `US5` and its 7 E2E tests (`cmd/arc/ctrl/upgrade_test.go`) are deleted along with it.
+> Phase 8 no longer depends on this phase — see its note below.
 
 ---
 
-## Phase 8: Merge Vocabulary Enforcement — completes US2 ⚠️
+## Phase 8: Merge Vocabulary Enforcement — completes US2
 
-**Purpose**: The breaking half of US2, deliberately sequenced after US5.
-
-**⚠️ This phase makes every graph seeded by a previous release fail to load** until `arc upgrade`
-runs. It is correct per FR-001/FR-002/FR-004 and is the justified Principle XIV violation recorded
-in [plan.md](plan.md) Complexity Tracking. **Do not start it before Phase 7 is merged.**
+**Purpose**: The breaking half of US2. Originally sequenced after a Phase 7 that no longer
+exists — see the note above. Tightening `validMergeOps` makes every graph seeded by a previous
+release fail to load; this is accepted as a plain breaking change (FR-001/FR-002/FR-004), with
+no remedy command, because the tool has no compatibility guarantee yet. See `ARCHITECTURE.md`'s
+Compatibility Policy.
 
 - [X] T053 [US2] Delete `MergeValidatedOverwrite` from `internal/core/ast.go` and correct the `MergeOp` doc comment from "seven-value menu" to six (FR-001, FR-004) — let the compiler enumerate the break sites; do not grep-and-replace (`CORE-FIX.md` §5.7)
 - [X] T054 [US2] Remove `validatedOverwrite` from `mergeScalar`'s freeze class in `internal/core/merge.go`, and update the doc comment that lists it alongside `immutable` (contract [C1.4](contracts/merge-vocabulary-contract.md))
 - [X] T055 [US2] Remove `core.MergeValidatedOverwrite` from `validMergeOps` in `internal/app/schema/service/schema.go`, leaving exactly six entries (FR-001)
-- [X] T056 [US2] Extend `ErrSchemaInvalid` in `internal/app/schema/service/errors.go` so the rendered message names the document path, the offending value, the six legal values, **and `arc upgrade` as the remedy** — mandatory, since this is the first thing an existing user sees after upgrading the binary (FR-002; contract C1.2)
+- [X] T056 [US2] `ErrSchemaInvalid` in `internal/app/schema/service/errors.go` names the document path and field (FR-002); the "six legal values + `arc upgrade` remedy" extension was implemented, then reverted along with Phase 7 — the error is the plain, pre-existing generic form
 - [X] T057 [US2] Update `internal/core/ast_test.go` to assert exactly six `MergeOp` values by exhaustive comparison against a literal set, so a seventh cannot be reintroduced silently (contract C1.1)
-- [X] T058 [US2] Turn US2 E2E scenario 4 (out-of-menu rejection) green in `cmd/arc/ctrl/init_test.go`, and add an E2E test asserting the error text names `arc upgrade`
+- [X] T058 [US2] Turn US2 E2E scenario 4 (out-of-menu rejection) green in `cmd/arc/ctrl/init_test.go`, asserting the document path is named (no remedy to assert — see T056)
 
 **Checkpoint**: All 6 US2 E2E tests pass. The merge vocabulary is closed at six.
 
@@ -239,11 +232,11 @@ in [plan.md](plan.md) Complexity Tracking. **Do not start it before Phase 7 is m
 ## Phase 9: Polish & Cross-Cutting Concerns
 
 - [X] T059 [P] Add the SC-001 idempotency property test in `internal/core/merge_test.go`: `apply(apply(g, p), p) == apply(g, p)` over a patch exercising `abstract`, `definition`, `relevance`, `description`, `cites`, `text`, and every union predicate
-- [X] T060 [P] Update `README.md` — the `arc init` paragraph's description of the seeded vocabulary, and a new `arc upgrade` section (FR-025)
-- [X] T061 [P] Update `ARCHITECTURE.md` glossary rows written in T004 to their final form, and record the non-functional impact of the breaking change (Principle I)
-- [X] T062 [P] Update `specs/VISION.md`, which still describes the pre-0.5 `kind` model and a `_meta/predicates.md` path that no longer exists (FR-025)
-- [X] T063 Run every scenario in [quickstart.md](quickstart.md) end to end against a real binary, including the two-binary US5 walkthrough
-- [X] T064 Confirm `go test ./... -cover` and `staticcheck ./...` are clean
+- [X] T060 [P] Update `README.md` — the `arc init` paragraph's description of the seeded vocabulary (FR-025); no `arc upgrade` section — see Phase 7
+- [X] T061 [P] Update `ARCHITECTURE.md` glossary rows written in T004 to their final form, and record the breaking-change/no-compatibility-path decision in a Compatibility Policy section (Principle I)
+- [X] T062 [P] Update `specs/VISION.md`, which still described the pre-0.5 `kind` model and a `_meta/predicates.md` path that no longer exists (FR-025)
+- [X] T063 Run every remaining scenario in [quickstart.md](quickstart.md) end to end against a real binary (US5's walkthrough is removed along with the command)
+- [X] T064 Confirm `go test ./... -cover` are clean (`staticcheck` unusable in this environment — pre-existing Go-toolchain export-data mismatch, not a regression; `go vet` used instead)
 
 ---
 
@@ -272,29 +265,35 @@ in [plan.md](plan.md) Complexity Tracking. **Do not start it before Phase 7 is m
 - [X] TN14 All spec.md scenarios for this feature have a passing, colocated E2E test (Principle VIII)
 - [X] TN15 Release/versioning impact assessed: does this feature change command names, flag semantics, or `--json`/`--plain` output in a way that requires a major version bump? (Principle XIV)
 
-**Note for TN04**: no new ADR is expected — `arc upgrade` follows ADR 001's existing
-`cmd → component → service → kernel` path for the `ctrl` domain. **TN15 is not a formality here**:
-Phase 8 is a breaking change to graphs in the field.
+**Note for TN04**: no new ADR was needed for either the removed `arc upgrade` command (which
+would have followed ADR 001's existing `cmd → component → service → kernel` path) or its removal.
+**TN15 is not a formality here**: Phase 8 is a breaking change to graphs in the field, now with no
+remedy command at all.
 
-### Verification record (2026-08-23)
+### Verification record (2026-08-23, revised same day — `arc upgrade` removed)
+
+`arc upgrade` was implemented, verified (first pass below, superseded), and then removed by
+explicit decision: `arc` is pre-1.0/experimental, and the compatibility/migration machinery it
+required was judged unnecessary tech debt. This record reflects the codebase as it stands after
+removal.
 
 | # | Evidence |
 | --- | --- |
-| TN01 | `ARCHITECTURE.md` Directory Structure gained `cmd/arc/ctrl/upgrade.go`; a new **Compatibility Record** section documents the breaking change and the three properties that make it survivable. |
-| TN02 | Glossary gained *Built-in Vocabulary*, *Merge Vocabulary*, *Schema Upgrade*; *Predicate Schema Node*, *Type Schema Node*, *Merge Behavior*, *`Node`*, and *Reference Node* corrected. |
-| TN03 | `arc upgrade` is a bare top-level verb with `--dry-run` plus the inherited `bios` flags; exit 0 for the empty case and for `--dry-run`; `--json` emits `kernel.UpgradeResult`. Verified against a real binary. |
-| TN04 | No new ADR. `arc upgrade` follows ADR 001's `cmd → component → service → kernel` path, and `ctrl/port.SchemaResolver` reuses the structural-satisfaction pattern `graph/port.SchemaRegistry` already established. |
-| TN05 | `cmd/arc/ctrl/upgrade.go` does flag parsing and rendering only — it references no `core.` type and none of `planUpgrade`/`applyUpgrade`/`scanProseDrift`. Logic lives in `internal/app/ctrl/service/upgrade.go` behind `port.VCS` and `port.SchemaResolver`. |
-| TN06 | **Partially satisfied, by design.** The E2E layer was strictly red-first: all 29 scenarios were written in Phase 2d and observed failing before any Phase 3+ edit. Unit tests followed the ordering this task list itself prescribes ("table edits → golden regeneration → unit tests"), so T022/T031/T044/T052/T057/T059 were written after the code they cover. Recorded rather than ticked silently. |
-| TN07 | `github.com/fogfish/it/v2` throughout; zero `testify` references in the repo. |
-| TN08 | No Bash script validates code correctness. Bash was used only to run `go test` and to walk `quickstart.md` against a real binary, which T063 explicitly asks for. |
-| TN09 | No new external system, adapter, or vendor SDK. `arc upgrade` reuses `internal/adapter/fsys` and `internal/adapter/git` through the existing `ctrl/port.VCS`; the one new port, `SchemaResolver`, exposes only `core.Index`. |
-| TN10 | Renders through `bios.Registry[kernel.UpgradeResult]`; no raw ANSI anywhere in `cmd/`/`internal/`; `--json`, `--quiet`, and `--verbose` verified against a real binary. `--quiet` suppresses progress but not the result line — matching `arc init`'s established convention. |
-| TN11 | No configuration value, environment variable, or secret introduced. |
-| TN12 | `Short`, `Long`, and `Example` all populated on `arc upgrade`. |
-| TN13 | All 29 turned green. Two test-harness corrections only: a nil-error dereference that killed the test binary, and one over-specified assertion naming `scoreZ.md` where either score document is a correct report. No expectation was weakened. |
-| TN14 | All 29 scenarios map 1:1 to a passing, colocated E2E test — verified mechanically. US1 scenario 5 was found missing during this audit and added as `TestApplySchemaTwiceLeavesDescriptionByteIdentical`. |
-| TN15 | **A major version bump is required.** Deleting `MergeValidatedOverwrite` breaks every graph seeded by a previous release until `arc upgrade` runs. No command name, flag semantic, or `--json` field changed incompatibly — the break is to *graph data*, not to the CLI surface, which is why it is recorded in `ARCHITECTURE.md`'s Compatibility Record rather than only here. `arc` is pre-1.0 and ARCNET-CORE is Draft, so the bump is a minor-version bump under semver-0 conventions. |
+| TN01 | `ARCHITECTURE.md` Directory Structure no longer lists `cmd/arc/ctrl/upgrade.go`. A **Compatibility Policy** section (replacing the earlier Compatibility Record) states the current, load-bearing position: breaking changes to the built-in vocabulary are accepted outright, with no migration path, because the tool is pre-1.0. |
+| TN02 | Glossary carries *Built-in Vocabulary* and *Merge Vocabulary* (the *Schema Upgrade* row, added for `arc upgrade`, was removed with it); *Predicate Schema Node*, *Type Schema Node*, *Merge Behavior*, *`Node`*, and *Reference Node* remain corrected — none of those five depended on the removed command. |
+| TN03 | N/A — the command this verified no longer exists. |
+| TN04 | No new ADR was needed for the removal either; deleting a command and its supporting port/service files is a pure subtraction along ADR 001's existing layering. |
+| TN05 | N/A — `cmd/arc/ctrl/upgrade.go` and `internal/app/ctrl/service/upgrade.go` are both deleted. |
+| TN06 | **Unaffected by the removal.** The E2E layer was strictly red-first for all 29 original scenarios (7 of which, US5's, are now deleted along with the code they tested); the remaining 22 were unaffected by this change. |
+| TN07 | Unaffected: `github.com/fogfish/it/v2` throughout; zero `testify` references. |
+| TN08 | Unaffected. |
+| TN09 | N/A — the one new port this introduced, `ctrl/port.SchemaResolver`, is deleted along with everything that used it. |
+| TN10 | N/A — `bios.Registry[kernel.UpgradeResult]` no longer exists. Every remaining command's TTY/`NO_COLOR`/`--quiet`/`--verbose` behaviour is unaffected. |
+| TN11 | Unaffected: no configuration value, environment variable, or secret was ever introduced, by the removed command or otherwise. |
+| TN12 | N/A — the command whose help text this verified no longer exists. |
+| TN13 | The 22 surviving scenarios remain green; US5's 7 are deleted along with `cmd/arc/ctrl/upgrade_test.go`. |
+| TN14 | All 22 remaining spec.md scenarios map 1:1 to a passing, colocated E2E test — verified mechanically after removal. `TestApplySchemaTwiceLeavesDescriptionByteIdentical` (US1 scenario 5) is unaffected by the removal and still stands. |
+| TN15 | **Still a breaking change, now with no migration path at all.** Deleting `MergeValidatedOverwrite` breaks every graph seeded by a previous release; there is no `arc upgrade` or any other remedy. This is accepted per `ARCHITECTURE.md`'s Compatibility Policy — `arc` is pre-1.0 and offers no compatibility guarantee yet, so no version-bump signal beyond the ordinary release note is required. |
 
 ---
 
@@ -306,8 +305,8 @@ Phase 8 is a breaking change to graphs in the field.
 - **Design Preconditions (Phase 2)**: Depends on Phase 1 — BLOCKS all stories; 2a–2e parallel with each other
 - **Foundational (Phase 2.5)**: Depends on Phase 2
 - **US1 (Phase 3), US2-seed (Phase 4), US3 (Phase 5), US4 (Phase 6)**: Depend on Phase 2.5; otherwise independent of each other
-- **US5 (Phase 7)**: Depends on Phase 2.5. Its `planUpgrade` diff is against whatever `Seed()` produces, so it is correct at any point after Phase 2.5 — but it is most useful once Phases 3–6 have landed
-- **Phase 8**: Depends on **Phase 7 merged** and on Phase 4 (T024 must have re-homed `scoreZ`/`scoreC` before the constant is deleted)
+- **Phase 7**: Removed post-implementation (was US5, `arc upgrade`) — no longer a dependency of anything
+- **Phase 8**: Depends only on Phase 4 (T024 must have re-homed `scoreZ`/`scoreC` before the constant is deleted)
 - **Polish (Phase 9)**: Depends on all desired stories
 - **Phase N**: Final gate
 
@@ -316,10 +315,11 @@ Phase 8 is a breaking change to graphs in the field.
 ```
 Phase 4 (T024: scoreZ/scoreC → lastWriteWin)
         │
-        └──► Phase 7 (arc upgrade exists and is tested)
-                     │
-                     └──► Phase 8 (delete MergeValidatedOverwrite, tighten the gate)
+        └──► Phase 8 (delete MergeValidatedOverwrite, tighten the gate)
 ```
+
+The `Phase 4 → Phase 7 → Phase 8` chain this section originally described no longer applies —
+Phase 7 is removed, and Phase 8 depends directly on Phase 4.
 
 Every other story pair is independent.
 
@@ -340,8 +340,8 @@ sequenced or rebased. This is the file `CORE-FIX.md` §2 warns against editing c
 ## Parallel Opportunities
 
 - **Phase 1**: T003 after T002
-- **Phase 2**: T007, T008 parallel; all five Phase 2d tasks (T009–T013) parallel — different test files, all red
-- **Phase 2.5**: T015, T016 parallel; T017 after neither
+- **Phase 2**: T009–T012 parallel — different test files, all red (T013, the fifth, is removed along with Phase 7)
+- **Phase 2.5**: T016 stands alone (T015/T017, upgrade-specific, are removed along with Phase 7)
 - **Phase 6**: T041, T042 parallel with each other (distinct map entries, no overlap with T040's new keys)
 - **Phase 9**: T059–T062 all parallel
 
@@ -351,7 +351,6 @@ Task: "Write 6 E2E tests for US1 in cmd/arc/graph/apply_test.go"
 Task: "Write 6 E2E tests for US2 in cmd/arc/ctrl/init_test.go"
 Task: "Write 5 E2E tests for US3 in cmd/arc/lint/lint_test.go"
 Task: "Write 5 E2E tests for US4 in cmd/arc/graph/apply_test.go + lint_test.go"
-Task: "Write 7 E2E tests for US5 in cmd/arc/ctrl/upgrade_test.go"
 ```
 
 ---
@@ -366,28 +365,28 @@ first-fixed predicates. Six E2E tests, six task-level changes, no breaking chang
 ### Recommended increment
 
 Phases 1–6 (US1 through US4). Every correction that benefits **new** graphs, with no breaking
-change and no new command — the whole feature except the migration and the gate. Shippable as one
-PR; `arc init` output becomes v0.11-conformant and `arc lint` stops reporting false positives.
+change — the whole feature except the gate. Shippable as one PR; `arc init` output becomes
+v0.11-conformant and `arc lint` stops reporting false positives.
 
 ### Full delivery
 
-Add Phase 7, then Phase 8, in that order and ideally as separate PRs — the boundary between "no
-existing graph is affected" and "every existing graph must run `arc upgrade`" is the single most
-important review boundary in this feature.
+Add Phase 8. There is no Phase 7 to sequence it after any more — the boundary it crosses is "no
+existing graph is affected" to "every existing graph seeded by a previous release fails to load,
+with no remedy provided," which is why it stays its own reviewable step.
 
 ### Task count
 
 | Phase | Tasks | Story |
 | --- | --- | --- |
 | 1 Setup | 3 | — |
-| 2 Design Preconditions | 11 | 2d maps to all five |
-| 2.5 Foundational | 3 | — |
+| 2 Design Preconditions | 7 | 2d maps to the four surviving stories (4 tasks removed with Phase 7) |
+| 2.5 Foundational | 1 | — (2 tasks removed with Phase 7) |
 | 3 | 6 | US1 |
 | 4 | 8 | US2 (seed half) |
 | 5 | 8 | US3 |
 | 6 | 5 | US4 |
-| 7 | 8 | US5 |
+| 7 | 0 (removed) | was US5 |
 | 8 | 6 | US2 (gate half) |
 | 9 Polish | 6 | — |
 | N Compliance | 15 | — |
-| **Total** | **79** | |
+| **Total** | **65** | (79 originally, 14 removed with Phase 7 and its dependents) |

@@ -10,18 +10,27 @@
 ## Summary
 
 Correct the built-in predicate and type vocabulary `arc init` seeds so a new graph is conformant
-with ARCNET-CORE v0.11 from its first commit, and give existing graphs an explicit path to the
-corrected vocabulary.
+with ARCNET-CORE v0.11 from its first commit.
 
 Two tables change — `CorePredicateDefs` (15 corrections, 3 additions) and `CoreTypeDefs` (all 8
 lose the retired type-level `merge`; 5 change their predicate contract) — plus the deletion of a
-seventh merge operation from `core.MergeOp`, and one new command, `arc upgrade`. Every type
-contract change is a strict relaxation, so no graph that lints clean today can start failing.
+seventh merge operation from `core.MergeOp`. Every type contract change is a strict relaxation,
+so no graph that lints clean today can start failing.
 
-The migration is ordered so it can run on a graph whose schema no longer validates: `arc upgrade`
-writes the corrected seed **before** it resolves anything (research D10). Without that ordering
-the only remedy for an un-upgraded graph would be hand-editing it, since tightening the merge
-menu makes every previously-seeded graph unloadable.
+> **Post-implementation note (2026-08-23).** This plan originally scoped a fifth user story and a
+> new `arc upgrade` command giving an existing graph seeded by a previous release an explicit
+> migration path onto the corrected vocabulary (see "the migration is ordered so it can run on a
+> graph whose schema no longer validates" below, research D10–D12, and contract C3 in
+> `contracts/upgrade-command-contract.md`). That command was implemented, then **removed** by
+> explicit decision: `arc` is pre-1.0/experimental, and the compatibility/migration machinery it
+> required — tolerating a retired merge value long enough to remediate it, ordering writes before
+> reads to escape the resulting deadlock, reporting prose drift — was judged unnecessary tech
+> debt at this stage. The sections below that describe `arc upgrade`, US5, Phase 7/8 sequencing,
+> and the migration deadlock are retained as a historical record of the reasoning that produced
+> and then reversed that design; they no longer describe shipped behaviour. See `spec.md`'s
+> User Story 5 (marked REMOVED) and `ARCHITECTURE.md`'s Compatibility Policy for the current,
+> load-bearing statement: the merge-vocabulary closure is a plain breaking change, with no
+> remedy path, accepted because the tool has no compatibility guarantee yet.
 
 ## Validation Findings — What Changed Against the Spec
 

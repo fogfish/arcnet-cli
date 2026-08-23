@@ -25,10 +25,3 @@ import (
 func Init(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, dir string, schemaSeed map[string]string) (kernel.InitResult, error) {
 	return service.Init(ctx, mounter, vcs, dir, schemaSeed)
 }
-
-// Upgrade replaces a graph's built-in vocabulary documents at dir with the
-// ones seed carries, deleting any retired document still present. It is a
-// thin delegator into service.Upgrade.
-func Upgrade(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, resolver port.SchemaResolver, dir string, seed map[string][]byte, retired []string, dryRun bool) (kernel.UpgradeResult, error) {
-	return service.Upgrade(ctx, mounter, vcs, resolver, dir, seed, retired, dryRun)
-}

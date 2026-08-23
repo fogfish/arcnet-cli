@@ -51,7 +51,6 @@ Report issues at https://github.com/fogfish/arcnet-cli/issues`,
 	flags.BoolVarP(&bios.Color, "color", "C", false, "Force-enable color (auto-detected otherwise)")
 
 	cmd.AddCommand(ctrl.NewInitCmd())
-	cmd.AddCommand(ctrl.NewUpgradeCmd())
 	applyCmd := graph.NewApplyCmd()
 	applyCmd.AddCommand(ctrl.NewApplySchemaCmd())
 	applyCmd.AddCommand(graph.NewApplyBatchCmd())
