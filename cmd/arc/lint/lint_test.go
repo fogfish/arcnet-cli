@@ -1579,3 +1579,250 @@ func TestLintV011GraphReportsClean(t *testing.T) {
 		Should(it.Nil(err)).
 		Should(it.String(out).Contain("5 nodes checked, 5 passing, 0 failing"))
 }
+
+// ---------------------------------------------------------------------------
+// specs/024-lint-conformance-gaps — User Story 2
+//
+// arc lint reports every node — content or schema — whose identity contains
+// an ARCNET-CORE §7.1 forbidden character, naming each character and its
+// 1-indexed position, without modifying any file.
+// ---------------------------------------------------------------------------
+
+// identityCharsetEntityFixture builds a minimal, otherwise-conformant Entity
+// node carrying id both as its "@id" and its H1 heading — used so a
+// forbidden-character identity that IS a real, Unix-legal on-disk basename
+// (unlike "/", which can never be a file's actual basename, since
+// walkNodeFiles' own directory walk would read it as a path separator
+// instead) reaches checkIdentityCharset via the same "@id"==basename path
+// every other content node does.
+func identityCharsetEntityFixture(id string) string {
+	return `---
+"@id": "` + id + `"
+"@type": Entity
+category: [independent, abstract, occurrent, script]
+published: "2026-04-12"
+created: "2026-04-12"
+---
+# ` + id + `
+
+A test entity.
+
+## MentionedIn
+- mentionedIn:: [[foo-2026-x]]
+`
+}
+
+// arc lint
+// Scenario 1 from spec.md US2 (024): a content node whose identity contains
+// a forbidden character (here ":", chosen because it — unlike "/" — is a
+// real Unix-legal on-disk basename character) is reported, naming the
+// character and its 1-indexed position.
+func TestLintIdentityCharsetContentNodeViolationNamesCharacterAndPosition(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	writeNode(t, dir, "Entity/Handshake: Protocol.md", identityCharsetEntityFixture("Handshake: Protocol"))
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("[identityCharset]")).
+		Should(it.String(out).Contain(`identity "Handshake: Protocol"`)).
+		Should(it.String(out).Contain(`":" at position 10`))
+}
+
+// arc lint
+// Scenario 2 from spec.md US2 (024): a node whose identity carries no
+// forbidden character produces no identityCharset violation.
+func TestLintIdentityCharsetSafeIdentityNoViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("identityCharset"))
+}
+
+// arc lint
+// Scenario 3 from spec.md US2 (024): a Source node's citekey identity
+// ("foo-2026-x") produces no identityCharset violation.
+func TestLintIdentityCharsetSourceCitekeyNoViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.String(out).Contain("2 nodes checked, 2 passing, 0 failing")).
+		ShouldNot(it.String(out).Contain("identityCharset"))
+}
+
+// arc lint
+// Scenario 4 from spec.md US2 (024): a schema node (a type definition) whose
+// identity contains a forbidden character reports the same violation as a
+// content node.
+func TestLintIdentityCharsetSchemaNodeViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	writeNode(t, dir, "_schema/Class/V1.3.md", "---\n\"@id\": V1.3\n\"@type\": Class\nmerge: union\n---\n# V1.3\n\nA schema type whose own name contains a forbidden character.\n")
+	commitAll(t, dir, "seed: schema type with forbidden character")
+	chdir(t, dir)
+
+	out, _ := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.String(out).Contain("[identityCharset]")).
+		Should(it.String(out).Contain(`identity "V1.3"`)).
+		Should(it.String(out).Contain(`"." at position 3`)).
+		Should(it.String(out).Contain("_schema/Class/V1.3.md"))
+}
+
+// arc lint
+// Scenario 5 from spec.md US2 (024): an identity carrying more than one
+// forbidden character has every one of them named, along with its own
+// position — not just the first.
+func TestLintIdentityCharsetMultipleOffendingCharactersAllNamed(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	writeNode(t, dir, "Entity/v1.3: Handshake.md", identityCharsetEntityFixture("v1.3: Handshake"))
+	chdir(t, dir)
+
+	out, _ := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.String(out).Contain("[identityCharset]")).
+		Should(it.String(out).Contain(`"." at position 3`)).
+		Should(it.String(out).Contain(`":" at position 5`))
+}
+
+// arc lint
+// Scenario 6 from spec.md US2 (024) / FR-006: running arc lint against a
+// graph carrying an identityCharset violation changes no file.
+func TestLintIdentityCharsetModifiesNoFile(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	writeNode(t, dir, "Entity/Handshake: Protocol.md", identityCharsetEntityFixture("Handshake: Protocol"))
+	chdir(t, dir)
+
+	before := runGit(t, dir, "status", "--porcelain")
+
+	_, _ = sut(NewLintCmd(), nil)
+
+	after := runGit(t, dir, "status", "--porcelain")
+	it.Then(t).Should(it.Equal(before, after))
+}
+
+// ---------------------------------------------------------------------------
+// specs/024-lint-conformance-gaps — User Story 3
+//
+// arc lint validates an Entity's four-word category as a whole combination
+// against the twelve legal ARCNET-CORE §10.2 rows, suggesting the closest
+// legal row on rejection.
+// ---------------------------------------------------------------------------
+
+const sowaMixedCategoryEntity = `---
+"@id": Free Will
+"@type": Entity
+category: [independent, physical, continuant, purpose]
+published: "2026-04-12"
+created: "2026-04-12"
+---
+# Free Will
+
+A test entity with a mixed-taxonomy category.
+
+## MentionedIn
+- mentionedIn:: [[foo-2026-x]]
+`
+
+// arc lint
+// Scenario 1 from spec.md US3 (024): a legal Sowa combination
+// ([independent, abstract, occurrent, script]) produces no category
+// violation.
+func TestLintSowaCategoryLegalCombinationNoViolation(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("entityCategory"))
+}
+
+// arc lint
+// Scenario 2 from spec.md US3 (024): a structurally-valid-but-illegal
+// combination — every word individually belongs to the right word-group, but
+// the four together are not one of the twelve legal rows — is rejected,
+// naming the rejected combination and suggesting the closest legal one.
+func TestLintSowaCategoryIllegalCombinationSuggestsClosestLegalRow(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	writeNode(t, dir, "Entity/Free Will.md", sowaMixedCategoryEntity)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("[entityCategory]")).
+		Should(it.String(out).Contain("independent, physical, continuant, purpose")).
+		Should(it.String(out).Contain("independent, physical, continuant, object"))
+}
+
+// arc lint
+// Scenario 3 from spec.md US3 (024): a category with the wrong number of
+// words keeps the existing, distinct wrong-length message, unaffected by the
+// twelve-row comparison.
+func TestLintSowaCategoryWrongLengthKeepsExistingMessage(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	wrongLength := `---
+"@id": Free Will
+"@type": Entity
+category: [independent, abstract, occurrent]
+published: "2026-04-12"
+created: "2026-04-12"
+---
+# Free Will
+
+A test entity with a wrong-length category.
+
+## MentionedIn
+- mentionedIn:: [[foo-2026-x]]
+`
+	writeNode(t, dir, "Entity/Free Will.md", wrongLength)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("[entityCategory]")).
+		Should(it.String(out).Contain("category must decode to exactly four Sowa words, found 3"))
+}
+
+// arc lint
+// Scenario 4 from spec.md US3 (024): running arc lint against a graph
+// carrying a Sowa category violation changes no file.
+func TestLintSowaCategoryModifiesNoFile(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	writeNode(t, dir, "Entity/Free Will.md", sowaMixedCategoryEntity)
+	chdir(t, dir)
+
+	before := runGit(t, dir, "status", "--porcelain")
+
+	_, _ = sut(NewLintCmd(), nil)
+
+	after := runGit(t, dir, "status", "--porcelain")
+	it.Then(t).Should(it.Equal(before, after))
+}

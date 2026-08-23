@@ -236,6 +236,10 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 	}
 	reporter.Done(labelReadingPatch, time.Since(start))
 
+	if err := guardIdentityCharset(patch.Nodes); err != nil {
+		return kernel.ApplyResult{}, err
+	}
+
 	start = time.Now()
 	sourcePath := nodeFolder("Source") + "/" + patch.Document + ".md"
 	tracked, err := vcs.IsTracked(ctx, dir, sourcePath)
@@ -282,6 +286,12 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 
 		_, ok := index.Types[node.Type]
 		if !ok {
+			if pairs := core.ScanIdentityCharset(node.Type); len(pairs) > 0 {
+				err := ErrIdentityCharset.With(errNoCause, node.Type, core.FormatIdentityCharsetViolation(pairs))
+				reporter.Error(labelApplyingNodes, err)
+				rollback(store, createdPaths)
+				return kernel.ApplyResult{}, err
+			}
 			result.Warnings = append(result.Warnings, fmt.Sprintf(
 				"%s is not a recognized node type for this graph — auto-registered with a default schema document", node.Type))
 			if _, err := schema.RegisterType(store, node.Type); err != nil {
@@ -341,6 +351,12 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 		for _, obs := range distinctPredicates(merged, labels) {
 			if _, ok := index.Predicates[obs.name]; ok {
 				continue
+			}
+			if pairs := core.ScanIdentityCharset(obs.name); len(pairs) > 0 {
+				err := ErrIdentityCharset.With(errNoCause, obs.name, core.FormatIdentityCharsetViolation(pairs))
+				reporter.Error(labelApplyingNodes, err)
+				rollback(store, createdPaths)
+				return kernel.ApplyResult{}, err
 			}
 			if _, err := schema.RegisterPredicate(store, obs.name, obs.role, obs.label); err != nil {
 				reporter.Error(labelApplyingNodes, err)
@@ -461,6 +477,22 @@ func guardNoOldFormatNodes(store fsys.Store, index core.Index) error {
 		}
 		if err := validateNodeBasename(node, path); err != nil {
 			return ErrNodeWrite.With(err, path)
+		}
+	}
+	return nil
+}
+
+// guardIdentityCharset pre-scans every patch-carried node's own identity
+// before any write begins (spec FR-001/FR-003, research.md D7, mirrors
+// guardNoOldFormatNodes's scan-before-write shape, contract C2.3): the first
+// node whose "@id" contains an ARCNET-CORE §7.1 forbidden character aborts
+// the whole apply, before the main per-node loop writes anything. It does
+// not reach identities implied by a node's Type or its observed predicate
+// names — those are checked in-loop, progressively, as each is registered.
+func guardIdentityCharset(nodes []core.Node) error {
+	for _, node := range nodes {
+		if pairs := core.ScanIdentityCharset(node.ID); len(pairs) > 0 {
+			return ErrIdentityCharset.With(errNoCause, node.ID, core.FormatIdentityCharsetViolation(pairs))
 		}
 	}
 	return nil
