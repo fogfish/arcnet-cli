@@ -22,13 +22,17 @@ type PredicateDef struct {
 }
 
 // TypeDef is the decoded, in-memory shape of one _schema/Class/<name>.md
-// document (CORE §9.2 plus the arc apply-specific merge bridge field):
-// Merge is the MergeOp arc apply uses to reconcile an incoming contribution
-// of this type with an existing node, Required/Optional name the
-// predicates a conforming instance must/may carry, and Description is the
-// document's mandatory descriptive body.
+// document (CORE §9.2): Required/Optional name the predicates a conforming
+// instance must/may carry, and Description is the document's mandatory
+// descriptive body.
+//
+// There is deliberately no Merge field. CORE §9.3 retired type-level merge
+// in favour of per-predicate merge, and Merge dispatches exclusively
+// through Index.Predicates — a whole-node MergeOp had no consumer left
+// (specs/023-core-vocabulary-conformance FR-005, data-model.md §2). A
+// Class document on disk that still carries the attribute is read past
+// without failing and without a diagnostic (FR-006).
 type TypeDef struct {
-	Merge       MergeOp
 	Required    []string
 	Optional    []string
 	Description string

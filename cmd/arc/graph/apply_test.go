@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
@@ -558,13 +559,18 @@ Andrej Karpathy has publicly argued that agentic coding workflows will reshape h
 // they fall back to union and genuinely list-accumulate on every re-ingest
 // (research.md D5c/D6, a documented, intentional behavior change from the
 // old arity-based dispatch, which silently kept only the existing value).
-// "definition" (LLM's own leading prose, an "Entity"'s own predicate,
-// role: text) is now seeded append (FR-018) rather than firstWriteWin, so
-// a near-duplicate paraphrase from a re-ingest pipeline is recognized and
-// dropped (never flagged), while a genuinely new paragraph is appended —
-// restoring the BUG-004 guarantee this feature's earlier per-name seed
-// choice had regressed for role:text predicates.
-func TestApplyEntityReContributionAppendsProseAndAccumulatesUnregisteredScalars(t *testing.T) {
+//
+// specs/023-core-vocabulary-conformance FR-013 SUPERSEDES spec 012 FR-018
+// for the four type-specific prose predicates: "definition" (LLM's own
+// leading prose, an Entity's own predicate, role: text) declares
+// firstWriteWin, not append. CORE §10.2 makes these single-valued and
+// first-fixed precisely so a re-ingest pipeline's reworded paraphrase
+// cannot slowly turn a definition into a stack of near-synonyms. So the
+// established definition survives verbatim and the divergence is flagged
+// for review — the paragraph-level accumulate-and-dedupe path that
+// BUG-004 restored still governs every append-declared prose key
+// ("notes", "text"), which is where it belongs.
+func TestApplyEntityReContributionFlagsProseAndAccumulatesUnregisteredScalars(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	seedNode(t, dir, "Entity/LLM.md", llmEntitySeed)
@@ -573,13 +579,12 @@ func TestApplyEntityReContributionAppendsProseAndAccumulatesUnregisteredScalars(
 
 	stdout, stderr, err := sutCaptureStderr(t, NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(stdout, err))
-	it.Then(t).ShouldNot(it.String(stderr).Contain("merge conflict"))
+	it.Then(t).Should(it.String(stderr).Contain("merge conflict"))
 
 	content := readFile(t, filepath.Join(dir, "Entity", "LLM.md"))
 	it.Then(t).
-		ShouldNot(it.String(content).Contain("<<<<<<<")).
+		Should(it.String(content).Contain("<<<<<<< existing")).
 		Should(it.String(content).Contain("knowledge management")).
-		ShouldNot(it.String(content).Contain("knowledge organization")).
 		Should(it.String(content).Contain("Andrej Karpathy")).
 		Should(it.String(content).Contain("0.13432835820895522")).
 		Should(it.String(content).Contain("0.28125")).
@@ -718,7 +723,11 @@ func TestApplyUnregisteredKindCreatesSchemaDocumentInSameCommit(t *testing.T) {
 
 	assertIsFile(t, filepath.Join(dir, "_schema", "Class", "Hypothesis.md"))
 	content := readFile(t, filepath.Join(dir, "_schema", "Class", "Hypothesis.md"))
-	it.Then(t).Should(it.String(content).Contain("merge: union"))
+	it.Then(t).
+		Should(it.String(content).Contain(`"@type": Class`)).
+		// specs/023 FR-005: auto-registration no longer stamps a
+		// type-level merge onto the document it creates.
+		ShouldNot(it.String(content).Contain("merge:"))
 
 	stat := runGit(t, dir, "show", "--stat", "HEAD")
 	it.Then(t).
@@ -1429,8 +1438,8 @@ func TestApplyVerboseReportsUnchangedNotAppendedForDuplicateContribution(t *test
 
 	it.Then(t).ShouldNot(it.Error(stdout, err))
 	it.Then(t).
-		Should(it.String(stderr).Contain("definition: append -> unchanged")).
-		ShouldNot(it.String(stderr).Contain("definition: append -> appended"))
+		Should(it.String(stderr).Contain("definition: firstWriteWin -> unchanged")).
+		ShouldNot(it.String(stderr).Contain("definition: firstWriteWin -> appended"))
 
 	content := readFile(t, filepath.Join(dir, "Entity", "Widget Dup.md"))
 	it.Then(t).Should(it.Equal(1, strings.Count(content, "A duplicate-tested widget definition.")))
@@ -3099,11 +3108,13 @@ func TestApplyAcceptsReferenceNodeWithoutUnknownTypeDiagnostic(t *testing.T) {
 	// A type the tool already knows is never auto-registered, so applying
 	// one must not rewrite its seeded schema document. Thought, which it
 	// does not know, is the control: that one is registered on first sight.
+	// specs/023 FR-028: §11.6 v0.11 requires "title" alone; "ref" and
+	// "relevance" are retained as Optional.
 	referenceSchema := readFile(t, filepath.Join(dir, "_schema", "Class", "Reference.md"))
 	it.Then(t).
 		Should(it.String(referenceSchema).Contain("required:: [[title]]")).
-		Should(it.String(referenceSchema).Contain("required:: [[ref]]")).
-		Should(it.String(referenceSchema).Contain("required:: [[relevance]]"))
+		Should(it.String(referenceSchema).Contain("optional:: [[ref]]")).
+		Should(it.String(referenceSchema).Contain("optional:: [[relevance]]"))
 }
 
 // arc apply probe.patch.md && arc lint
@@ -3236,4 +3247,483 @@ func TestApplyKeepsTimelineNodesBucketedAndCreatesNoFlatFolder(t *testing.T) {
 	for _, got := range rootDirNames(t, dir) {
 		it.Then(t).Should(it.True(got != "Timeline"))
 	}
+}
+
+// -----------------------------------------------------------------------
+// specs/023-core-vocabulary-conformance — User Story 1
+//
+// Type-specific prose predicates (abstract, definition, relevance) declare
+// firstWriteWin, not append: an established value is preserved and a
+// divergent contribution is flagged, never absorbed.
+//
+// Two facts about arc apply shape every fixture below.
+//
+//  1. plan.md F2 / research.md D4 — mergeText already drops an incoming
+//     paragraph whose Jaccard-over-3-word-shingles similarity to an
+//     existing one exceeds 0.8, so a byte-identical re-contribution is
+//     ALREADY a no-op on main. A test that must genuinely fail before the
+//     fix therefore uses substantially REWORDED prose, which falls under
+//     that threshold and is appended as a second paragraph by the old
+//     append behaviour.
+//
+//  2. service.Apply's idempotency guard is keyed on Source/<document>.md
+//     being git-tracked, so re-ingesting the SAME document id is skipped
+//     outright and never reaches core.Merge at all. Prose drift in the
+//     field arrives from a SECOND document whose patch also describes a
+//     shared node — the ordinary cross-document merge — which is what
+//     crossDocumentPatch below models.
+// -----------------------------------------------------------------------
+
+const tls13Abstract = "A design retrospective on the TLS 1.3 handshake and the reasoning behind its single round trip."
+const tls13Definition = "A cryptographic protocol that establishes an authenticated and confidential channel between two peers."
+const tls13Relevance = "Worth keeping because it is the normative text every implementation claim in this graph is measured against."
+
+// The rewordings deliberately share almost no 3-word shingles with the
+// originals, so mergeText's near-duplicate guard does NOT suppress them and
+// the old append behaviour genuinely doubles each value.
+const tls13AbstractReworded = "Why one round trip was chosen, looked at again several years after the protocol shipped."
+const tls13DefinitionReworded = "An authenticated, private transport negotiated by two endpoints using standardized cryptography."
+const tls13RelevanceReworded = "Kept as the authoritative wording against which claims recorded here are checked."
+
+// conflictMarkerToken is internal/core.conflictMarker's opening line — the
+// documented, user-visible shape of a flagged divergence (VISION.md). The
+// established value is the marker's left-hand side, so it survives verbatim
+// instead of being absorbed into a stack of near-synonymous paragraphs.
+const conflictMarkerToken = "<<<<<<< existing"
+
+func tls13ProsePatch(abstract, definition, relevance string) string {
+	return `---
+"@type": patch
+document: rescorla-2026-tls13
+published: 2026-04-12
+title: "TLS 1.3: Design and Rationale"
+---
+# Source
+
+## rescorla-2026-tls13
+` + "```yaml" + `
+"@id": "rescorla-2026-tls13"
+"@type": Source
+title: "TLS 1.3: Design and Rationale"
+published: "2026-04-12"
+` + "```" + `
+
+` + abstract + `
+
+## Mentions
+- mentions:: [[Transport Layer Security]]
+
+# Entity
+
+## Transport Layer Security
+` + "```yaml" + `
+"@id": "Transport Layer Security"
+"@type": Entity
+category: [independent, abstract, occurrent, script]
+` + "```" + `
+
+` + definition + `
+
+# Reference
+
+## RFC 8446
+` + "```yaml" + `
+"@id": "RFC 8446"
+"@type": Reference
+title: "The Transport Layer Security Protocol Version 1.3"
+ref: work
+` + "```" + `
+
+` + relevance + `
+`
+}
+
+// crossDocumentPatch is a SECOND document's patch that also describes the
+// three nodes tls13ProsePatch established — the ordinary cross-document
+// contribution through which a shared node's prose actually merges.
+func crossDocumentPatch(abstract, definition, relevance, extraCites string) string {
+	return `---
+"@type": patch
+document: chen-2026-pqkex
+published: 2026-04-28
+title: "Post-Quantum Key Exchange in Practice"
+---
+# Source
+
+## chen-2026-pqkex
+` + "```yaml" + `
+"@id": "chen-2026-pqkex"
+"@type": Source
+title: "Post-Quantum Key Exchange in Practice"
+published: "2026-04-28"
+` + "```" + `
+
+A survey of post-quantum key exchange deployments observed in the wild.
+
+## Mentions
+- mentions:: [[Transport Layer Security]]
+
+## rescorla-2026-tls13
+` + "```yaml" + `
+"@id": "rescorla-2026-tls13"
+"@type": Source
+title: "TLS 1.3: Design and Rationale"
+published: "2026-04-12"
+` + "```" + `
+
+` + abstract + `
+` + extraCites + `
+
+# Entity
+
+## Transport Layer Security
+` + "```yaml" + `
+"@id": "Transport Layer Security"
+"@type": Entity
+category: [independent, abstract, occurrent, script]
+` + "```" + `
+
+` + definition + `
+
+# Reference
+
+## RFC 8446
+` + "```yaml" + `
+"@id": "RFC 8446"
+"@type": Reference
+title: "The Transport Layer Security Protocol Version 1.3"
+ref: work
+` + "```" + `
+
+` + relevance + `
+`
+}
+
+// applyProseFixture applies the establishing patch, then a second
+// document's patch carrying the given prose for the same three nodes.
+func applyProseFixture(t *testing.T, dir, abstract, definition, relevance, extraCites string) string {
+	t.Helper()
+	first := writePatchFile(t, dir, "tls13.patch.md", tls13ProsePatch(tls13Abstract, tls13Definition, tls13Relevance))
+	_, err := sut(NewApplyCmd(), []string{first})
+	it.Then(t).Should(it.Nil(err))
+
+	second := writePatchFile(t, dir, "pqkex.patch.md", crossDocumentPatch(abstract, definition, relevance, extraCites))
+	_, stderr, err := sutCaptureStderr(t, NewApplyCmd(), []string{second})
+	it.Then(t).Should(it.Nil(err))
+	return stderr
+}
+
+// arc apply tls13.patch.md, then pqkex.patch.md
+// Scenario 1 from spec.md US1 (023): a substantially reworded summary
+// leaves the established value in place and is flagged for review, rather
+// than being appended as a second paragraph.
+func TestApplyRewordedAbstractPreservesFirstValueAndFlags(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+
+	stderr := applyProseFixture(t, dir, tls13AbstractReworded, tls13Definition, tls13Relevance, "")
+
+	content := readFile(t, filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
+
+	it.Then(t).
+		Should(it.String(content).Contain("the reasoning behind its single round trip")).
+		Should(it.String(content).Contain(conflictMarkerToken)).
+		Should(it.String(stderr).Contain("merge conflict was flagged"))
+}
+
+// arc apply tls13.patch.md, then pqkex.patch.md carrying identical prose
+// Scenario 2 from spec.md US1 (023): applying the same prose twice leaves
+// every first-fixed value byte-identical, with nothing flagged.
+func TestApplyIdenticalProseTwiceIsByteIdentical(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+
+	sourcePath := filepath.Join(dir, "Source", "rescorla-2026-tls13.md")
+	entityPath := filepath.Join(dir, "Entity", "Transport Layer Security.md")
+	referencePath := filepath.Join(dir, "Reference", "RFC 8446.md")
+
+	first := writePatchFile(t, dir, "tls13.patch.md", tls13ProsePatch(tls13Abstract, tls13Definition, tls13Relevance))
+	_, err := sut(NewApplyCmd(), []string{first})
+	it.Then(t).Should(it.Nil(err))
+
+	before := map[string]string{
+		sourcePath:    prosePayload(readFile(t, sourcePath)),
+		entityPath:    prosePayload(readFile(t, entityPath)),
+		referencePath: prosePayload(readFile(t, referencePath)),
+	}
+
+	second := writePatchFile(t, dir, "pqkex.patch.md", crossDocumentPatch(tls13Abstract, tls13Definition, tls13Relevance, ""))
+	_, err = sut(NewApplyCmd(), []string{second})
+	it.Then(t).Should(it.Nil(err))
+
+	for path, want := range before {
+		got := prosePayload(readFile(t, path))
+		it.Then(t).
+			Should(it.Equal(want, got)).
+			ShouldNot(it.String(got).Contain(conflictMarkerToken))
+	}
+}
+
+// prosePayload extracts the node body below its front matter, so an
+// assertion compares authored prose rather than the "updated" timestamp
+// arc apply legitimately restamps on every merge.
+func prosePayload(content string) string {
+	parts := strings.SplitN(content, "\n---\n", 2)
+	if len(parts) != 2 {
+		return content
+	}
+	return strings.TrimSpace(parts[1])
+}
+
+// arc apply tls13.patch.md (three times, same file)
+// Scenario 3 from spec.md US1 (023): a third apply reports no change to
+// commit.
+func TestApplyThirdApplyReportsNothingToCommit(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+	patch := writePatchFile(t, dir, "tls13.patch.md", tls13ProsePatch(tls13Abstract, tls13Definition, tls13Relevance))
+
+	_, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Nil(err))
+	_, err = sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Nil(err))
+
+	before := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).Should(it.String(out).Contain("already tracked"))
+
+	it.Then(t).Should(it.Equal(before, strings.TrimSpace(runGit(t, dir, "log", "--oneline"))))
+}
+
+// arc apply tls13.patch.md, then pqkex.patch.md
+// Scenario 4 from spec.md US1 (023): an Entity's definition and a
+// Reference's relevance behave exactly like a Source's abstract.
+//
+// research.md D8 / plan.md F4 defects 2-3: these two are the leading-prose
+// predicates for Entity and Reference (spec 022 keying), so omitting them
+// would fix prose drift for Source alone and leave the identical defect in
+// two other core types.
+func TestApplyRewordedDefinitionAndRelevancePreserveFirstValue(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+
+	applyProseFixture(t, dir, tls13Abstract, tls13DefinitionReworded, tls13RelevanceReworded, "")
+
+	entity := readFile(t, filepath.Join(dir, "Entity", "Transport Layer Security.md"))
+	reference := readFile(t, filepath.Join(dir, "Reference", "RFC 8446.md"))
+
+	it.Then(t).
+		Should(it.String(entity).Contain("authenticated and confidential channel between two peers")).
+		Should(it.String(entity).Contain(conflictMarkerToken)).
+		Should(it.String(reference).Contain("normative text every implementation claim")).
+		Should(it.String(reference).Contain(conflictMarkerToken))
+}
+
+// arc apply tls13.patch.md, then pqkex.patch.md with overlapping citations
+// Scenario 6 from spec.md US1 (023): citation targets already present are
+// not duplicated — the citation predicate combines by union (FR-014).
+func TestApplyOverlappingCitationsAppearExactlyOnce(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+
+	establishing := tls13ProsePatch(tls13Abstract, tls13Definition, tls13Relevance)
+	establishing = strings.Replace(establishing,
+		"## Mentions\n- mentions:: [[Transport Layer Security]]",
+		"## Mentions\n- mentions:: [[Transport Layer Security]]\n\n## Cites\n- cites:: [[RFC 8446]]\n- cites:: [[RFC 5246]]", 1)
+	first := writePatchFile(t, dir, "tls13.patch.md", establishing)
+	_, err := sut(NewApplyCmd(), []string{first})
+	it.Then(t).Should(it.Nil(err))
+
+	second := writePatchFile(t, dir, "pqkex.patch.md", crossDocumentPatch(
+		tls13Abstract, tls13Definition, tls13Relevance,
+		"\n## Cites\n- cites:: [[RFC 8446]]\n- cites:: [[RFC 8447]]\n"))
+	_, err = sut(NewApplyCmd(), []string{second})
+	it.Then(t).Should(it.Nil(err))
+
+	content := readFile(t, filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
+	it.Then(t).
+		Should(it.Equal(1, strings.Count(content, "[[RFC 8446]]"))).
+		Should(it.Equal(1, strings.Count(content, "[[RFC 5246]]"))).
+		Should(it.Equal(1, strings.Count(content, "[[RFC 8447]]")))
+}
+
+// ---------------------------------------------------------------------------
+// specs/023-core-vocabulary-conformance — User Story 4
+//
+// author, about, and genre are part of the seeded vocabulary (CORE §10.2),
+// so a patch recording them resolves against it and lints clean.
+//
+// research.md D5 corrects spec.md's original premise: nothing is
+// auto-registered today, because distinctPredicates walks node.Edges and
+// node.Texts only and all three are role: meta (front-matter Attrs). The
+// real symptom is two lint violations per occurrence — predicateRegistered
+// and typeOptional.
+// ---------------------------------------------------------------------------
+
+const metadataPredicatePatch = `---
+"@type": patch
+document: rescorla-2026-tls13
+published: 2026-04-12
+title: "TLS 1.3: Design and Rationale"
+---
+# Source
+
+## rescorla-2026-tls13
+` + "```yaml" + `
+"@id": "rescorla-2026-tls13"
+"@type": Source
+title: "TLS 1.3: Design and Rationale"
+published: "2026-04-12"
+author: Eric Rescorla
+about: [technique, technology]
+genre: paper
+` + "```" + `
+
+A design retrospective on the TLS 1.3 handshake.
+
+## Mentions
+- mentions:: [[Transport Layer Security]]
+
+# Entity
+
+## Transport Layer Security
+` + "```yaml" + `
+"@id": "Transport Layer Security"
+"@type": Entity
+category: [independent, abstract, occurrent, script]
+` + "```" + `
+
+A cryptographic protocol that establishes an authenticated and confidential channel.
+`
+
+// propertyDocuments lists every _schema/Property/ basename present in dir.
+func propertyDocuments(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(dir, "_schema", "Property"))
+	it.Then(t).Should(it.Nil(err))
+
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() {
+			out = append(out, e.Name())
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// arc init (seeded vocabulary)
+// Scenario 1 from spec.md US4 (023): definitions exist for the authorship,
+// aboutness, and genre predicates, each declaring the role and merge CORE
+// §10.2 assigns it (FR-011; contract C2.2d).
+func TestApplySeededVocabularyRegistersMetadataPredicates(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+
+	for _, name := range []string{"author", "about", "genre"} {
+		// Read defensively rather than through assertIsFile/readFile: both
+		// dereference a nil os.FileInfo when the document is absent, and a
+		// panic in a red-phase assertion takes the whole test binary with
+		// it instead of failing this one case.
+		raw, rerr := os.ReadFile(filepath.Join(dir, "_schema", "Property", name+".md"))
+		it.Then(t).Should(it.Nil(rerr))
+
+		content := string(raw)
+		it.Then(t).
+			Should(it.String(content).Contain(`"@type": Property`)).
+			Should(it.String(content).Contain("role: meta")).
+			Should(it.String(content).Contain("merge: union"))
+	}
+}
+
+// arc apply metadata.patch.md, then arc lint
+// Scenario 2 from spec.md US4 (023): applying a patch using all three
+// draws no unregistered-predicate and no undeclared-predicate diagnostic
+// for any of them (FR-012).
+func TestApplyMetadataPredicatesLintClean(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+
+	patch := writePatchFile(t, dir, "metadata.patch.md", metadataPredicatePatch)
+	_, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Nil(err))
+
+	lintOut, _ := sut(lint.NewLintCmd(), nil)
+
+	for _, name := range []string{"author", "about", "genre"} {
+		it.Then(t).
+			ShouldNot(it.String(lintOut).Contain(`predicate "` + name + `" is not registered`)).
+			ShouldNot(it.String(lintOut).Contain(`predicate "` + name + `" is not permitted`))
+	}
+}
+
+// arc apply metadata.patch.md
+// Scenario 3 from spec.md US4 (023): zero predicates are created — the
+// three resolve against the seeded vocabulary rather than being registered
+// on the spot (SC-005).
+func TestApplyMetadataPredicatesCreateNoSchemaDocuments(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+
+	before := propertyDocuments(t, dir)
+
+	patch := writePatchFile(t, dir, "metadata.patch.md", metadataPredicatePatch)
+	_, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Nil(err))
+
+	it.Then(t).Should(it.Seq(propertyDocuments(t, dir)).Equal(before...))
+}
+
+// arc apply metadata.patch.md, then a second document naming another author
+// Scenario 4 from spec.md US4 (023): two authors recorded across two
+// separate applies leave the document carrying both names, each exactly
+// once — the authorship predicate combines by union (FR-011).
+func TestApplyRepeatedAuthorsUnionExactlyOnce(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+
+	first := writePatchFile(t, dir, "metadata.patch.md", metadataPredicatePatch)
+	_, err := sut(NewApplyCmd(), []string{first})
+	it.Then(t).Should(it.Nil(err))
+
+	// A SECOND document that also describes the same Source — the only
+	// route by which a shared node's metadata actually merges, since
+	// service.Apply skips a document whose own Source node is tracked.
+	crossDocument := strings.Replace(metadataPredicatePatch,
+		"document: rescorla-2026-tls13", "document: chen-2026-pqkex", 1)
+	crossDocument = strings.Replace(crossDocument,
+		"author: Eric Rescorla", "author: [Eric Rescorla, Hugo Krawczyk]", 1)
+	second := writePatchFile(t, dir, "pqkex.patch.md", crossDocument)
+	_, err = sut(NewApplyCmd(), []string{second})
+	it.Then(t).Should(it.Nil(err))
+
+	content := readFile(t, filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
+	it.Then(t).
+		Should(it.Equal(1, strings.Count(content, "Eric Rescorla"))).
+		Should(it.Equal(1, strings.Count(content, "Hugo Krawczyk")))
+}
+
+// arc init (seeded vocabulary)
+// Scenario 5 from spec.md US4 (023): the citation predicate declares the
+// merge behaviour that combines without duplication (union), not the one
+// that appends (FR-014; contract C2.2f).
+func TestApplySeededCitationPredicateDeclaresUnion(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+
+	content := readFile(t, filepath.Join(dir, "_schema", "Property", "cites.md"))
+
+	it.Then(t).
+		Should(it.String(content).Contain("merge: union")).
+		ShouldNot(it.String(content).Contain("merge: append"))
 }

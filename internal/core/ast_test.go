@@ -9,6 +9,7 @@
 package core_test
 
 import (
+	"sort"
 	"testing"
 	"time"
 
@@ -129,6 +130,46 @@ func TestMergeOpConstants(t *testing.T) {
 		Should(it.Equal(core.MergeOp("firstWriteWin"), core.MergeFirstWriteWin)).
 		Should(it.Equal(core.MergeOp("fillIfEmpty"), core.MergeFillIfEmpty)).
 		Should(it.Equal(core.MergeOp("lastWriteWin"), core.MergeLastWriteWin)).
-		Should(it.Equal(core.MergeOp("append"), core.MergeAppend)).
-		Should(it.Equal(core.MergeOp("validatedOverwrite"), core.MergeValidatedOverwrite))
+		Should(it.Equal(core.MergeOp("append"), core.MergeAppend))
+}
+
+// TestMergeOpMenuIsClosedAtSix is contract C1.1: CORE §9.3 fixes the menu at
+// six, and any seventh is a violation.
+//
+// Asserted by EXHAUSTIVE comparison against a literal set rather than by
+// spot-checking each constant, because the failure mode this guards against
+// is ADDITION, not mutation. TestMergeOpConstants above would keep passing
+// with a seventh constant sitting beside the six it names — which is exactly
+// how "validatedOverwrite" survived until specs/023-core-vocabulary-
+// conformance. Here, a seventh makes the string-set comparison fail.
+//
+// The literal set is written out rather than derived from the constants, so
+// the assertion cannot agree with the code by construction.
+func TestMergeOpMenuIsClosedAtSix(t *testing.T) {
+	want := []string{"append", "fillIfEmpty", "firstWriteWin", "immutable", "lastWriteWin", "union"}
+
+	declared := []core.MergeOp{
+		core.MergeImmutable,
+		core.MergeUnion,
+		core.MergeFirstWriteWin,
+		core.MergeFillIfEmpty,
+		core.MergeLastWriteWin,
+		core.MergeAppend,
+	}
+
+	got := make([]string, 0, len(declared))
+	for _, op := range declared {
+		got = append(got, string(op))
+	}
+	sort.Strings(got)
+
+	it.Then(t).
+		Should(it.Equal(6, len(want))).
+		Should(it.Seq(got).Equal(want...))
+
+	// The retired seventh must not be resurrectable under any spelling: no
+	// declared value may be the string it used to carry.
+	for _, op := range declared {
+		it.Then(t).Should(it.True(string(op) != "validatedOverwrite"))
+	}
 }

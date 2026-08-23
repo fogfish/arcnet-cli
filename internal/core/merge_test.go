@@ -377,14 +377,33 @@ func TestMergeAppendTextAppendsParagraphsNeverFlags(t *testing.T) {
 		Should(it.True(strings.Contains(merged.Texts["text"], "genuinely new paragraph")))
 }
 
-// --- validatedOverwrite (freeze class, identical to immutable for now) ---
+// --- the freeze class, now "immutable" alone ---
 
-// Edge Case: an ordinary patch contribution never overwrites nor flags a
-// validatedOverwrite predicate's already-set value.
-func TestMergeValidatedOverwriteNeverOverwritesOrFlags(t *testing.T) {
-	index := indexWith("rank", core.MergeValidatedOverwrite)
-	existing := core.Node{ID: "x", Type: "hypothesis", Attrs: map[string][]core.Predicate{"rank": {{Value: "8.5"}}}}
-	incoming := core.Node{ID: "x", Type: "hypothesis", Attrs: map[string][]core.Predicate{"rank": {{Value: "9.0"}}}}
+// specs/023-core-vocabulary-conformance contract C1.4: the retired seventh
+// op "validatedOverwrite" shared this class with immutable, which made a
+// score PERMANENT once written — the opposite of the "recomputed by a
+// validation/ingest pass" behaviour its own registered description claimed.
+// The predicates that declared it now declare lastWriteWin and land in
+// alwaysOverwrite, so a recomputation genuinely supersedes the old value.
+func TestMergeLastWriteWinOverwritesRecomputedScore(t *testing.T) {
+	index := indexWith("scoreZ", core.MergeLastWriteWin)
+	existing := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"scoreZ": {{Value: "8.5"}}}}
+	incoming := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"scoreZ": {{Value: "9.0"}}}}
+
+	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(0, len(conflicts))).
+		Should(it.Equiv(merged.Attrs["scoreZ"], []core.Predicate{{Value: "9.0"}}))
+}
+
+// immutable keeps the freeze behaviour on its own: an already-set value is
+// permanent and a divergence is never flagged.
+func TestMergeImmutableFreezesWithoutFlagging(t *testing.T) {
+	index := indexWith("rank", core.MergeImmutable)
+	existing := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"rank": {{Value: "8.5"}}}}
+	incoming := core.Node{ID: "x", Type: "Entity", Attrs: map[string][]core.Predicate{"rank": {{Value: "9.0"}}}}
 
 	merged, conflicts, _, err := core.Merge(existing, incoming, index, "incoming-doc")
 
@@ -421,7 +440,7 @@ func TestMergeFirstWriteWinReplayDoesNotRewrapMarker(t *testing.T) {
 func TestMergeNeverFlagsExceptFirstWriteWinAndFillIfEmpty(t *testing.T) {
 	neverFlag := []core.MergeOp{
 		core.MergeUnion, core.MergeAppend, core.MergeLastWriteWin,
-		core.MergeImmutable, core.MergeValidatedOverwrite,
+		core.MergeImmutable,
 	}
 
 	for _, op := range neverFlag {
@@ -444,7 +463,6 @@ func TestMergeIsIdempotentForEveryOp(t *testing.T) {
 	allOps := []core.MergeOp{
 		core.MergeImmutable, core.MergeUnion, core.MergeFirstWriteWin,
 		core.MergeFillIfEmpty, core.MergeLastWriteWin, core.MergeAppend,
-		core.MergeValidatedOverwrite,
 	}
 
 	for _, op := range allOps {
@@ -468,7 +486,7 @@ func TestMergeIsIdempotentForEveryOp(t *testing.T) {
 func TestMergeIsCommutativeOnIndependentPredicatesForEveryOpExceptLastWriteWin(t *testing.T) {
 	commutativeOps := []core.MergeOp{
 		core.MergeImmutable, core.MergeUnion, core.MergeFirstWriteWin,
-		core.MergeFillIfEmpty, core.MergeAppend, core.MergeValidatedOverwrite,
+		core.MergeFillIfEmpty, core.MergeAppend,
 	}
 
 	for _, op := range commutativeOps {
@@ -558,7 +576,6 @@ func TestMergeEdgesUnionAcrossEveryOp(t *testing.T) {
 	for _, op := range []core.MergeOp{
 		core.MergeImmutable, core.MergeUnion, core.MergeFirstWriteWin,
 		core.MergeFillIfEmpty, core.MergeLastWriteWin, core.MergeAppend,
-		core.MergeValidatedOverwrite,
 	} {
 		t.Run(string(op), func(t *testing.T) {
 			index := indexWith("replaces", op)
@@ -703,8 +720,10 @@ func TestMergeOutcomeTrailPerOp(t *testing.T) {
 			wantOutcome: core.OutcomeAppended,
 		},
 		{
-			name:        "validatedOverwrite diverge kept unchanged",
-			op:          core.MergeValidatedOverwrite,
+			// The freeze class, now immutable alone: a divergence against
+			// an already-set value changes nothing and is never flagged.
+			name:        "immutable diverge kept unchanged",
+			op:          core.MergeImmutable,
 			existing:    core.Node{ID: "x", Attrs: map[string][]core.Predicate{"rank": {{Value: "8.5"}}}},
 			incoming:    core.Node{ID: "x", Attrs: map[string][]core.Predicate{"rank": {{Value: "9.0"}}}},
 			wantOutcome: core.OutcomeUnchanged,
@@ -783,4 +802,217 @@ func TestMergeOutcomeTrailSortedByName(t *testing.T) {
 		names = append(names, o.Name)
 	}
 	it.Then(t).Should(it.Seq(names).Equal("alpha", "published", "zeta"))
+}
+
+// ---------------------------------------------------------------------------
+// specs/023-core-vocabulary-conformance — FR-013 / FR-015 / FR-015a
+//
+// The four type-specific prose predicates the seeded vocabulary moved from
+// append to firstWriteWin. These assert the merge algebra directly, with an
+// explicitly declared index rather than the seeded one, so a later change
+// to CorePredicateDefs cannot make them agree by construction — the seeded
+// declarations themselves are asserted by contract C2.2e's golden test.
+//
+// plan.md F2 / research.md D4: the reworded case is the one that matters.
+// mergeText's near-duplicate guard already suppressed a byte-identical
+// re-contribution under the old append behaviour, so only prose below the
+// 0.8 similarity threshold could ever have accumulated.
+// ---------------------------------------------------------------------------
+
+// firstFixedProsePredicates is the set FR-013 names.
+var firstFixedProsePredicates = []string{"abstract", "description", "definition", "relevance"}
+
+// TestMergeFirstWriteWinRewordedProseIsFlaggedNotAppended is the core
+// regression: under append, the reworded paragraph was concatenated onto
+// the established one and nothing was reported. Under firstWriteWin the
+// established value survives and the divergence is flagged.
+func TestMergeFirstWriteWinRewordedProseIsFlaggedNotAppended(t *testing.T) {
+	const established = "A design retrospective on the TLS 1.3 handshake and the reasoning behind its single round trip."
+	const reworded = "Why one round trip was chosen, looked at again several years after the protocol shipped."
+
+	for _, predicate := range firstFixedProsePredicates {
+		index := indexWith(predicate, core.MergeFirstWriteWin)
+		existing := core.Node{ID: "x", Type: "Source", Texts: map[string]string{predicate: established}}
+		incoming := core.Node{ID: "x", Type: "Source", Texts: map[string]string{predicate: reworded}}
+
+		merged, conflicts, outcomes, err := core.Merge(existing, incoming, index, "doc-2")
+
+		it.Then(t).Should(it.Nil(err))
+		it.Then(t).
+			Should(it.Equal(1, len(conflicts))).
+			Should(it.Equal(predicate, conflicts[0])).
+			Should(it.Equal(core.OutcomeFlagged, outcomeFor(t, outcomes, predicate).Outcome)).
+			Should(it.Equal(core.MergeFirstWriteWin, outcomeFor(t, outcomes, predicate).Op)).
+			Should(it.True(strings.Contains(merged.Texts[predicate], established))).
+			Should(it.True(strings.Contains(merged.Texts[predicate], "<<<<<<< existing")))
+
+		// The decisive assertion: the reworded paragraph is NOT sitting
+		// alongside the established one as plain accumulated prose.
+		it.Then(t).ShouldNot(it.True(merged.Texts[predicate] == established+"\n\n"+reworded))
+	}
+}
+
+// TestMergeFirstWriteWinIdenticalProseIsUnchanged — re-contributing the
+// same prose is a no-op, reported as such rather than as an append.
+func TestMergeFirstWriteWinIdenticalProseIsUnchanged(t *testing.T) {
+	const established = "A one-to-three sentence definition of the subject under discussion."
+
+	for _, predicate := range firstFixedProsePredicates {
+		index := indexWith(predicate, core.MergeFirstWriteWin)
+		existing := core.Node{ID: "x", Type: "Entity", Texts: map[string]string{predicate: established}}
+		incoming := core.Node{ID: "x", Type: "Entity", Texts: map[string]string{predicate: established}}
+
+		merged, conflicts, outcomes, err := core.Merge(existing, incoming, index, "doc-2")
+
+		it.Then(t).Should(it.Nil(err))
+		it.Then(t).
+			Should(it.Equal(0, len(conflicts))).
+			Should(it.Equal(core.OutcomeUnchanged, outcomeFor(t, outcomes, predicate).Outcome)).
+			Should(it.Equal(established, merged.Texts[predicate]))
+	}
+}
+
+// TestMergeFirstWriteWinAbsentThenPresentIsFilled — the first contribution
+// to a predicate whose established value is empty is accepted
+// unconditionally, never flagged. This is what keeps a firstWriteWin
+// predicate usable at all.
+func TestMergeFirstWriteWinAbsentThenPresentIsFilled(t *testing.T) {
+	const contributed = "Kept as the authoritative wording against which claims recorded here are checked."
+
+	for _, predicate := range firstFixedProsePredicates {
+		index := indexWith(predicate, core.MergeFirstWriteWin)
+		existing := core.Node{ID: "x", Type: "Reference", Texts: map[string]string{predicate: ""}}
+		incoming := core.Node{ID: "x", Type: "Reference", Texts: map[string]string{predicate: contributed}}
+
+		merged, conflicts, outcomes, err := core.Merge(existing, incoming, index, "doc-2")
+
+		it.Then(t).Should(it.Nil(err))
+		it.Then(t).
+			Should(it.Equal(0, len(conflicts))).
+			Should(it.Equal(core.OutcomeFilled, outcomeFor(t, outcomes, predicate).Outcome)).
+			Should(it.Equal(contributed, merged.Texts[predicate]))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// specs/023-core-vocabulary-conformance — SC-001
+//
+// "Applying any patch N times produces the same graph content as applying
+// it once, for every N >= 1" — verified over a patch exercising summaries,
+// definitions, relevance notes, descriptions, citations, and every
+// combine-by-union predicate at once.
+//
+// TestMergeIsIdempotentForEveryOp above proves the property one op at a
+// time against a synthetic single-predicate index. This one proves it for
+// the SEEDED vocabulary acting on one node all together, which is the shape
+// the guarantee is actually made about — and the shape in which the old
+// append-declared abstract broke it.
+// ---------------------------------------------------------------------------
+
+// sc001Index declares each predicate exactly as the corrected built-in
+// vocabulary does. Written out as a literal rather than imported from
+// internal/app/schema/kernel: internal/core must not depend on a use-case,
+// and an index derived from the table under test would agree with it by
+// construction.
+var sc001Index = core.Index{Predicates: map[string]core.PredicateDef{
+	"abstract":    {Role: "text", Merge: core.MergeFirstWriteWin},
+	"definition":  {Role: "text", Merge: core.MergeFirstWriteWin},
+	"relevance":   {Role: "text", Merge: core.MergeFirstWriteWin},
+	"description": {Role: "text", Merge: core.MergeFirstWriteWin},
+	"text":        {Role: "text", Merge: core.MergeAppend},
+	"notes":       {Role: "text", Merge: core.MergeAppend},
+	"cites":       {Role: "link", Merge: core.MergeUnion},
+	"tags":        {Role: "meta", Merge: core.MergeUnion},
+	"aliases":     {Role: "meta", Merge: core.MergeUnion},
+	"authors":     {Role: "meta", Merge: core.MergeUnion},
+	"author":      {Role: "meta", Merge: core.MergeUnion},
+	"about":       {Role: "meta", Merge: core.MergeUnion},
+	"genre":       {Role: "meta", Merge: core.MergeUnion},
+	"mentions":    {Role: "link", Merge: core.MergeUnion},
+	"published":   {Role: "meta", Merge: core.MergeImmutable},
+	"year":        {Role: "meta", Merge: core.MergeImmutable},
+	"title":       {Role: "meta", Merge: core.MergeImmutable},
+}}
+
+func sc001Contribution() core.Node {
+	return core.Node{
+		ID:   "rescorla-2026-tls13",
+		Type: "Source",
+		Attrs: map[string][]core.Predicate{
+			"title":   {{Value: "TLS 1.3: Design and Rationale"}},
+			"year":    {{Value: "2026"}},
+			"tags":    {{Value: "tls"}, {Value: "security"}},
+			"aliases": {{Value: "TLS13"}},
+			"authors": {{Value: "Eric Rescorla"}},
+			"author":  {{Value: "Eric Rescorla"}},
+			"about":   {{Value: "technique"}, {Value: "technology"}},
+			"genre":   {{Value: "paper"}},
+		},
+		Texts: map[string]string{
+			"abstract":    "A design retrospective on the TLS 1.3 handshake.",
+			"definition":  "A cryptographic protocol establishing an authenticated channel.",
+			"relevance":   "The normative text this graph's protocol claims are measured against.",
+			"description": "Prose describing this predicate's meaning.",
+			"text":        "A fragment of the ingested document.",
+			"notes":       "An additional remark carried alongside.",
+		},
+		Edges: []core.Link{
+			{Predicate: "cites", Target: "RFC 8446"},
+			{Predicate: "cites", Target: "RFC 5246"},
+			{Predicate: "mentions", Target: "Transport Layer Security"},
+		},
+	}
+}
+
+// TestMergeIsIdempotentOverTheSeededVocabulary is SC-001 for N up to 5.
+func TestMergeIsIdempotentOverTheSeededVocabulary(t *testing.T) {
+	incoming := sc001Contribution()
+
+	once, conflicts, _, err := core.Merge(sc001Contribution(), incoming, sc001Index, "rescorla-2026-tls13")
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(0, len(conflicts)))
+
+	current := once
+	for n := 2; n <= 5; n++ {
+		next, conflicts, _, err := core.Merge(current, incoming, sc001Index, "rescorla-2026-tls13")
+		it.Then(t).Should(it.Nil(err))
+		it.Then(t).Should(it.Equal(0, len(conflicts)))
+
+		for key, want := range once.Texts {
+			if next.Texts[key] != want {
+				t.Errorf("apply #%d changed %q:\n once: %q\n  now: %q", n, key, want, next.Texts[key])
+			}
+		}
+		for key, want := range once.Attrs {
+			if len(next.Attrs[key]) != len(want) {
+				t.Errorf("apply #%d changed %q: %d values, was %d", n, key, len(next.Attrs[key]), len(want))
+			}
+		}
+		it.Then(t).Should(it.Equal(len(once.Edges), len(next.Edges)))
+
+		current = next
+	}
+}
+
+// TestMergeCitationTargetsNeverDuplicate is SC-001's citation half stated
+// on its own (FR-014/FR-015): every cited target appears exactly once, no
+// matter how many contributions name it.
+func TestMergeCitationTargetsNeverDuplicate(t *testing.T) {
+	existing := sc001Contribution()
+	incoming := sc001Contribution()
+	incoming.Edges = append(incoming.Edges, core.Link{Predicate: "cites", Target: "RFC 8447"})
+
+	merged, _, _, err := core.Merge(existing, incoming, sc001Index, "doc-2")
+	it.Then(t).Should(it.Nil(err))
+
+	seen := map[string]int{}
+	for _, edge := range merged.Edges {
+		seen[edge.Predicate+"/"+edge.Target]++
+	}
+	for key, n := range seen {
+		if n != 1 {
+			t.Errorf("%s appears %d times, want exactly 1", key, n)
+		}
+	}
+	it.Then(t).Should(it.Equal(4, len(merged.Edges)))
 }

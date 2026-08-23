@@ -30,6 +30,9 @@ func TestCorePredicateDefsContainsFullCoreVocabulary(t *testing.T) {
 		"mentions", "mentionedIn",
 		"broader", "narrower", "isPartOf", "hasPart", "requires", "replaces", "isReplacedBy", "conformsTo", "related", "referencedBy",
 		"cites", "citesAsEvidence", "citesAsAuthority", "supports", "confirms", "extends", "critiques", "disputes", "refutes", "isCitedBy",
+		// specs/023 FR-011: author/about/genre are §10.2 core metadata
+		// predicates the seeded vocabulary omitted entirely.
+		"author", "about", "genre",
 		"title", "abstract", "authors", "url", "doi", "category", "aliases", "definition", "notes", "ref", "year", "status", "relevance", "granularity", "period", "heading",
 		"role", "merge", "label", "aligned", "description", "required", "optional",
 		"subClassOf",
@@ -67,8 +70,13 @@ func TestCoreTypeDefsContainsCoreTypesAndSchemaTypesThemselves(t *testing.T) {
 // (spec 017, data-model.md's reshaped-types table) — published/created now
 // arrive only via the implicit Node base, never listed directly here.
 func TestCoreTypeDefsRequiredListsMatchCoreSection11(t *testing.T) {
+	// specs/023 FR-008: §11.2 requires "published" of a Source directly.
+	// It used to arrive by inheritance from Node, whose own Requires is
+	// now empty (FR-007), so the promotion keeps Source's effective
+	// contract unchanged while removing the requirement from every other
+	// type.
 	source := kernel.CoreTypeDefs["Source"]
-	it.Then(t).Should(it.Seq(source.Required).Equal("title", "abstract", "mentions"))
+	it.Then(t).Should(it.Seq(source.Required).Equal("title", "published", "abstract", "mentions"))
 
 	entity := kernel.CoreTypeDefs["Entity"]
 	it.Then(t).Should(it.Seq(entity.Required).Equal("category", "definition", "mentionedIn"))
@@ -82,19 +90,28 @@ func TestCoreTypeDefsRequiredListsMatchCoreSection11(t *testing.T) {
 
 	// CORE §11.6 v0.11: Reference records only enough to identify, locate,
 	// and justify keeping a pointer to a work the graph has not ingested.
+	// specs/023 FR-028 SUPERSEDES spec 022's recorded Clarification: the
+	// revision note it rested on is gone from v0.11, whose normative §11.6
+	// Class block requires "title" alone. "ref"/"relevance" move to
+	// Optional — a pure relaxation (plan.md F3, research.md D3).
 	reference := kernel.CoreTypeDefs["Reference"]
-	it.Then(t).Should(it.Seq(reference.Required).Equal("title", "ref", "relevance"))
+	it.Then(t).Should(it.Seq(reference.Required).Equal("title"))
 
 	// timeline deliberately diverges from CORE §11.5 here (BUG-002,
 	// research.md D12): "entries" is replaced by "cites" (reusing the
 	// existing citation predicate rather than the name CORE's own worked
 	// example uses), and "period" is an arc-internal addition CORE never
 	// documents (spec 003 BUG-007).
+	// specs/023 FR-009: §11.5 requires "cites" alone; "granularity" and
+	// "period" are demoted to Optional, where §11.5's own worked example
+	// still conforms.
 	timeline := kernel.CoreTypeDefs["Timeline"]
-	it.Then(t).Should(it.Seq(timeline.Required).Equal("granularity", "cites", "period"))
+	it.Then(t).Should(it.Seq(timeline.Required).Equal("cites"))
 
+	// specs/023 FR-007: §11.1 states every node carries "@id"/"@type" and
+	// nothing else universally, so the universal base requires NOTHING.
 	node := kernel.CoreTypeDefs["Node"]
-	it.Then(t).Should(it.Seq(node.Required).Equal("published", "created"))
+	it.Then(t).Should(it.Equal(0, len(node.Required)))
 }
 
 // BUG-001 / spec.md FR-014-FR-020, research.md D8: cross-cutting Structural
@@ -115,8 +132,11 @@ func TestCoreTypeDefsOptionalListsIncludeCrossCuttingPredicates(t *testing.T) {
 		typ  string
 		want []string
 	}{
-		{"Source", []string{"authors", "url", "cites", "doi", "indexed"}},
-		{"Entity", append([]string{"aliases", "notes", "indexed", "mentions"}, semantic...)},
+		// specs/023 FR-012: a Source must PERMIT author/about/genre, not
+		// merely have them registered — otherwise every occurrence still
+		// draws a typeOptional violation.
+		{"Source", []string{"author", "authors", "about", "genre", "url", "cites", "tags", "doi", "indexed"}},
+		{"Entity", append([]string{"aliases", "tags", "notes", "indexed", "mentions"}, semantic...)},
 		// CORE §11.4 v0.11 lists notes as Resource's sole optional: the
 		// structural and semantic optionals it used to carry are not
 		// carried over, and §11.6 gives Reference none of them either
@@ -125,8 +145,8 @@ func TestCoreTypeDefsOptionalListsIncludeCrossCuttingPredicates(t *testing.T) {
 		// extension arc apply stamps on every node it creates — every
 		// other content type already carries it for the same reason.
 		{"Resource", []string{"notes", "indexed"}},
-		{"Timeline", []string{"heading", "indexed", "mentions", "mentionedIn"}},
-		{"Reference", []string{"url", "authors", "year", "doi", "status", "isCitedBy", "notes", "indexed"}},
+		{"Timeline", []string{"granularity", "period", "heading", "indexed", "mentions", "mentionedIn"}},
+		{"Reference", []string{"url", "authors", "year", "doi", "isCitedBy", "ref", "relevance", "status", "notes", "indexed"}},
 	}
 
 	for _, tc := range tests {
@@ -138,7 +158,7 @@ func TestCoreTypeDefsOptionalListsIncludeCrossCuttingPredicates(t *testing.T) {
 // Node's own Optional list (spec 017, data-model.md).
 func TestCoreTypeDefsNodeOptionalList(t *testing.T) {
 	node := kernel.CoreTypeDefs["Node"]
-	it.Then(t).Should(it.Seq(node.Optional).Equal("tags", "text", "updated", "scoreZ", "scoreC"))
+	it.Then(t).Should(it.Seq(node.Optional).Equal("published", "created", "tags", "text", "updated", "scoreZ", "scoreC"))
 }
 
 // Every content type declares an explicit rdfs:subClassOf base pointing at
@@ -168,20 +188,47 @@ func TestCorePredicateDefsIndexedAndScorePredicatesAreRegistered(t *testing.T) {
 	}
 
 	it.Then(t).Should(it.Equal(core.MergeImmutable, kernel.CorePredicateDefs["indexed"].Merge))
+
+	// specs/023 FR-003 / research.md D7: the retired seventh merge value
+	// grouped these two with "immutable" in mergeScalar's FREEZE class, so
+	// a score, once written, was permanent — directly contradicting their
+	// own registered descriptions. lastWriteWin is both the conformance
+	// fix and the bug fix.
 	it.Then(t).
-		Should(it.Equal(core.MergeValidatedOverwrite, kernel.CorePredicateDefs["scoreZ"].Merge)).
-		Should(it.Equal(core.MergeValidatedOverwrite, kernel.CorePredicateDefs["scoreC"].Merge))
+		Should(it.Equal(core.MergeLastWriteWin, kernel.CorePredicateDefs["scoreZ"].Merge)).
+		Should(it.Equal(core.MergeLastWriteWin, kernel.CorePredicateDefs["scoreC"].Merge))
 }
 
-// BUG-001 / spec.md FR-018: every role:"text" predicate in the built-in
-// vocabulary seeds MergeAppend — role alone must be enough to predict
-// dispatch, without reading each predicate's individual assignment.
-func TestCorePredicateDefsTextRoleSeedsAppend(t *testing.T) {
-	for _, def := range kernel.CorePredicateDefs {
+// specs/023-core-vocabulary-conformance FR-013 SUPERSEDES spec 012 FR-018's
+// "role alone predicts dispatch" rule. CORE §10.2 makes the four
+// type-specific prose predicates single-valued and FIRST-FIXED precisely so
+// a re-ingest pipeline's reworded paraphrase cannot slowly turn a summary
+// into a stack of near-synonyms — a distinction the role cannot carry,
+// because both classes are role: text.
+//
+// What survives is the weaker, still-useful invariant: a text-role
+// predicate reconciles as PROSE, never as a scalar-only op. append and
+// firstWriteWin are the only two admissible values, and which of the two
+// each predicate takes is named explicitly here rather than derived.
+func TestCorePredicateDefsTextRoleSeedsProseMerge(t *testing.T) {
+	firstFixed := map[string]bool{"abstract": true, "description": true, "definition": true, "relevance": true}
+
+	for name, def := range kernel.CorePredicateDefs {
 		if def.Role != "text" {
 			continue
 		}
+		if firstFixed[name] {
+			it.Then(t).Should(it.Equal(core.MergeFirstWriteWin, def.Merge))
+			continue
+		}
 		it.Then(t).Should(it.Equal(core.MergeAppend, def.Merge))
+	}
+
+	// Every name FR-013 lists is actually a registered text-role predicate,
+	// so the branch above cannot silently pass over a typo.
+	for name := range firstFixed {
+		def, ok := kernel.CorePredicateDefs[name]
+		it.Then(t).Should(it.True(ok)).Should(it.Equal("text", def.Role))
 	}
 }
 

@@ -161,12 +161,14 @@ func TestSeedEntriesRoundTripThroughParseNode(t *testing.T) {
 			continue
 		}
 
-		if def, ok := kernel.CoreTypeDefs[node.ID]; ok {
+		if _, ok := kernel.CoreTypeDefs[node.ID]; ok {
 			it.Then(t).
 				Should(it.Equal(kernel.TypesDir+"/"+node.ID+".md", path)).
-				Should(it.Equal("Class", node.Type))
-			merge, _ := node.Attrs["merge"][0].Value.(string)
-			it.Then(t).Should(it.Equal(string(def.Merge), merge))
+				Should(it.Equal("Class", node.Type)).
+				// FR-005 / contract C2.2b: CORE §9.3 retired type-level
+				// merge, so a seeded Class document carries no such
+				// attribute for this test to compare against.
+				Should(it.Equal(0, len(node.Attrs["merge"])))
 		}
 	}
 }
@@ -217,8 +219,7 @@ func TestResolveRoundTripsSeedOutput(t *testing.T) {
 	entity, ok := index.Types["Entity"]
 	it.Then(t).Should(it.True(ok))
 	it.Then(t).
-		Should(it.Equal(core.MergeUnion, entity.Merge)).
-		Should(it.Seq(entity.Required).Equal("category", "definition", "mentionedIn", "published", "created")).
+		Should(it.Seq(entity.Required).Equal("category", "definition", "mentionedIn")).
 		ShouldNot(it.Equal("", entity.Description))
 
 	isPartOf, ok := index.Predicates["isPartOf"]
@@ -309,7 +310,9 @@ func TestRegisterTypeCreatesFileOnce(t *testing.T) {
 	content := store.written[kernel.TypesDir+"/hypothesis.md"]
 	it.Then(t).
 		Should(it.String(content).Contain(`"@type": Class`)).
-		Should(it.String(content).Contain("merge: union"))
+		// FR-005: auto-registration no longer stamps merge: union onto a
+		// Class document — CORE §9.3 retired type-level merge.
+		ShouldNot(it.String(content).Contain("merge:"))
 
 	created, err = service.RegisterType(store, "hypothesis")
 	it.Then(t).
@@ -653,10 +656,14 @@ func TestSeedEmitsReferenceTypeDocument(t *testing.T) {
 		Should(it.String(content).Contain(`"@type": Class`)).
 		Should(it.String(content).Contain("subClassOf:: [[Node]]"))
 
-	for _, required := range []string{"title", "ref", "relevance"} {
-		it.Then(t).Should(it.String(content).Contain("required:: [[" + required + "]]"))
+	// specs/023 FR-028 supersedes spec 022's Clarification: §11.6 v0.11's
+	// normative Class block requires "title" alone, and "ref"/"relevance"
+	// move to Optional alongside "status"/"notes".
+	it.Then(t).Should(it.String(content).Contain("required:: [[title]]"))
+	for _, notRequired := range []string{"ref", "relevance"} {
+		it.Then(t).ShouldNot(it.String(content).Contain("required:: [[" + notRequired + "]]"))
 	}
-	for _, optional := range []string{"url", "authors", "year", "doi", "status", "isCitedBy", "notes"} {
+	for _, optional := range []string{"url", "authors", "year", "doi", "ref", "relevance", "status", "isCitedBy", "notes"} {
 		it.Then(t).Should(it.String(content).Contain("optional:: [[" + optional + "]]"))
 	}
 }
@@ -683,4 +690,89 @@ func TestSeedResourceDocumentCarriesNoExternalWorkPredicate(t *testing.T) {
 		it.Then(t).Should(it.String(content).Contain("required:: [[" + required + "]]"))
 	}
 	it.Then(t).Should(it.String(content).Contain("optional:: [[notes]]"))
+}
+
+// ---------------------------------------------------------------------------
+// specs/023-core-vocabulary-conformance — FR-005 / FR-006, contract C1.3
+//
+// typeNode never WRITES a merge attribute onto a Class document; decodeTypeDef
+// keeps READING PAST one an earlier release wrote. The two pull in opposite
+// directions on purpose, and this is where that asymmetry is pinned.
+// ---------------------------------------------------------------------------
+
+// classDocument renders a minimal Class document, optionally carrying a
+// legacy merge attribute.
+func classDocument(name, mergeLine string) string {
+	return "---\n\"@id\": " + name + "\n\"@type\": Class\n" + mergeLine +
+		"---\n# " + name + "\n\nA type registered by this test fixture.\n\n" +
+		"## Requires\n- required:: [[title]]\n"
+}
+
+// TestResolveClassMergeAttributeIsIgnoredWhateverItsValue asserts that a
+// legal merge value, an illegal one, and no merge at all all resolve to the
+// SAME core.TypeDef. Any difference between the three would mean the retired
+// field still influences the effective contract.
+func TestResolveClassMergeAttributeIsIgnoredWhateverItsValue(t *testing.T) {
+	variants := map[string]string{
+		"legal value":   "merge: union\n",
+		"illegal value": "merge: nonsense\n",
+		"retired value": "merge: validatedOverwrite\n",
+		"absent":        "",
+	}
+
+	resolved := map[string]core.TypeDef{}
+	for label, mergeLine := range variants {
+		store := newSeededStore()
+		store.files[kernel.TypesDir+"/Widget.md"] = classDocument("Widget", mergeLine)
+
+		index, err := service.Resolve(store)
+		it.Then(t).Should(it.Nil(err))
+
+		def, ok := index.Types["Widget"]
+		it.Then(t).Should(it.True(ok))
+		resolved[label] = def
+	}
+
+	baseline := resolved["absent"]
+	for label, def := range resolved {
+		it.Then(t).
+			Should(it.Seq(def.Required).Equal(baseline.Required...)).
+			Should(it.Seq(def.Optional).Equal(baseline.Optional...)).
+			Should(it.Equal(baseline.Description, def.Description))
+		if len(def.Required) == 0 {
+			t.Errorf("%s: Widget resolved with no Required predicates", label)
+		}
+	}
+}
+
+// TestSeedClassDocumentsCarryNoMergeAttribute is contract C2.2b asserted
+// directly over Seed()'s output, independent of the golden files — so a
+// careless `-update` cannot mask a regression.
+func TestSeedClassDocumentsCarryNoMergeAttribute(t *testing.T) {
+	seed := service.Seed()
+
+	for path, raw := range seed {
+		if !strings.HasPrefix(path, kernel.TypesDir+"/") {
+			continue
+		}
+		for _, line := range strings.Split(string(raw), "\n") {
+			if strings.HasPrefix(line, "merge:") {
+				t.Errorf("%s carries a type-level %q; CORE §9.3 retired it", path, line)
+			}
+		}
+	}
+}
+
+// TestRegisterTypeWritesNoMergeAttribute — FR-005 for the auto-registration
+// path, which stamped merge: union onto every Class document it created.
+func TestRegisterTypeWritesNoMergeAttribute(t *testing.T) {
+	store := newSeededStore()
+
+	created, err := service.RegisterType(store, "Hypothesis")
+	it.Then(t).Should(it.Nil(err)).Should(it.True(created))
+
+	raw := store.files[kernel.TypesDir+"/Hypothesis.md"]
+	it.Then(t).
+		Should(it.String(raw).Contain(`"@type": Class`)).
+		ShouldNot(it.String(raw).Contain("merge:"))
 }

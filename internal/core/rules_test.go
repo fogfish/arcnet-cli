@@ -35,14 +35,12 @@ func TestPredicateDefFieldConstruction(t *testing.T) {
 
 func TestTypeDefFieldConstruction(t *testing.T) {
 	def := core.TypeDef{
-		Merge:       core.MergeUnion,
 		Required:    []string{"category", "definition"},
 		Optional:    []string{"aliases"},
 		Description: "A subject occurring in sources.",
 	}
 
 	it.Then(t).
-		Should(it.Equal(core.MergeUnion, def.Merge)).
 		Should(it.Seq(def.Required).Equal("category", "definition")).
 		Should(it.Seq(def.Optional).Equal("aliases")).
 		Should(it.Equal("A subject occurring in sources.", def.Description))
@@ -67,14 +65,14 @@ func TestIndexPredicatesLookup(t *testing.T) {
 func TestIndexTypesLookup(t *testing.T) {
 	index := core.Index{
 		Types: map[string]core.TypeDef{
-			"Entity": {Merge: core.MergeUnion, Description: "..."},
+			"Entity": {Description: "..."},
 		},
 	}
 
 	def, ok := index.Types["Entity"]
 	it.Then(t).
 		Should(it.True(ok)).
-		Should(it.Equal(core.MergeUnion, def.Merge))
+		Should(it.Equal("...", def.Description))
 
 	_, ok = index.Types["hypothesis"]
 	it.Then(t).Should(it.True(!ok))

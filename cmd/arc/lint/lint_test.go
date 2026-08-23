@@ -1421,3 +1421,161 @@ func TestLintAllCamelCaseGraphReportsNoTypeCaseViolation(t *testing.T) {
 		Should(it.Nil(err)).
 		ShouldNot(it.String(out).Contain("typeCase"))
 }
+
+// ---------------------------------------------------------------------------
+// specs/023-core-vocabulary-conformance — User Story 3
+//
+// A graph shaped exactly as ARCNET-CORE v0.11 describes lints clean.
+//
+// Every assertion below runs against the HAND-BUILT fixture at
+// internal/app/lint/service/testdata/v011-graph, never against arc init or
+// arc apply output. A lint expectation asserted against the tool's own
+// output agrees with the tool by construction and passes vacuously
+// (CORE-FIX.md §5.7).
+// ---------------------------------------------------------------------------
+
+// v011FixtureRoot is resolved at package-variable initialization time —
+// before any test calls chdir(t, ...) into a temporary graph, after which a
+// relative path no longer resolves. The fixture is shared with
+// internal/app/lint/service's own unit tests rather than duplicated here,
+// so the two cannot drift apart.
+var v011FixtureRoot = func() string {
+	abs, err := filepath.Abs(filepath.Join("..", "..", "..", "internal", "app", "lint", "service", "testdata", "v011-graph"))
+	if err != nil {
+		panic(err)
+	}
+	return abs
+}()
+
+// buildV011Graph seeds a real graph (git, .arc/, _schema/ from Seed()) and
+// copies the fixture's content nodes into it. _schema/ is never taken from
+// the fixture, so the fixture cannot carry a stale copy of the built-in
+// vocabulary.
+func buildV011Graph(t *testing.T, dir string) {
+	t.Helper()
+	initGraph(t, dir)
+
+	err := filepath.WalkDir(v011FixtureRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, rerr := filepath.Rel(v011FixtureRoot, path)
+		if rerr != nil {
+			return rerr
+		}
+		if rel == "README.md" {
+			return nil
+		}
+		raw, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return rerr
+		}
+		writeNode(t, dir, filepath.ToSlash(rel), string(raw))
+		return nil
+	})
+	it.Then(t).Should(it.Nil(err))
+
+	// The fixture's Source needs the CORE §11.3 ingest commit shape, so
+	// RuleIngestCommit finds exactly one matching commit for it.
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "graph(ingest): kolesnikov-2026-vocabulary — Schema Vocabulary Conformance\n\nSource-Id: kolesnikov-2026-vocabulary\n")
+}
+
+// arc lint
+// Scenario 1 from spec.md US3 (023): a subject node carrying no publication
+// date and no creation timestamp draws no missing-required-predicate
+// diagnostic — CORE §11.1's universal base requires neither (FR-007).
+func TestLintV011EntityWithoutProvenanceTimestampsIsClean(t *testing.T) {
+	dir := t.TempDir()
+	buildV011Graph(t, dir)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("Merge Vocabulary"))
+}
+
+// arc lint
+// Scenario 2 from spec.md US3 (023): a timeline period node carrying only
+// its chronological citations draws no missing-required-predicate
+// diagnostic — §11.5 requires cites alone (FR-009).
+func TestLintV011TimelineWithCitesAloneIsClean(t *testing.T) {
+	dir := t.TempDir()
+	buildV011Graph(t, dir)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("timeline/yearly/2026.md"))
+}
+
+// arc lint
+// Scenario 3 from spec.md US3 (023): a timeline period node additionally
+// carrying granularity, a period code, and a heading has none of the three
+// reported as an undeclared predicate — they stay declared, as Optional.
+func TestLintV011TimelineOptionalPredicatesArePermitted(t *testing.T) {
+	dir := t.TempDir()
+	buildV011Graph(t, dir)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("typeOptional")).
+		ShouldNot(it.String(out).Contain("timeline/monthly/2026-04.md"))
+}
+
+// arc lint
+// Scenario 4 from spec.md US3 (023): a document node carrying no
+// publication date IS reported — a Source requires published by its own
+// type, not by inheritance (FR-008). This is the assertion that keeps
+// FR-007's relaxation from becoming a blanket exemption.
+func TestLintV011SourceMissingPublishedIsReported(t *testing.T) {
+	dir := t.TempDir()
+	buildV011Graph(t, dir)
+
+	defective := `---
+"@id": nakamoto-2026-undated
+"@type": Source
+title: "A Document With No Publication Date"
+---
+# nakamoto-2026-undated
+
+A Source deliberately missing the publication date its own type requires.
+
+## Mentions
+- mentions:: [[Merge Vocabulary]]
+`
+	writeNode(t, dir, "Source/nakamoto-2026-undated.md", defective)
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "graph(ingest): nakamoto-2026-undated — A Document With No Publication Date\n\nSource-Id: nakamoto-2026-undated\n")
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("Source/nakamoto-2026-undated.md")).
+		Should(it.String(out).Contain("typeRequires")).
+		Should(it.String(out).Contain("published"))
+}
+
+// arc lint
+// Scenario 5 from spec.md US3 (023): a graph shaped exactly as CORE
+// describes it reports clean end to end (SC-003, SC-004).
+func TestLintV011GraphReportsClean(t *testing.T) {
+	dir := t.TempDir()
+	buildV011Graph(t, dir)
+	chdir(t, dir)
+
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.String(out).Contain("5 nodes checked, 5 passing, 0 failing"))
+}

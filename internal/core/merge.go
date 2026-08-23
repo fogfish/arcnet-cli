@@ -114,8 +114,8 @@ func isListMerge(op MergeOp) bool {
 }
 
 // mergeScalar implements research.md D5's three scalar dispatch classes,
-// chosen by op: freeze (immutable, validatedOverwrite) — existing, once
-// non-empty, is permanent, never flagged; flagOnDiverge (firstWriteWin,
+// chosen by op: freeze (immutable alone) — existing, once non-empty, is
+// permanent, never flagged; flagOnDiverge (firstWriteWin,
 // fillIfEmpty) — same freeze rule, except a later genuine divergence is
 // reported via diverges; alwaysOverwrite (lastWriteWin) — incoming,
 // whenever non-empty, always replaces existing, never flagged. Every
@@ -124,6 +124,13 @@ func isListMerge(op MergeOp) bool {
 // simply "no prior value to overwrite" for lastWriteWin. outcome is one
 // of the Outcome* constants (spec.md FR-017/BUG-001), derived from the
 // same branch that decided merged/diverges — never computed separately.
+//
+// The retired "validatedOverwrite" used to sit in the FREEZE class
+// alongside immutable, which made scoreZ/scoreC permanent once written —
+// flatly contradicting their own registered descriptions ("recomputed by a
+// validation/ingest pass"). Both now declare lastWriteWin and land in
+// alwaysOverwrite, so a recomputation pass supersedes the previous score
+// (specs/023-core-vocabulary-conformance, contract C1.4, research.md D7).
 func mergeScalar[T comparable](existing, incoming, zero T, op MergeOp) (merged T, diverges bool, outcome string) {
 	if incoming == zero || incoming == existing {
 		return existing, false, OutcomeUnchanged
@@ -155,9 +162,17 @@ const paragraphShingleSize = 3
 // fallback) is reconciled paragraph-by-paragraph through mergeText; every
 // other key goes through the scalar dispatch classes (mergeScalar),
 // keyed by that key's own declared MergeOp — no key is special-cased by
-// name (research.md D5b: "notes" needs no carve-out anymore, since its own
-// predicate already declares firstWriteWin). A key present on only one
-// side behaves like a scalar/paragraph merge against "" on the other.
+// name. "notes" in particular needs no carve-out: it declares append
+// (CORE §10.7) and so takes the paragraph path like any other
+// accumulating prose key, which is exactly what its removed carve-out
+// used to hard-code — the earlier claim here, that "notes" declares
+// firstWriteWin, was never true of the seeded vocabulary. The
+// type-specific prose keys that must NOT accumulate — abstract,
+// description, definition, relevance — express that through their own
+// firstWriteWin declaration rather than through a name check here
+// (specs/023-core-vocabulary-conformance FR-013). A key present on only
+// one side behaves like a scalar/paragraph merge against "" on the
+// other.
 func mergeTexts(existing, incoming map[string]string, index Index, sourceID string) (map[string]string, []string, []PredicateOutcome) {
 	merged := make(map[string]string, len(existing)+len(incoming))
 
@@ -222,7 +237,7 @@ func mergeText(existingText, incomingText string) string {
 	if existingText == "" {
 		return incomingText
 	}
-	merged := mergeParagraphs(splitParagraphs(existingText), splitParagraphs(incomingText))
+	merged := mergeParagraphs(SplitParagraphs(existingText), SplitParagraphs(incomingText))
 	return strings.Join(merged, "\n\n")
 }
 
@@ -253,9 +268,20 @@ func paragraphAlreadyPresent(incoming []string, existingShingles [][]string) boo
 	return false
 }
 
-// splitParagraphs recovers the paragraph granularity ParseNode/RenderNode
+// SplitParagraphs recovers the paragraph granularity ParseNode/RenderNode
 // already round-trip Text through: blank-line-delimited blocks.
-func splitParagraphs(text string) []string {
+//
+// Exported for internal/app/ctrl/service's prose-drift scan
+// (specs/023-core-vocabulary-conformance FR-023, contract C3.7), which
+// reports a node whose firstWriteWin-declared text predicate holds more
+// than one paragraph — the shape only the previous append behaviour could
+// have produced. Reusing this rather than inventing a second splitter is
+// the point: the scan must agree with the merge algebra about where a
+// paragraph boundary is, or it reports the wrong nodes.
+//
+// internal/app/graph/service.splitParagraphsLocal is a hand-copied
+// duplicate predating this export and can be retired in favour of it.
+func SplitParagraphs(text string) []string {
 	raw := strings.Split(text, "\n\n")
 	out := make([]string, 0, len(raw))
 	for _, p := range raw {

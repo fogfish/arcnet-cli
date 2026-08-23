@@ -25,7 +25,11 @@ go build -o arc ./cmd/arc
 ./arc serve
 ```
 
-`arc init` bootstraps a new, empty knowledge graph in the current directory (or an optional target directory): the canonical folder layout, a first-class, versioned `_schema/` seeded with every ARCNET-CORE node kind and predicate, the `.arc/` local state directory, a `.gitignore`, and a single initial git commit. Initialization is fully offline — no network access required.
+`arc init` bootstraps a new, empty knowledge graph in the current directory (or an optional target directory): the canonical folder layout, a first-class, versioned `_schema/` seeded with ARCNET-CORE v0.11's full built-in vocabulary — every core type and predicate, one document each — the `.arc/` local state directory, a `.gitignore`, and a single initial git commit. Initialization is fully offline — no network access required.
+
+Every seeded predicate declares its merge behaviour from CORE §9.3's closed set of six — `immutable`, `union`, `firstWriteWin`, `fillIfEmpty`, `lastWriteWin`, `append` — and a schema document declaring anything else is refused outright. Type definitions carry no merge declaration at all: merge is a property of a predicate, not of a type. Type-specific prose (a document's `abstract`, an entity's `definition`, a reference's `relevance`, a definition's `description`) is single-valued and first-fixed, so re-ingesting a lightly edited document preserves the established text and flags the divergence for review rather than accumulating paragraphs. The universal base type requires no predicates; a document requires its own `title`, `published`, `abstract`, and `mentions`, a timeline period requires only its `cites`, and an external-work reference requires only its `title`.
+
+> `arc` is pre-1.0 and experimental. This vocabulary correction is a breaking change for a graph seeded by an earlier release — no migration path is provided, by design; re-initialize instead.
 
 `arc apply` ingests a document patch into an already-initialized graph: it creates or merges every node the patch carries, derives and appends timeline entries, auto-registers any previously-unseen node kind or predicate into `_schema/` in the same commit, and produces exactly one commit. Re-applying an already-tracked document is a safe no-op.
 
