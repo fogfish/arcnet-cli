@@ -120,7 +120,7 @@ const conformantSource = `---
 "@id": foo-2026-x
 "@type": Source
 title: "A Test Document"
-authors: [Test Author]
+author: [Test Author]
 published: "2026-04-12"
 created: "2026-04-12"
 ---
@@ -548,7 +548,7 @@ func TestLintTypeRequiresMissingPredicateReported(t *testing.T) {
 "@id": foo-2026-x
 "@type": Source
 title: "A Test Document"
-authors: [Test Author]
+author: [Test Author]
 published: "2026-04-12"
 ---
 # foo-2026-x
@@ -614,7 +614,7 @@ func TestLintTypeOptionalUnlistedPredicateReported(t *testing.T) {
 "@id": foo-2026-x
 "@type": Source
 title: "A Test Document"
-authors: [Test Author]
+author: [Test Author]
 published: "2026-04-12"
 status: read
 ---
@@ -708,7 +708,7 @@ func TestLintUnquotedIdKeyReportsIdentityQuotingViolation(t *testing.T) {
 @id: foo-2026-x
 "@type": Source
 title: "A Test Document"
-authors: [Test Author]
+author: [Test Author]
 published: "2026-04-12"
 ---
 # foo-2026-x
@@ -778,7 +778,7 @@ func TestLintDomainRegisteredCitoPredicateAcceptedAsCitation(t *testing.T) {
 "@id": foo-2026-x
 "@type": Source
 title: "A Test Document"
-authors: [Test Author]
+author: [Test Author]
 published: "2026-04-12"
 ---
 # foo-2026-x
@@ -809,7 +809,7 @@ func TestLintUnregisteredCitationPredicateStillReported(t *testing.T) {
 "@id": foo-2026-x
 "@type": Source
 title: "A Test Document"
-authors: [Test Author]
+author: [Test Author]
 published: "2026-04-12"
 ---
 # foo-2026-x
@@ -854,7 +854,7 @@ func TestLintZeroCitoAlignedPredicatesRejectsEveryCitation(t *testing.T) {
 "@id": foo-2026-x
 "@type": Source
 title: "A Test Document"
-authors: [Test Author]
+author: [Test Author]
 published: "2026-04-12"
 ---
 # foo-2026-x
@@ -1092,12 +1092,12 @@ func TestLintReferenceCarriesExternalWorkPredicatesConformantly(t *testing.T) {
 	dir := t.TempDir()
 	buildConformantGraph(t, dir)
 
+	// "ref"/"status" are retired outright under CORE 0.12 (BUG-001/FR-034) —
+	// no longer part of Reference's conformant shape.
 	reference := `---
 "@id": RFC 8446
 "@type": Reference
 title: The TLS 1.3 Protocol
-ref: standard
-status: backlog
 published: "2026-04-12"
 created: "2026-04-12"
 ---
@@ -1130,7 +1130,7 @@ func TestLintInheritedRequiredPredicateEnforcedLikeDirect(t *testing.T) {
 "@id": foo-2026-x
 "@type": Source
 title: "A Test Document"
-authors: [Test Author]
+author: [Test Author]
 created: "2026-04-12"
 ---
 # foo-2026-x

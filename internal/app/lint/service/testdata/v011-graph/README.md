@@ -13,9 +13,9 @@ of the built-in vocabulary.
 | Node | Shape under test |
 | --- | --- |
 | `Source/kolesnikov-2026-vocabulary.md` | all four of §11.2's required predicates — `title`, `published`, `abstract` (leading prose), `mentions` |
-| `Entity/Merge Vocabulary.md` | §11.3's `category`, `definition` (leading prose), `mentionedIn` — and **no** `published`/`created` |
+| `Entity/Merge Vocabulary.md` | §11.3's `category`, `text` (leading prose, BUG-001/FR-030 — was `definition`), `mentionedIn` — and **no** `published`/`created` |
 | `Reference/RFC 8446.md` | §11.6 v0.11's required `title` **alone** |
 | `timeline/yearly/2026.md` | §11.5's required `cites` **alone** |
-| `timeline/monthly/2026-04.md` | `cites` plus the optional `granularity`, `period`, `heading` |
+| `timeline/monthly/2026-04.md` | `cites` plus the optional `period`, `heading` (**not** `granularity` — retired outright, BUG-001/FR-035) |
 
 `README.md` is not a node: consumers copy `*.md` under the node folders only.

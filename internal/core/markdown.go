@@ -374,13 +374,14 @@ func isCamelCase(s string) bool {
 // table.
 //
 // Leading prose keys by the predicate its own type declares, across the five
-// ARCNET-CORE v0.11 content types: "abstract" for Source, "definition" for
-// Entity, "text" for Resource, "relevance" for Reference, and "text" for
-// anything else. Trailing prose is "notes" unconditionally, for every type.
-// Resource means a fragment of an *ingested* document and Reference an
-// un-ingested external work, so the leading key each takes is the one that
-// type actually requires — storing a Resource's body under "relevance" would
-// put it under a predicate the type no longer declares at all
+// ARCNET-CORE v0.11 content types: "abstract" for Source, "text" for both
+// Entity and Resource (BUG-001/FR-030 — CORE 0.12 retires Entity's own
+// "definition"), "relevance" for Reference, and "text" for anything else.
+// Trailing prose is "notes" unconditionally, for every type. Resource means
+// a fragment of an *ingested* document and Reference an un-ingested external
+// work, so the leading key each takes is the one that type actually requires
+// — storing a Resource's body under "relevance" would put it under a
+// predicate the type no longer declares at all
 // (specs/022-reference-type-folders, contract C4).
 //
 // Parse and render both route through this one function
@@ -402,9 +403,17 @@ func textPredicateFor(nodeType string, leading bool) string {
 	switch nodeType {
 	case "Source":
 		return "abstract"
-	case "Entity":
-		return "definition"
-	case "Resource":
+	case "Entity", "Resource":
+		// "text" for both (BUG-001/FR-030): CORE 0.12 retires Entity's
+		// "definition" predicate, and Resource already keyed its leading
+		// prose as "text" — reusing that registered predicate is the
+		// resolution to the merge collision this rename would otherwise
+		// create (plan.md F7), not a new predicate. Both types therefore
+		// merge their leading prose by MergeAppend, not MergeFirstWriteWin
+		// — a deliberate, accepted regression of Entity's first-fixed
+		// prose protection (spec 023 US1), traded for not inventing a
+		// per-type/role-qualified merge override the algebra doesn't
+		// otherwise have.
 		return "text"
 	case "Reference":
 		return "relevance"

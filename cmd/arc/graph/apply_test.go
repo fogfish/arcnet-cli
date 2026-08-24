@@ -186,7 +186,7 @@ title: "TLS 1.3: Design and Rationale"
 "@id": "rescorla-2026-tls13"
 "@type": Source
 title: "TLS 1.3: Design and Rationale"
-authors: [Eric Rescorla]
+author: [Eric Rescorla]
 published: "2026-04-12"
 url: https://example.org/tls13-design
 ` + "```" + `
@@ -353,7 +353,7 @@ title: "Post-Quantum Key Exchange in Practice"
 "@id": "chen-2026-pqkex"
 "@type": Source
 title: "Post-Quantum Key Exchange in Practice"
-authors: [Lin Chen]
+author: [Lin Chen]
 published: "2026-04-28"
 ` + "```" + `
 
@@ -395,12 +395,14 @@ func TestApplyMergesExistingEntityUnion(t *testing.T) {
 		Should(it.String(content).Contain("requires:: [[Forward Secrecy]]"))
 }
 
+// "status" (retired outright, BUG-001/FR-034) is replaced by "scoreZ" —
+// still a real registered MergeLastWriteWin predicate, exercising the exact
+// same "silently takes the newest value" semantics these fixtures test.
 const rfcResourceSeedEmptyStatus = `---
 "@id": "RFC 8446"
 "@type": Resource
 title: RFC 8446
-ref: standard
-status: ""
+scoreZ: ""
 ---
 # RFC 8446
 
@@ -420,7 +422,7 @@ title: "Post-Quantum Key Exchange in Practice"
 "@id": "chen-2026-pqkex"
 "@type": Source
 title: "Post-Quantum Key Exchange in Practice"
-authors: [Lin Chen]
+author: [Lin Chen]
 published: "2026-04-28"
 ` + "```" + `
 
@@ -432,8 +434,7 @@ Surveys post-quantum key exchange deployment.
 ` + "```yaml" + `
 "@id": "RFC 8446"
 "@type": Resource
-ref: standard
-status: read
+scoreZ: read
 ` + "```" + `
 
 The normative specification of TLS 1.3.
@@ -452,15 +453,14 @@ func TestApplyMergeFillsEmptyResourceField(t *testing.T) {
 	it.Then(t).ShouldNot(it.Error(out, err))
 
 	content := readFile(t, filepath.Join(dir, "Resource", "RFC 8446.md"))
-	it.Then(t).Should(it.String(content).Contain("status: read"))
+	it.Then(t).Should(it.String(content).Contain("scoreZ: read"))
 }
 
 const rfcResourceSeedSetStatus = `---
 "@id": "RFC 8446"
 "@type": Resource
 title: RFC 8446
-ref: standard
-status: read
+scoreZ: read
 category: normative
 ---
 # RFC 8446
@@ -481,7 +481,7 @@ title: "Post-Quantum Key Exchange in Practice"
 "@id": "chen-2026-pqkex"
 "@type": Source
 title: "Post-Quantum Key Exchange in Practice"
-authors: [Lin Chen]
+author: [Lin Chen]
 published: "2026-04-28"
 ` + "```" + `
 
@@ -493,8 +493,7 @@ Surveys post-quantum key exchange deployment.
 ` + "```yaml" + `
 "@id": "RFC 8446"
 "@type": Resource
-ref: standard
-status: backlog
+scoreZ: backlog
 category: informative
 ` + "```" + `
 
@@ -530,7 +529,7 @@ title: "Agentic Coding Workflows"
 "@id": "karpathy-2026-agentic"
 "@type": Source
 title: "Agentic Coding Workflows"
-authors: [Andrej Karpathy]
+author: [Andrej Karpathy]
 published: "2026-05-01"
 ` + "```" + `
 
@@ -560,16 +559,17 @@ Andrej Karpathy has publicly argued that agentic coding workflows will reshape h
 // (research.md D5c/D6, a documented, intentional behavior change from the
 // old arity-based dispatch, which silently kept only the existing value).
 //
-// specs/023-core-vocabulary-conformance FR-013 SUPERSEDES spec 012 FR-018
-// for the four type-specific prose predicates: "definition" (LLM's own
-// leading prose, an Entity's own predicate, role: text) declares
-// firstWriteWin, not append. CORE §10.2 makes these single-valued and
-// first-fixed precisely so a re-ingest pipeline's reworded paraphrase
-// cannot slowly turn a definition into a stack of near-synonyms. So the
-// established definition survives verbatim and the divergence is flagged
-// for review — the paragraph-level accumulate-and-dedupe path that
-// BUG-004 restored still governs every append-declared prose key
-// ("notes", "text"), which is where it belongs.
+// BUG-001 (round 2, FR-030) SUPERSEDES the conflict-flagging half of this
+// test's original premise: "definition" (LLM's own leading prose) is
+// retired under CORE 0.12 and replaced by "text" — Resource's own
+// predicate, deliberately kept MergeAppend rather than firstWriteWin to
+// avoid a merge-scoping mechanism the algebra doesn't otherwise have
+// (plan.md F7/Complexity Tracking). So a reworded near-duplicate paragraph
+// no longer diverges-and-flags; it takes the same paragraph-level
+// accumulate-and-dedupe path BUG-004 restored for every append-declared
+// prose key: the near-duplicate reword is silently dropped (kept: the
+// original wording) and the genuinely new paragraph is appended — no
+// conflict marker, because append never flags.
 func TestApplyEntityReContributionFlagsProseAndAccumulatesUnregisteredScalars(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
@@ -579,12 +579,13 @@ func TestApplyEntityReContributionFlagsProseAndAccumulatesUnregisteredScalars(t 
 
 	stdout, stderr, err := sutCaptureStderr(t, NewApplyCmd(), []string{patch})
 	it.Then(t).ShouldNot(it.Error(stdout, err))
-	it.Then(t).Should(it.String(stderr).Contain("merge conflict"))
+	it.Then(t).ShouldNot(it.String(stderr).Contain("merge conflict"))
 
 	content := readFile(t, filepath.Join(dir, "Entity", "LLM.md"))
 	it.Then(t).
-		Should(it.String(content).Contain("<<<<<<< existing")).
+		ShouldNot(it.String(content).Contain("<<<<<<<")).
 		Should(it.String(content).Contain("knowledge management")).
+		ShouldNot(it.String(content).Contain("knowledge organization")).
 		Should(it.String(content).Contain("Andrej Karpathy")).
 		Should(it.String(content).Contain("0.13432835820895522")).
 		Should(it.String(content).Contain("0.28125")).
@@ -595,10 +596,11 @@ func TestApplyEntityReContributionFlagsProseAndAccumulatesUnregisteredScalars(t 
 // arc apply pqkex.patch.md
 // Scenario 3 from spec.md US2 / spec.md US2 Acceptance Scenario 1: a
 // resource's firstWriteWin-declared "category" is preserved and flagged
-// on genuine divergence (FR-013 conflict marker); its lastWriteWin-
-// declared "status" diverges too but is never flagged (FR-012) — takes
-// the newest applied value instead; its append-declared leading prose
-// ("relevance", FR-018/BUG-001) diverges too but is appended, never
+// on genuine divergence (FR-013 conflict marker); its lastWriteWin-declared
+// "scoreZ" (BUG-001/FR-034 replaces the retired "status" fixture predicate,
+// same LastWriteWin semantics) diverges too but is never flagged (FR-012)
+// — takes the newest applied value instead; its append-declared leading
+// prose ("text", FR-018/BUG-001) diverges too but is appended, never
 // flagged; commit still completes.
 func TestApplyMergePreservesSetFieldOnDivergence(t *testing.T) {
 	dir := t.TempDir()
@@ -624,7 +626,7 @@ func TestApplyMergePreservesSetFieldOnDivergence(t *testing.T) {
 		Should(it.String(content).Contain("informative")).
 		Should(it.String(content).Contain("The normative specification of TLS 1.3.")).
 		Should(it.String(content).Contain("A survey of TLS 1.3 adoption patterns.")).
-		Should(it.String(content).Contain("status: backlog"))
+		Should(it.String(content).Contain("scoreZ: backlog"))
 
 	it.Then(t).Should(it.String(stderr).Contain("RFC 8446"))
 }
@@ -660,7 +662,7 @@ title: "A Working Note"
 "@id": "kolesnikov-2026-note"
 "@type": Source
 title: "A Working Note"
-authors: [Test Author]
+author: [Test Author]
 published: "2026-05-01"
 ` + "```" + `
 
@@ -937,11 +939,15 @@ func TestApplyRegisteringKindRemovesWarningOnNextApply(t *testing.T) {
 	it.Then(t).ShouldNot(it.String(stderr2).Contain("not a recognized node type"))
 }
 
+// "status" (retired outright, BUG-001/FR-034) is replaced by "scoreZ" — a
+// still-registered, arc-init-seeded MergeLastWriteWin predicate, so this
+// test's hand-edit-the-schema-document premise (below) still has a real
+// _schema/Property/scoreZ.md to hand-edit.
 const hypothesisSeedConfirmed = `---
 "@id": "A Test Hypothesis"
 "@type": Hypothesis
 title: A Test Hypothesis
-status: confirmed
+scoreZ: confirmed
 ---
 # A Test Hypothesis
 
@@ -969,7 +975,7 @@ A short note.
 # Hypothesis
 
 ## A Test Hypothesis
-` + "```yaml\n\"@id\": \"A Test Hypothesis\"\n\"@type\": Hypothesis\nstatus: draft\n```" + `
+` + "```yaml\n\"@id\": \"A Test Hypothesis\"\n\"@type\": Hypothesis\nscoreZ: draft\n```" + `
 
 A conclusion distilled from sources.
 `
@@ -979,7 +985,7 @@ A conclusion distilled from sources.
 // _schema/Class/<kind>.md merge value has no effect on reconciliation
 // (D4 — it's vestigial); hand-editing the touched PREDICATE's own
 // _schema/Property/<name>.md merge value is what changes the behavior a
-// later arc apply invocation actually uses. "status" starts out
+// later arc apply invocation actually uses. "scoreZ" starts out
 // arc-init-seeded lastWriteWin — a diverging contribution is silently
 // applied (no conflict) — but after a hand-edit to firstWriteWin the
 // identical shape of divergence is flagged.
@@ -999,15 +1005,15 @@ func TestApplyHandEditedMergeValueChangesLaterApplyBehavior(t *testing.T) {
 	content := readFile(t, filepath.Join(dir, "Hypothesis", "A Test Hypothesis.md"))
 	it.Then(t).
 		ShouldNot(it.String(content).Contain("<<<<<<<")).
-		Should(it.String(content).Contain("status: draft"))
+		Should(it.String(content).Contain("scoreZ: draft"))
 
-	statusDoc := readFile(t, filepath.Join(dir, "_schema", "Property", "status.md"))
+	statusDoc := readFile(t, filepath.Join(dir, "_schema", "Property", "scoreZ.md"))
 	it.Then(t).Should(it.Nil(os.WriteFile(
-		filepath.Join(dir, "_schema", "Property", "status.md"),
+		filepath.Join(dir, "_schema", "Property", "scoreZ.md"),
 		[]byte(strings.ReplaceAll(statusDoc, "merge: lastWriteWin", "merge: firstWriteWin")), 0o644)))
 
 	firstWriteWinPatch := fmt.Sprintf(patchDivergesHypothesisStatusTemplate, "kolesnikov-2026-second", "Second Note", "kolesnikov-2026-second", "kolesnikov-2026-second", "Second Note")
-	firstWriteWinPatch = strings.ReplaceAll(firstWriteWinPatch, "status: draft", "status: shelved")
+	firstWriteWinPatch = strings.ReplaceAll(firstWriteWinPatch, "scoreZ: draft", "scoreZ: shelved")
 	patch2 := writePatchFile(t, dir, "second.patch.md", firstWriteWinPatch)
 
 	out2, err := sut(NewApplyCmd(), []string{patch2})
@@ -1421,7 +1427,8 @@ A duplicate-tested widget definition.
 // BUG-002 (spec.md FR-019): a second patch contributing a byte-identical
 // definition to an entity another patch already created is a genuine
 // no-op for that union/append predicate — --verbose must report
-// "unchanged", never "appended", when nothing actually changed.
+// "unchanged", never "appended", when nothing actually changed. The
+// predicate itself is "text" (BUG-001/FR-030 — was "definition").
 func TestApplyVerboseReportsUnchangedNotAppendedForDuplicateContribution(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
@@ -1438,8 +1445,8 @@ func TestApplyVerboseReportsUnchangedNotAppendedForDuplicateContribution(t *test
 
 	it.Then(t).ShouldNot(it.Error(stdout, err))
 	it.Then(t).
-		Should(it.String(stderr).Contain("definition: firstWriteWin -> unchanged")).
-		ShouldNot(it.String(stderr).Contain("definition: firstWriteWin -> appended"))
+		Should(it.String(stderr).Contain("text: append -> unchanged")).
+		ShouldNot(it.String(stderr).Contain("text: append -> appended"))
 
 	content := readFile(t, filepath.Join(dir, "Entity", "Widget Dup.md"))
 	it.Then(t).Should(it.Equal(1, strings.Count(content, "A duplicate-tested widget definition.")))
@@ -1573,7 +1580,7 @@ title: "TLS 1.3: Design and Rationale"
 "@id": "rescorla-2026-tls13"
 "@type": Source
 title: "TLS 1.3: Design and Rationale"
-authors: [Eric Rescorla]
+author: [Eric Rescorla]
 published: "2026-04-12"
 ` + "```" + `
 
@@ -1959,7 +1966,7 @@ title: "Ontologies, Graph Structures, and LLM-Based Knowledge Management"
 
 ## dmitry-2026-graph
 ` + "```yaml" + `
-authors:
+author:
     - Dmitry
 published: "2026-07-03"
 title: Ontologies, Graph Structures, and LLM-Based Knowledge Management
@@ -2007,12 +2014,15 @@ func TestApplyHeadingOnlyCanonicalPatchAcceptedEndToEnd(t *testing.T) {
 //
 // The fixtures below use arc init's own real seeded schema
 // (appschema.Seed(), via initGraph) so every predicate's declared merge
-// behavior is exactly what a real graph would use: ref/immutable,
-// status/lastWriteWin, tags/union, category/firstWriteWin, url/
+// behavior is exactly what a real graph would use: created/immutable,
+// scoreZ/lastWriteWin, tags/union, category/firstWriteWin, url/
 // fillIfEmpty (internal/app/schema/kernel/schema.go). "category" (role:
 // meta) stands in for a firstWriteWin exemplar here rather than
 // "abstract" (role: text), since BUG-001/FR-018 repoints every role:text
-// predicate — abstract included — to append.
+// predicate — abstract included — to append. "created"/"scoreZ" replace
+// this block's original "ref"/"status" exemplars, both retired outright
+// under CORE 0.12 (BUG-001/FR-034) — same immutable/lastWriteWin
+// semantics, real registered predicates instead of retired ones.
 
 const resourcePatch012First = `---
 "@type": patch
@@ -2038,8 +2048,8 @@ A source document.
 ` + "```yaml" + `
 "@id": "example-book"
 "@type": Resource
-ref: book
-status: backlog
+created: book
+scoreZ: backlog
 tags: [ai]
 category: "First summary."
 ` + "```" + `
@@ -2071,8 +2081,8 @@ Another source document.
 ` + "```yaml" + `
 "@id": "example-book"
 "@type": Resource
-ref: article
-status: read
+created: article
+scoreZ: read
 tags: [ml]
 category: "A different summary."
 ` + "```" + `
@@ -2083,8 +2093,8 @@ A tracked reading item.
 // arc apply doc-a.patch.md, then doc-b.patch.md
 // spec 012 User Story 1, Acceptance Scenarios 1-4: a single second
 // contribution touching three predicates at once resolves each by its own
-// rule within that one application — ref (immutable) rejects the
-// divergence, status (lastWriteWin) takes the newest value, tags (union)
+// rule within that one application — created (immutable) rejects the
+// divergence, scoreZ (lastWriteWin) takes the newest value, tags (union)
 // accumulates every distinct value, and none of the three affects any
 // other's outcome.
 func TestApply012US1PerPredicateReconciliation(t *testing.T) {
@@ -2101,8 +2111,8 @@ func TestApply012US1PerPredicateReconciliation(t *testing.T) {
 
 	content := readFile(t, filepath.Join(dir, "Resource", "example-book.md"))
 	it.Then(t).
-		Should(it.String(content).Contain("ref: book")).
-		Should(it.String(content).Contain("status: read")).
+		Should(it.String(content).Contain("created: book")).
+		Should(it.String(content).Contain("scoreZ: read")).
 		Should(it.String(content).Contain("- ai")).
 		Should(it.String(content).Contain("- ml"))
 }
@@ -2127,14 +2137,14 @@ func TestApply012BUG001VerboseReportsPerPredicateOutcomes(t *testing.T) {
 
 	it.Then(t).
 		Should(it.String(stderr).Contain("example-book: merged")).
-		Should(it.String(stderr).Contain("ref: immutable -> unchanged")).
-		Should(it.String(stderr).Contain("status: lastWriteWin -> overwritten")).
+		Should(it.String(stderr).Contain("created: immutable -> unchanged")).
+		Should(it.String(stderr).Contain("scoreZ: lastWriteWin -> overwritten")).
 		Should(it.String(stderr).Contain("tags: union -> appended"))
 }
 
 // spec 012 User Story 2, Acceptance Scenario 1/3: within the same
 // combined application, category (firstWriteWin) is flagged for human
-// review on genuine divergence, but tags (union) and status
+// review on genuine divergence, but tags (union) and scoreZ
 // (lastWriteWin) — which diverge too — are never flagged.
 func TestApply012US2ConflictFlaggingScopedToFirstWriteWin(t *testing.T) {
 	dir := t.TempDir()
@@ -2155,8 +2165,8 @@ func TestApply012US2ConflictFlaggingScopedToFirstWriteWin(t *testing.T) {
 		Should(it.String(content).Contain("First summary.")).
 		Should(it.String(content).Contain("A different summary."))
 
-	// tags/status diverge too but must never be wrapped in a marker
-	tagsAndStatusLines := []string{"status: read", "- ai", "- ml"}
+	// tags/scoreZ diverge too but must never be wrapped in a marker
+	tagsAndStatusLines := []string{"scoreZ: read", "- ai", "- ml"}
 	for _, line := range tagsAndStatusLines {
 		it.Then(t).Should(it.String(content).Contain(line))
 	}
@@ -2166,7 +2176,6 @@ const resourceFillIfEmptySeed = `---
 "@id": "RFC 9999"
 "@type": Resource
 title: RFC 9999
-ref: standard
 url: ""
 ---
 # RFC 9999
@@ -2198,7 +2207,6 @@ A source document.
 ` + "```yaml" + `
 "@id": "RFC 9999"
 "@type": Resource
-ref: standard
 url: https://example.org/rfc9999-v1
 ` + "```" + `
 
@@ -2229,7 +2237,6 @@ Another source document.
 ` + "```yaml" + `
 "@id": "RFC 9999"
 "@type": Resource
-ref: standard
 url: https://example.org/rfc9999-v2
 ` + "```" + `
 
@@ -2269,7 +2276,7 @@ const resourceIndependentPredicatesSeed = `---
 "@id": "example-topic"
 "@type": Resource
 title: example-topic
-ref: topic
+created: topic
 ---
 # example-topic
 
@@ -2300,7 +2307,7 @@ A source document.
 ` + "```yaml" + `
 "@id": "example-topic"
 "@type": Resource
-ref: topic
+created: topic
 tags: [ai]
 ` + "```" + `
 
@@ -2331,15 +2338,15 @@ Another source document.
 ` + "```yaml" + `
 "@id": "example-topic"
 "@type": Resource
-ref: topic
-status: read
+created: topic
+scoreZ: read
 ` + "```" + `
 
 An ongoing research topic.
 `
 
 // spec 012 User Story 3, Acceptance Scenario 2: two patches contributing
-// to independent predicates (tags/status) converge on an identical result
+// to independent predicates (tags/scoreZ) converge on an identical result
 // regardless of which order they're applied in.
 func TestApply012US3IndependentPredicatesConvergeInEitherOrder(t *testing.T) {
 	forward := t.TempDir()
@@ -2390,7 +2397,7 @@ func TestApply012US3LastWriteWinIsOrderSensitive(t *testing.T) {
 "@id": "example-book"
 "@type": Resource
 title: example-book
-ref: book
+created: book
 ---
 # example-book
 
@@ -2403,7 +2410,7 @@ A tracked reading item.
 "@id": "example-book"
 "@type": Resource
 title: example-book
-ref: book
+created: book
 ---
 # example-book
 
@@ -2434,8 +2441,8 @@ A source document.
 ` + "```yaml" + `
 "@id": "example-book"
 "@type": Resource
-ref: book
-status: read
+created: book
+scoreZ: read
 ` + "```" + `
 
 A tracked reading item.
@@ -2464,8 +2471,8 @@ Another source document.
 ` + "```yaml" + `
 "@id": "example-book"
 "@type": Resource
-ref: book
-status: archived
+created: book
+scoreZ: archived
 ` + "```" + `
 
 A tracked reading item.
@@ -2495,8 +2502,8 @@ A tracked reading item.
 	reverseContent := readFile(t, filepath.Join(reverse, "Resource", "example-book.md"))
 
 	it.Then(t).
-		Should(it.String(forwardContent).Contain("status: archived")).
-		Should(it.String(reverseContent).Contain("status: read"))
+		Should(it.String(forwardContent).Contain("scoreZ: archived")).
+		Should(it.String(reverseContent).Contain("scoreZ: read"))
 }
 
 // spec 012 User Story 3, Acceptance Scenario 4: a conflict already marked
@@ -2614,7 +2621,7 @@ title: "TLS 1.3: Design and Rationale"
 ` + "```yaml" + `
 "@id": "rescorla-2026-tls13"
 title: "TLS 1.3: Design and Rationale"
-authors: [Eric Rescorla]
+author: [Eric Rescorla]
 published: "2026-04-12"
 ` + "```" + `
 
@@ -2936,7 +2943,7 @@ title: A probe document
 "@id": "doe-2026-probe"
 "@type": Source
 title: A probe document
-authors: [Jane Doe]
+author: [Jane Doe]
 published: "2026-04-12"
 ` + "```" + `
 
@@ -2978,9 +2985,7 @@ A fragment of the probe document worth keeping around.
 "@id": "rescorla-2018-tls13"
 "@type": Reference
 title: "The Transport Layer Security (TLS) Protocol Version 1.3"
-ref: RFC 8446
-year: 2018
-status: backlog
+published: "2018-08-10"
 ` + "```" + `
 
 The normative definition of the handshake this document analyses.
@@ -3108,19 +3113,20 @@ func TestApplyAcceptsReferenceNodeWithoutUnknownTypeDiagnostic(t *testing.T) {
 	// A type the tool already knows is never auto-registered, so applying
 	// one must not rewrite its seeded schema document. Thought, which it
 	// does not know, is the control: that one is registered on first sight.
-	// specs/023 FR-028: §11.6 v0.11 requires "title" alone; "ref" and
-	// "relevance" are retained as Optional.
+	// specs/023 FR-028: §11.6 v0.11 requires "title" alone; "relevance" is
+	// retained as Optional. "ref" is retired outright under CORE 0.12
+	// (BUG-001/FR-034) — no longer part of Reference's conformant shape.
 	referenceSchema := readFile(t, filepath.Join(dir, "_schema", "Class", "Reference.md"))
 	it.Then(t).
 		Should(it.String(referenceSchema).Contain("required:: [[title]]")).
-		Should(it.String(referenceSchema).Contain("optional:: [[ref]]")).
-		Should(it.String(referenceSchema).Contain("optional:: [[relevance]]"))
+		Should(it.String(referenceSchema).Contain("optional:: [[relevance]]")).
+		ShouldNot(it.String(referenceSchema).Contain("optional:: [[ref]]"))
 }
 
 // arc apply probe.patch.md && arc lint
-// spec.md US1 Acceptance Scenario 6: a Reference node carrying title, ref,
-// and leading prose draws no type-conformance diagnostic about a missing
-// required predicate or an undeclared one.
+// spec.md US1 Acceptance Scenario 6: a Reference node carrying title,
+// published, and leading prose draws no type-conformance diagnostic about a
+// missing required predicate or an undeclared one.
 //
 // The assertion names the three required predicates rather than demanding
 // the node be violation-free: arc apply writes no "created" timestamp, so
@@ -3172,7 +3178,9 @@ func TestApplyLeavesOtherTypesLeadingProseDerivationUnchanged(t *testing.T) {
 	it.Then(t).Should(it.String(source.Texts["abstract"]).Contain("An abstract of the probe document"))
 
 	entity := parseNodeFile(t, filepath.Join(dir, "Entity", "Probe Concept.md"))
-	it.Then(t).Should(it.String(entity.Texts["definition"]).Contain("A definition of the probe concept"))
+	// BUG-001/FR-030: Entity's leading-prose predicate is now "text", not
+	// "definition".
+	it.Then(t).Should(it.String(entity.Texts["text"]).Contain("A definition of the probe concept"))
 
 	thought := parseNodeFile(t, filepath.Join(dir, "Thought", "a-passing-thought.md"))
 	it.Then(t).Should(it.String(thought.Texts["text"]).Contain("An unrecognized domain type's node"))
@@ -3331,7 +3339,6 @@ category: [independent, abstract, occurrent, script]
 "@id": "RFC 8446"
 "@type": Reference
 title: "The Transport Layer Security Protocol Version 1.3"
-ref: work
 ` + "```" + `
 
 ` + relevance + `
@@ -3392,7 +3399,6 @@ category: [independent, abstract, occurrent, script]
 "@id": "RFC 8446"
 "@type": Reference
 title: "The Transport Layer Security Protocol Version 1.3"
-ref: work
 ` + "```" + `
 
 ` + relevance + `
@@ -3501,13 +3507,21 @@ func TestApplyThirdApplyReportsNothingToCommit(t *testing.T) {
 }
 
 // arc apply tls13.patch.md, then pqkex.patch.md
-// Scenario 4 from spec.md US1 (023): an Entity's definition and a
-// Reference's relevance behave exactly like a Source's abstract.
+// Scenario 4 from spec.md US1 (023), amended (BUG-001 round 2, FR-030): a
+// Reference's relevance still behaves exactly like a Source's abstract —
+// the established value survives verbatim and the reworded contribution is
+// flagged for review. An Entity's leading prose no longer does: CORE 0.12
+// retires "definition" outright, and its replacement ("text") is
+// deliberately MergeAppend, not firstWriteWin, to avoid the merge-scoping
+// mechanism a per-type override would require (plan.md F7/Complexity
+// Tracking) — so a reworded Entity contribution is appended alongside the
+// original, never flagged, the same as any other append-declared prose key.
 //
-// research.md D8 / plan.md F4 defects 2-3: these two are the leading-prose
-// predicates for Entity and Reference (spec 022 keying), so omitting them
-// would fix prose drift for Source alone and leave the identical defect in
-// two other core types.
+// research.md D8 / plan.md F4 defects 2-3: these two used to be the
+// leading-prose predicates for Entity and Reference (spec 022 keying), so
+// omitting them would fix prose drift for Source alone and leave the
+// identical defect in Reference (Entity's own protection is now
+// deliberately not preserved).
 func TestApplyRewordedDefinitionAndRelevancePreserveFirstValue(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
@@ -3519,8 +3533,9 @@ func TestApplyRewordedDefinitionAndRelevancePreserveFirstValue(t *testing.T) {
 	reference := readFile(t, filepath.Join(dir, "Reference", "RFC 8446.md"))
 
 	it.Then(t).
+		ShouldNot(it.String(entity).Contain(conflictMarkerToken)).
 		Should(it.String(entity).Contain("authenticated and confidential channel between two peers")).
-		Should(it.String(entity).Contain(conflictMarkerToken)).
+		Should(it.String(entity).Contain("An authenticated, private transport negotiated")).
 		Should(it.String(reference).Contain("normative text every implementation claim")).
 		Should(it.String(reference).Contain(conflictMarkerToken))
 }

@@ -658,13 +658,14 @@ func TestApplyReportsStepPerNode(t *testing.T) {
 		Should(it.Equal(6, len(reporter.steps))).
 		Should(it.Equal("foo-2026-x: created", reporter.steps[0])).
 		Should(it.Equal("Widget: merged", reporter.steps[1])).
-		// category/definition are byte-identical on both sides of this
-		// fixture — BUG-002 (spec.md FR-019): a union/append predicate
-		// whose incoming contribution adds no genuinely new value must
-		// report unchanged, not appended.
+		// category/text (Entity's leading prose, BUG-001/FR-030 — was
+		// "definition") are byte-identical on both sides of this fixture —
+		// BUG-002 (spec.md FR-019): a union/append predicate whose incoming
+		// contribution adds no genuinely new value must report unchanged,
+		// not appended.
 		Should(it.Equal("  category: union -> unchanged", reporter.steps[2])).
-		Should(it.Equal("  definition: union -> unchanged", reporter.steps[3])).
-		Should(it.Equal("  published: union -> unchanged", reporter.steps[4])).
+		Should(it.Equal("  published: union -> unchanged", reporter.steps[3])).
+		Should(it.Equal("  text: union -> unchanged", reporter.steps[4])).
 		Should(it.Equal("  title: union -> unchanged", reporter.steps[5]))
 }
 

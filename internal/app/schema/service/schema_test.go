@@ -219,7 +219,7 @@ func TestResolveRoundTripsSeedOutput(t *testing.T) {
 	entity, ok := index.Types["Entity"]
 	it.Then(t).Should(it.True(ok))
 	it.Then(t).
-		Should(it.Seq(entity.Required).Equal("category", "definition", "mentionedIn")).
+		Should(it.Seq(entity.Required).Equal("category", "text", "mentionedIn")).
 		ShouldNot(it.Equal("", entity.Description))
 
 	isPartOf, ok := index.Predicates["isPartOf"]
@@ -657,14 +657,19 @@ func TestSeedEmitsReferenceTypeDocument(t *testing.T) {
 		Should(it.String(content).Contain("subClassOf:: [[Node]]"))
 
 	// specs/023 FR-028 supersedes spec 022's Clarification: §11.6 v0.11's
-	// normative Class block requires "title" alone, and "ref"/"relevance"
-	// move to Optional alongside "status"/"notes".
+	// normative Class block requires "title" alone, and "relevance" moves
+	// to Optional. BUG-001/FR-031/FR-032/FR-034 additionally retire
+	// "authors" (→ "author"), "year" (→ "published"), "ref", and "status"
+	// outright.
 	it.Then(t).Should(it.String(content).Contain("required:: [[title]]"))
-	for _, notRequired := range []string{"ref", "relevance"} {
-		it.Then(t).ShouldNot(it.String(content).Contain("required:: [[" + notRequired + "]]"))
-	}
-	for _, optional := range []string{"url", "authors", "year", "doi", "ref", "relevance", "status", "isCitedBy", "notes"} {
+	it.Then(t).ShouldNot(it.String(content).Contain("required:: [[relevance]]"))
+	for _, optional := range []string{"url", "author", "published", "doi", "isCitedBy", "relevance", "indexed"} {
 		it.Then(t).Should(it.String(content).Contain("optional:: [[" + optional + "]]"))
+	}
+	for _, retired := range []string{"authors", "year", "ref", "status"} {
+		it.Then(t).
+			ShouldNot(it.String(content).Contain("required:: [[" + retired + "]]")).
+			ShouldNot(it.String(content).Contain("optional:: [[" + retired + "]]"))
 	}
 }
 
@@ -689,7 +694,8 @@ func TestSeedResourceDocumentCarriesNoExternalWorkPredicate(t *testing.T) {
 	for _, required := range []string{"text", "tags", "mentionedIn"} {
 		it.Then(t).Should(it.String(content).Contain("required:: [[" + required + "]]"))
 	}
-	it.Then(t).Should(it.String(content).Contain("optional:: [[notes]]"))
+	// BUG-001/FR-033: "notes" is retired from Resource's Optional list too.
+	it.Then(t).ShouldNot(it.String(content).Contain("optional:: [[notes]]"))
 }
 
 // ---------------------------------------------------------------------------

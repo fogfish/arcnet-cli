@@ -141,7 +141,7 @@ const conformantSourceFixture = `---
 "@id": "foo-2026-x"
 "@type": Source
 title: "A Test Document"
-authors: [Test Author]
+author: [Test Author]
 published: "2026-04-12"
 created: "2026-04-12"
 ---

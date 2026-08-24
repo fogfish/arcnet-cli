@@ -9,7 +9,6 @@ A fragment of an ingested document's content that is relevant to the graph but d
 - subClassOf:: [[Node]]
 
 ## Optional
-- optional:: [[notes]]
 - optional:: [[indexed]]
 
 ## Requires
