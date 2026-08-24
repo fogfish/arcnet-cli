@@ -34,7 +34,7 @@ const (
 // CorePredicateDefs is every predicate ARCNET-CORE §10 documents (research.md
 // D6, spec FR-007) — content, metadata/control, structural, semantic,
 // citation, type-specific, and the schema mechanism's own vocabulary
-// (§10.8). "@id"/"@type" (§10.1) are deliberately excluded: they are
+// (§10.7). "@id"/"@type" (§10.1) are deliberately excluded: they are
 // structural identity fields stripped out of Attrs/Edges before a Node is
 // ever constructed (internal/core.identityFields), never looked up through
 // core.Index.Predicates by any consumer — the reference ARCNET-CORE example
@@ -76,26 +76,24 @@ var CorePredicateDefs = map[string]core.PredicateDef{
 	"refutes":          {Role: "edge", Merge: core.MergeUnion, Aligned: "cito:refutes", Description: "The citing statement refutes claims in the target."},
 	"isCitedBy":        {Role: "link", Merge: core.MergeUnion, Aligned: "cito:isCitedBy", Description: "The inverse of any citation predicate — recorded as a backlink under the cited node's own isCitedBy block."},
 
-	"author": {Role: "meta", Merge: core.MergeUnion, Aligned: "schema:author", Description: "The author of the content. Registered alongside the plural \"authors\" (§10.7), which is the array form the type definitions reference; both carry the same standard alignment."},
+	"author": {Role: "meta", Merge: core.MergeUnion, Aligned: "schema:author", Description: "The author of the content."},
 	"about":  {Role: "meta", Merge: core.MergeUnion, Description: "What the content is about — its subject matter: one of technique, theory, platform, system, technology, language, framework, or field."},
 	"genre":  {Role: "meta", Merge: core.MergeUnion, Description: "The genre of the content: one of paper, standard, tool, dataset, or post."},
 
-	"title":       {Role: "meta", Merge: core.MergeImmutable, Aligned: "schema:title", Description: "The document title as published — distinct from @id when @id is a derived citekey."},
-	"abstract":    {Role: "text", Merge: core.MergeFirstWriteWin, Aligned: "schema:abstract", Description: "A short prose summary of the document."},
-	"authors":     {Role: "meta", Merge: core.MergeUnion, Aligned: "schema:author", Description: "Ordered list of author names."},
-	"url":         {Role: "meta", Merge: core.MergeFillIfEmpty, Aligned: "schema:url", Description: "Canonical location of the document or work."},
-	"doi":         {Role: "meta", Merge: core.MergeFillIfEmpty, Aligned: "schema:doi", Description: "Digital object identifier."},
-	"category":    {Role: "meta", Merge: core.MergeFirstWriteWin, Description: "John F. Sowa's top-level category, decoded into a bag of words (e.g. independent/physical/continuant/object)."},
-	"aliases":     {Role: "meta", Merge: core.MergeUnion, Aligned: "skos:altLabel", Description: "Alternative names for the entity."},
-	"definition":  {Role: "text", Merge: core.MergeFirstWriteWin, Description: "A one-to-three sentence definition of the subject."},
-	"notes":       {Role: "text", Merge: core.MergeAppend, Description: "Additional prose."},
-	"ref":         {Role: "meta", Merge: core.MergeImmutable, Description: "Reference type: a citable work or a topic/area tracked for reading or research."},
-	"year":        {Role: "meta", Merge: core.MergeImmutable, Description: "Year of publication."},
-	"status":      {Role: "meta", Merge: core.MergeLastWriteWin, Description: "read or backlog — a backlog reference is a research target."},
-	"relevance":   {Role: "text", Merge: core.MergeFirstWriteWin, Description: "A one-to-two sentence note on why the reference matters."},
-	"granularity": {Role: "meta", Merge: core.MergeImmutable, Description: "yearly or monthly."},
-	"heading":     {Role: "meta", Merge: core.MergeFirstWriteWin, Description: "A human-readable title for the period, shown in place of the bare @id (period code)."},
-	"period":      {Role: "meta", Merge: core.MergeImmutable, Aligned: "arc:period", Description: "A timeline node's own period code (YYYY or YYYY-MM), duplicated from its @id so a bare 4-digit yearly value always decodes as a YAML string rather than an integer."},
+	"title":    {Role: "meta", Merge: core.MergeImmutable, Aligned: "schema:title", Description: "The document title as published — distinct from @id when @id is a derived citekey."},
+	"abstract": {Role: "text", Merge: core.MergeFirstWriteWin, Aligned: "schema:abstract", Description: "A short prose summary of the document."},
+	"url":      {Role: "meta", Merge: core.MergeFillIfEmpty, Aligned: "schema:url", Description: "Canonical location of the document or work."},
+	"doi":      {Role: "meta", Merge: core.MergeFillIfEmpty, Aligned: "schema:doi", Description: "Digital object identifier."},
+	"category": {Role: "meta", Merge: core.MergeFirstWriteWin, Description: "John F. Sowa's top-level category, decoded into a bag of words (e.g. independent/physical/continuant/object)."},
+	"aliases":  {Role: "meta", Merge: core.MergeUnion, Aligned: "skos:altLabel", Description: "Alternative names for the entity."},
+	// "notes" is retired (BUG-001/FR-033) as an Entity/Resource predicate —
+	// it stays registered because Reference still declares it (§11.6's own
+	// worked example), and it remains the generic non-leading-prose key
+	// every other type's trailing body section renders under.
+	"notes":     {Role: "text", Merge: core.MergeAppend, Description: "Additional prose."},
+	"relevance": {Role: "text", Merge: core.MergeFirstWriteWin, Description: "A one-to-two sentence note on why the reference matters."},
+	"heading":   {Role: "meta", Merge: core.MergeFirstWriteWin, Description: "A human-readable title for the period, shown in place of the bare @id (period code)."},
+	"period":    {Role: "meta", Merge: core.MergeImmutable, Aligned: "arc:period", Description: "A timeline node's own period code (YYYY or YYYY-MM), duplicated from its @id so a bare 4-digit yearly value always decodes as a YAML string rather than an integer."},
 
 	"role":        {Role: "meta", Merge: core.MergeImmutable, Description: "One of meta/text/href/edge/link (CORE §5): the predicate's serialization position."},
 	"merge":       {Role: "meta", Merge: core.MergeImmutable, Description: "One of the merge behaviors (CORE §9.3): how contributions to this predicate combine."},
@@ -111,10 +109,10 @@ var CorePredicateDefs = map[string]core.PredicateDef{
 // CoreTypeDefs is ARCNET-CORE's five fixed content types (CORE §11, seeded
 // for arc init since spec 005) plus the universal Node base and
 // Property/Class themselves, since a schema node's own "@type" value is
-// itself a type in use (CORE §10.8, research.md D6).
+// itself a type in use (CORE §10.7, research.md D6).
 //
 // No entry declares a merge behaviour: CORE §9.3 retired type-level merge
-// in favour of per-predicate merge, and §10.8 registers "merge" as a
+// in favour of per-predicate merge, and §10.7 registers "merge" as a
 // predicate Property alone uses. core.TypeDef carries no such field for a
 // literal here to set (specs/023-core-vocabulary-conformance FR-005).
 var CoreTypeDefs = map[string]core.TypeDef{
@@ -130,13 +128,22 @@ var CoreTypeDefs = map[string]core.TypeDef{
 		// not declare. Permitting them on Source, the type §10.2's own
 		// examples attach them to, is what closes that half (data-model.md
 		// §4 lists only the registration).
-		Optional:    []string{"author", "authors", "about", "genre", "url", "cites", "tags", "doi", "indexed"},
+		Optional:    []string{"author", "about", "genre", "url", "cites", "tags", "doi", "indexed"},
 		Description: "A node for one ingested document — the provenance origin other nodes derive from.",
 	},
+	// "text" (not "definition") is Entity's own leading-prose predicate
+	// (BUG-001/FR-030): CORE 0.12 retires "definition", and textPredicateFor
+	// already keys Resource's leading prose as "text", so Entity's rename
+	// reuses that same registered predicate rather than adding a new one.
+	// "text" is MergeAppend, not MergeFirstWriteWin — a deliberate, accepted
+	// regression of the first-fixed prose protection spec 023's own US1
+	// gave "definition" (plan.md F7/Complexity Tracking; no per-type merge
+	// override is introduced to avoid it). "notes" is retired from Optional
+	// (FR-033).
 	"Entity": {
-		Required: []string{"category", "definition", "mentionedIn"},
+		Required: []string{"category", "text", "mentionedIn"},
 		Optional: []string{
-			"aliases", "tags", "notes", "indexed", "mentions",
+			"aliases", "tags", "indexed", "mentions",
 			"broader", "narrower", "isPartOf", "hasPart", "requires", "replaces", "isReplacedBy", "conformsTo", "related", "referencedBy",
 		},
 		Description: "A node for a subject occurring in sources, typed by Sowa category.",
@@ -150,23 +157,29 @@ var CoreTypeDefs = map[string]core.TypeDef{
 	// documented divergence as Timeline's arc-internal "period".
 	"Resource": {
 		Required:    []string{"text", "tags", "mentionedIn"},
-		Optional:    []string{"notes", "indexed"},
+		Optional:    []string{"indexed"},
 		Description: "A fragment of an ingested document's content that is relevant to the graph but does not warrant its own dedicated type; tag-classified so a recurring pattern can later be promoted into a proper domain type.",
 	},
-	// §11.5 requires "cites" alone. "granularity" and "period" stay
-	// declared as Optional — §11.5's own worked example carries a
-	// granularity — but a period node that holds only its chronological
-	// citations is conformant and must lint clean (FR-009).
+	// §11.5 requires "cites" alone. "granularity" is retired outright
+	// (BUG-001/FR-035) — redundant with the "@id" period-code shape
+	// (YYYY vs YYYY-MM) and the yearly/monthly subfolder a Timeline node
+	// already sits in; internal/app/graph/service derives bucketing from
+	// those instead of a stored predicate. "period" stays Optional — an
+	// arc-internal addition CORE never documents (spec 003 BUG-007) but
+	// distinct from the retired "granularity".
 	"Timeline": {
 		Required:    []string{"cites"},
-		Optional:    []string{"granularity", "period", "heading", "indexed", "mentions", "mentionedIn"},
+		Optional:    []string{"period", "heading", "indexed", "mentions", "mentionedIn"},
 		Description: "A production-date index of ingested documents.",
 	},
-	// §11.6 v0.11's normative Class block requires "title" alone. "ref",
-	// "relevance", "status", and "notes" are retained as Optional so
-	// §11.6's own worked example — which carries a ref and a status —
-	// conforms to the type it illustrates, and so spec 022's body-prose
-	// keying (a Reference's leading prose is its "relevance") survives.
+	// §11.6 v0.11's normative Class block requires "title" alone.
+	// "relevance" is retained as Optional so spec 022's body-prose keying
+	// (a Reference's leading prose is its "relevance") survives. "authors",
+	// "year", "ref", and "status" are all retired under CORE 0.12
+	// (BUG-001/FR-031/FR-032/FR-034): "author" (singular) replaces
+	// "authors", "published" replaces "year" — both already registered,
+	// correctly shaped predicates, so no new registration is needed — and
+	// "ref"/"status" have no replacement, they are simply gone.
 	//
 	// This SUPERSEDES a recorded Clarification in
 	// specs/022-reference-type-folders, which required title/ref/relevance
@@ -179,7 +192,7 @@ var CoreTypeDefs = map[string]core.TypeDef{
 	// the same reason.
 	"Reference": {
 		Required:    []string{"title"},
-		Optional:    []string{"url", "authors", "year", "doi", "isCitedBy", "ref", "relevance", "status", "notes", "indexed"},
+		Optional:    []string{"url", "author", "published", "doi", "isCitedBy", "relevance", "indexed"},
 		Description: "A node for an external work the graph points to but has not ingested, or a topic/area tracked for reading or research.",
 	},
 	// §11.1: every node carries "@id"/"@type" and nothing else

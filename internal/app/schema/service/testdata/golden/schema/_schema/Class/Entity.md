@@ -11,7 +11,6 @@ A node for a subject occurring in sources, typed by Sowa category.
 ## Optional
 - optional:: [[aliases]]
 - optional:: [[tags]]
-- optional:: [[notes]]
 - optional:: [[indexed]]
 - optional:: [[mentions]]
 - optional:: [[broader]]
@@ -27,5 +26,5 @@ A node for a subject occurring in sources, typed by Sowa category.
 
 ## Requires
 - required:: [[category]]
-- required:: [[definition]]
+- required:: [[text]]
 - required:: [[mentionedIn]]

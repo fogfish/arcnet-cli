@@ -75,9 +75,9 @@ violations for a field with no effect.
 | `abstract` | `append` | **`firstWriteWin`** | §10.2 |
 | `description` | `append` | **`firstWriteWin`** | §10.8 |
 | `cites` | `append` | **`union`** | §10.6 |
-| `year` | `fillIfEmpty` | **`immutable`** | §10.7 |
-| `definition` | `append` | **`firstWriteWin`** | §10.2 rationale (research D8) |
-| `relevance` | `append` | **`firstWriteWin`** | §10.2 rationale (research D8) |
+| ~~`year`~~ | `fillIfEmpty` | ~~**`immutable`**~~ | §10.7 — **retired outright under CORE 0.12; see §8** |
+| ~~`definition`~~ | `append` | ~~**`firstWriteWin`**~~ | §10.2 rationale (research D8) — **renamed to `text`/`MergeAppend` under CORE 0.12; see §8** |
+| `relevance` | `append` | **`firstWriteWin`** | §10.2 rationale (research D8) — unaffected by CORE 0.12 (BUG-001 F7) |
 | `scoreZ` | `validatedOverwrite` | **`lastWriteWin`** | §9.3 menu (research D7) |
 | `scoreC` | `validatedOverwrite` | **`lastWriteWin`** | §9.3 menu (research D7) |
 
@@ -90,15 +90,15 @@ violations for a field with no effect.
 | `url` | `schema:url` | §10.2 |
 | `doi` | `schema:doi` | §10.2 |
 | `aliases` | `skos:altLabel` | §10.1 |
-| `authors` | `schema:author` | §10.7 |
+| ~~`authors`~~ | ~~`schema:author`~~ | §10.7 — **`authors` retired under CORE 0.12; the alignment moves to the surviving singular `author` (already aligned, §3.1). See §8.** |
 
 ### 3.4 Deliberate, documented divergences
 
 | `@id` | Tool | Upstream | Why |
 | --- | --- | --- | --- |
 | `cites` | `role: link` | `role: edge` (§10.6) | §10.6's own entry says "recorded under its `## Cites` block" and §11.2's example writes that heading — both `link` behaviour (§5). Merge corrected, role kept. File upstream. |
-| `granularity`, `heading`, `period`, `indexed`, `scoreZ`, `scoreC`, `subClassOf` | registered | unregistered | `arc:`-native extensions, or (for `granularity`) used by §11.5's example with no §10 entry. Registering them is more conformant, not less. |
-| `definition`, `relevance` | `firstWriteWin` | *merge unstated* | §9.1 makes `merge` mandatory; the tool must pick. See research D8. |
+| ~~`granularity`~~, `heading`, `period`, `indexed`, `scoreZ`, `scoreC`, `subClassOf` | registered | unregistered | `arc:`-native extensions, or (for `granularity`) used by §11.5's example with no §10 entry. Registering them is more conformant, not less. **`granularity` retired outright under CORE 0.12 — no longer "more conformant than the spec," the spec caught up. See §8.** |
+| ~~`definition`~~, `relevance` | `firstWriteWin` | *merge unstated* | §9.1 makes `merge` mandatory; the tool must pick. See research D8. **`definition` renamed to `text` under CORE 0.12, which is `MergeAppend`, not `firstWriteWin` — see §8.** |
 
 `@id` and `@type` remain deliberately unregistered: `internal/core.identityFields` strips them
 before a `Node` is constructed, so nothing ever resolves them through `core.Index.Predicates`.
@@ -211,3 +211,79 @@ is what makes User Story 3 safe to ship independently of the migration.
 | Merge value on a `Class` node | `decodeTypeDef` | ignored, never rejected, never linted (FR-006) |
 | Role ∈ meta/text/href/edge/link | `validRoles` | unchanged |
 | `Class` description non-empty | `decodeTypeDef` | unchanged — now also expressed as `Class.Requires` |
+
+---
+
+## 8. ARCNET-CORE v0.12 predicate retirement ([BUG-001](bugs/BUG-001.md), added 2026-08-23)
+
+CORE 0.12 resolves, from the spec side, the same seven-predicate ambiguity §3.4 above resolved
+from the tool side ("registering them is more conformant, not less"). Six of the seven are now
+renamed or retired; `relevance` (the seventh) is unaffected — see §3.2/§3.4 strikethroughs above.
+**Round 2** (bugfix-verify) resolved the one open design question — the `definition`→`text` merge
+collision — and corrected an over-broad compatibility claim; both are reflected below.
+
+### 8.1 `CorePredicateDefs` corrections
+
+| `@id` | Change |
+| --- | --- |
+| `definition` | **Removed.** `Entity`'s leading-prose predicate becomes `text` (already registered, `MergeAppend` — the same entry `Resource` uses). No new predicate is added. |
+| `authors` | **Removed.** `author` (§3.1) is the sole authorship predicate; its existing `schema:author` alignment already covers this. |
+| `year` | **Removed.** `Reference`'s Optional list points at the already-registered `published` (`MergeImmutable`) instead. |
+| `notes` | **Removed** from `Entity`/`Resource`'s Optional lists only — the `@id` itself is not deleted from `CorePredicateDefs` if any other type still legitimately uses it; audit at implementation time (T068). |
+| `ref` | **Removed** from `CorePredicateDefs` and from `Reference`'s Optional list. |
+| `status` | **Removed** from `CorePredicateDefs` and from `Reference`'s Optional list. |
+| `granularity` | **Removed** from `CorePredicateDefs` and from `Timeline`'s Optional list. |
+
+### 8.2 The `definition`→`text` merge collision — resolved
+
+`textPredicateFor` (`internal/core/markdown.go`) already returns the literal `"text"` for
+`Resource`'s leading prose, and that predicate is `MergeAppend` — not the `MergeFirstWriteWin` §3.2
+originally gave `definition`. **Decision (round 2): `text` stays `MergeAppend` uniformly.** No
+per-type or role-qualified merge override is introduced. This is a deliberate regression of
+`Entity`'s first-fixed prose protection (§5's effective-contract table, and spec.md US1 Acceptance
+Scenario 4, now struck) — accepted rather than adding merge-scoping complexity the six-value,
+predicate-name-keyed algebra (§1) does not otherwise have. `Reference`'s `relevance` is unaffected
+and keeps `MergeFirstWriteWin`.
+
+### 8.3 `CoreTypeDefs` corrections (supersedes the relevant §4 rows)
+
+```go
+"Entity": {
+	Required:    []string{"category", "text", "mentionedIn"},   // was "definition"
+	Optional:    []string{"aliases", "tags", "indexed", "mentions", /* §10.5 unchanged */},
+	                      // "notes" removed
+},
+"Resource": {
+	Required:    []string{"text", "tags", "mentionedIn"},        // unchanged
+	Optional:    []string{"indexed"},                            // "notes" removed
+},
+"Timeline": {
+	Required:    []string{"cites"},                               // unchanged
+	Optional:    []string{"period", "heading", "indexed", "mentions", "mentionedIn"},
+	                      // "granularity" removed
+},
+"Reference": {
+	Required:    []string{"title"},                               // unchanged
+	Optional:    []string{"url", "author", "published", "doi", "isCitedBy", "relevance", "indexed"},
+	                      // "authors"→"author", "year"→"published", "ref"/"status"/"notes" removed
+},
+```
+
+### 8.4 Compatibility — corrected (round 2)
+
+The retirement of `definition`/`authors`/`year`/`notes`/`ref`/`status`/`granularity` is a **plain
+breaking change**, identical in kind to §1's `MergeValidatedOverwrite` deletion — no
+reader-leniency-for-one-release mechanism is introduced. A first draft of this section proposed
+reader leniency; that was corrected during bugfix-verify because it directly contradicted
+`ARCHITECTURE.md`'s Compatibility Policy and this feature's own §6 decision not to carry migration
+machinery for a pre-1.0 tool. Consistency with §6 was the deciding factor.
+
+### 8.5 Effective-contract consequences (supersedes relevant §5 rows)
+
+| Type | Effective Required (round 2) | Effective Required (§5, pre-BUG-001) |
+| --- | --- | --- |
+| `Entity` | `category, text, mentionedIn` | `category, definition, mentionedIn` |
+| `Reference` | `title` | `title` (unchanged — `ref`/`relevance` were already Optional per §4) |
+
+`Timeline`'s effective Required (`cites`) and `Resource`'s (`text, tags, mentionedIn`) are
+unchanged by §8 — only their Optional lists lose `granularity`/`notes` respectively.

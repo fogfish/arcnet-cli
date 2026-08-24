@@ -10,7 +10,6 @@ A node for one ingested document — the provenance origin other nodes derive fr
 
 ## Optional
 - optional:: [[author]]
-- optional:: [[authors]]
 - optional:: [[about]]
 - optional:: [[genre]]
 - optional:: [[url]]

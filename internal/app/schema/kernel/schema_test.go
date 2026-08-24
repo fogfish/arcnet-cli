@@ -33,7 +33,10 @@ func TestCorePredicateDefsContainsFullCoreVocabulary(t *testing.T) {
 		// specs/023 FR-011: author/about/genre are §10.2 core metadata
 		// predicates the seeded vocabulary omitted entirely.
 		"author", "about", "genre",
-		"title", "abstract", "authors", "url", "doi", "category", "aliases", "definition", "notes", "ref", "year", "status", "relevance", "granularity", "period", "heading",
+		// BUG-001: "authors", "definition", "ref", "year", "status",
+		// "granularity" are retired under CORE 0.12 — see schema.go's own
+		// CorePredicateDefs comments for each retirement's rationale.
+		"title", "abstract", "url", "doi", "category", "aliases", "notes", "relevance", "period", "heading",
 		"role", "merge", "label", "aligned", "description", "required", "optional",
 		"subClassOf",
 	}
@@ -79,7 +82,9 @@ func TestCoreTypeDefsRequiredListsMatchCoreSection11(t *testing.T) {
 	it.Then(t).Should(it.Seq(source.Required).Equal("title", "published", "abstract", "mentions"))
 
 	entity := kernel.CoreTypeDefs["Entity"]
-	it.Then(t).Should(it.Seq(entity.Required).Equal("category", "definition", "mentionedIn"))
+	// BUG-001/FR-030: "definition" is retired under CORE 0.12; Entity's own
+	// leading-prose predicate is now "text" (shared with Resource's).
+	it.Then(t).Should(it.Seq(entity.Required).Equal("category", "text", "mentionedIn"))
 
 	// CORE §11.4 v0.11: Resource is a fragment of an *ingested* document,
 	// so it requires its own prose, its tag classification, and a backlink
@@ -135,18 +140,26 @@ func TestCoreTypeDefsOptionalListsIncludeCrossCuttingPredicates(t *testing.T) {
 		// specs/023 FR-012: a Source must PERMIT author/about/genre, not
 		// merely have them registered — otherwise every occurrence still
 		// draws a typeOptional violation.
-		{"Source", []string{"author", "authors", "about", "genre", "url", "cites", "tags", "doi", "indexed"}},
-		{"Entity", append([]string{"aliases", "tags", "notes", "indexed", "mentions"}, semantic...)},
-		// CORE §11.4 v0.11 lists notes as Resource's sole optional: the
-		// structural and semantic optionals it used to carry are not
-		// carried over, and §11.6 gives Reference none of them either
-		// (specs/022-reference-type-folders, data-model.md §1.1). Both
-		// keep "indexed", which is not a CORE predicate but the arc
-		// extension arc apply stamps on every node it creates — every
-		// other content type already carries it for the same reason.
-		{"Resource", []string{"notes", "indexed"}},
-		{"Timeline", []string{"granularity", "period", "heading", "indexed", "mentions", "mentionedIn"}},
-		{"Reference", []string{"url", "authors", "year", "doi", "isCitedBy", "ref", "relevance", "status", "notes", "indexed"}},
+		// BUG-001/FR-031: "authors" (plural) is retired; "author" alone
+		// survives.
+		{"Source", []string{"author", "about", "genre", "url", "cites", "tags", "doi", "indexed"}},
+		// BUG-001/FR-033: "notes" is retired from Entity's Optional list.
+		{"Entity", append([]string{"aliases", "tags", "indexed", "mentions"}, semantic...)},
+		// CORE §11.4 v0.11 lists notes as Resource's sole optional, but
+		// BUG-001/FR-033 retires it too: the structural and semantic
+		// optionals it used to carry are not carried over, and §11.6 gives
+		// Reference none of them either (specs/022-reference-type-folders,
+		// data-model.md §1.1). Both keep "indexed", which is not a CORE
+		// predicate but the arc extension arc apply stamps on every node it
+		// creates — every other content type already carries it for the
+		// same reason.
+		{"Resource", []string{"indexed"}},
+		// BUG-001/FR-035: "granularity" is retired outright, not merely
+		// optional.
+		{"Timeline", []string{"period", "heading", "indexed", "mentions", "mentionedIn"}},
+		// BUG-001/FR-031/FR-032/FR-034: "authors"→"author", "year"→
+		// "published", "ref"/"status" retired outright.
+		{"Reference", []string{"url", "author", "published", "doi", "isCitedBy", "relevance", "indexed"}},
 	}
 
 	for _, tc := range tests {
@@ -211,7 +224,11 @@ func TestCorePredicateDefsIndexedAndScorePredicatesAreRegistered(t *testing.T) {
 // firstWriteWin are the only two admissible values, and which of the two
 // each predicate takes is named explicitly here rather than derived.
 func TestCorePredicateDefsTextRoleSeedsProseMerge(t *testing.T) {
-	firstFixed := map[string]bool{"abstract": true, "description": true, "definition": true, "relevance": true}
+	// BUG-001/FR-030: "definition" is retired; Entity's leading prose now
+	// shares Resource's "text" predicate, which stays MergeAppend — a
+	// deliberate, accepted regression of the first-fixed protection
+	// "definition" used to carry (plan.md F7/Complexity Tracking).
+	firstFixed := map[string]bool{"abstract": true, "description": true, "relevance": true}
 
 	for name, def := range kernel.CorePredicateDefs {
 		if def.Role != "text" {

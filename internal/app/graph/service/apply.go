@@ -177,8 +177,8 @@ func setAttr(attrs map[string][]core.Predicate, key string, value any) map[strin
 }
 
 // attrString returns node's single-valued key attribute as a string, or ""
-// when absent/not a string — used to read back "title"/"authors"-shaped
-// scalars applyTimeline needs.
+// when absent/not a string — used to read back a "title"-shaped scalar
+// applyTimeline needs.
 func attrString(node core.Node, key string) string {
 	preds := node.Attrs[key]
 	if len(preds) == 0 {
@@ -646,7 +646,7 @@ func parseTimelineEntries(content string) []timelineEntry {
 }
 
 // attrStringSlice returns every Predicate's Value in preds, stringified —
-// used to read back a multi-valued scalar attribute like "authors".
+// used to read back a multi-valued scalar attribute like "author".
 func attrStringSlice(preds []core.Predicate) []string {
 	if len(preds) == 0 {
 		return nil
@@ -663,21 +663,27 @@ var (
 	yearlyPeriodPattern  = regexp.MustCompile(`^\d{4}$`)
 )
 
-// periodGranularity reports the on-disk path, front-matter granularity,
-// and heading for period (CORE §9.4: monthly periods are "YYYY-MM", yearly
-// periods are "YYYY"). ok is false when period matches neither shape.
-func periodGranularity(period string) (path, granularity, heading string, ok bool) {
+// periodGranularity reports the on-disk path and heading for period (CORE
+// §9.4: monthly periods are "YYYY-MM", yearly periods are "YYYY"). ok is
+// false when period matches neither shape.
+//
+// Bucketing (monthly vs. yearly) is derived here from period's own shape
+// and expressed only as the returned path — it is deliberately NOT written
+// into the timeline node's own front matter (BUG-001/FR-035: CORE 0.12
+// retires "granularity" outright as a stored predicate; the yearly/monthly
+// subfolder a node already sits in is the single source of truth).
+func periodGranularity(period string) (path, heading string, ok bool) {
 	if monthlyPeriodPattern.MatchString(period) {
 		t, err := time.Parse("2006-01", period)
 		if err != nil {
-			return "", "", "", false
+			return "", "", false
 		}
-		return "timeline/monthly/" + period + ".md", "monthly", t.Format("January 2006"), true
+		return "timeline/monthly/" + period + ".md", t.Format("January 2006"), true
 	}
 	if yearlyPeriodPattern.MatchString(period) {
-		return "timeline/yearly/" + period + ".md", "yearly", period, true
+		return "timeline/yearly/" + period + ".md", period, true
 	}
-	return "", "", "", false
+	return "", "", false
 }
 
 // applyTimeline derives the yearly/monthly period files a patch's
@@ -698,7 +704,10 @@ func applyTimeline(store fsys.Store, patch core.Patch, source core.Node, extraPe
 	if title == "" {
 		title = attrString(source, "title")
 	}
-	authors := attrStringSlice(source.Attrs["authors"])
+	// "author" (BUG-001/FR-031): CORE 0.12 retires the plural "authors";
+	// timeline entries now read the singular, union-merge predicate, which
+	// still holds one Predicate per contributed name.
+	authors := attrStringSlice(source.Attrs["author"])
 
 	entry := timelineEntry{
 		id:        patch.Document,
@@ -729,11 +738,11 @@ func applyTimeline(store fsys.Store, patch core.Patch, source core.Node, extraPe
 	touched = append(touched, extras...)
 
 	for _, period := range touched {
-		path, granularity, heading, ok := periodGranularity(period)
+		path, heading, ok := periodGranularity(period)
 		if !ok {
 			continue
 		}
-		if err := upsertTimelinePeriod(store, path, period, granularity, heading, entry, stamp); err != nil {
+		if err := upsertTimelinePeriod(store, path, period, heading, entry, stamp); err != nil {
 			return nil, err
 		}
 	}
@@ -741,7 +750,7 @@ func applyTimeline(store fsys.Store, patch core.Patch, source core.Node, extraPe
 	return touched, nil
 }
 
-func upsertTimelinePeriod(store fsys.Store, path, period, granularity, heading string, newEntry timelineEntry, stamp string) error {
+func upsertTimelinePeriod(store fsys.Store, path, period, heading string, newEntry timelineEntry, stamp string) error {
 	existing, err := readFileIfExists(store, path)
 	if err != nil {
 		return err
@@ -792,7 +801,6 @@ func upsertTimelinePeriod(store fsys.Store, path, period, granularity, heading s
 	buf.WriteString("\"@id\": \"" + period + "\"\n")
 	buf.WriteString("\"@type\": Timeline\n")
 	buf.WriteString("period: \"" + period + "\"\n")
-	buf.WriteString("granularity: " + granularity + "\n")
 	buf.WriteString("published: \"" + created + "\"\n")
 	buf.WriteString("created: \"" + created + "\"\n")
 	buf.WriteString("---\n")

@@ -316,7 +316,7 @@ func isPatchDocument(store fsys.Store, path string) bool {
 // actually match.
 func referrerPath(node core.Node) string {
 	if node.Type == "Timeline" {
-		if path, _, _, ok := periodGranularity(node.ID); ok {
+		if path, _, ok := periodGranularity(node.ID); ok {
 			return path
 		}
 	}
@@ -418,9 +418,10 @@ func revertLeadingKey(nodeType string) string {
 	switch nodeType {
 	case "Source":
 		return "abstract"
-	case "Entity":
-		return "definition"
-	case "Resource":
+	case "Entity", "Resource":
+		// "text" for both (BUG-001/FR-030): CORE 0.12 retires Entity's own
+		// "definition" predicate — kept in sync with core's own
+		// textPredicateFor per this function's own doc comment above.
 		return "text"
 	case "Reference":
 		return "relevance"
@@ -770,7 +771,7 @@ func buildRevertCommitMessage(sourceID string, result kernel.RevertResult) strin
 // written via the generic core.RenderNode path) rather than introducing a
 // second, divergent writer for the same file shape.
 func removeTimelineEntry(store fsys.Store, node core.Node, removedIDs map[string]bool) error {
-	path, granularity, heading, ok := periodGranularity(node.ID)
+	path, heading, ok := periodGranularity(node.ID)
 	if !ok {
 		return nil
 	}
@@ -801,7 +802,6 @@ func removeTimelineEntry(store fsys.Store, node core.Node, removedIDs map[string
 	buf.WriteString("\"@id\": \"" + period + "\"\n")
 	buf.WriteString("\"@type\": Timeline\n")
 	buf.WriteString("period: \"" + period + "\"\n")
-	buf.WriteString("granularity: " + granularity + "\n")
 	buf.WriteString("published: \"" + created + "\"\n")
 	buf.WriteString("created: \"" + created + "\"\n")
 	buf.WriteString("---\n")

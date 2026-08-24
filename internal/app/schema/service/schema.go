@@ -109,7 +109,7 @@ func typeNode(name string, def core.TypeDef) core.Node {
 	for _, base := range bases {
 		edges = append(edges, core.Link{Predicate: "subClassOf", Target: base})
 	}
-	// No "merge" attribute: CORE §9.3 retired type-level merge, and §10.8
+	// No "merge" attribute: CORE §9.3 retired type-level merge, and §10.7
 	// registers "merge" as a predicate Property alone uses (FR-005). A
 	// Class document written by this release carries none.
 	return core.Node{

@@ -191,13 +191,14 @@ func TestSeedRegistersMetadataPredicates(t *testing.T) {
 // CorePredicateDefs would make the assertion agree with the table by
 // construction — the whole point of SC-008 is that six of these declared
 // none, and nothing in the table's own shape revealed it.
+// "authors" (plural) is retired under CORE 0.12 (BUG-001/FR-031) — "author"
+// alone carries the schema:author alignment now.
 var alignedTerms = map[string]string{
 	"title":    "schema:title",
 	"abstract": "schema:abstract",
 	"url":      "schema:url",
 	"doi":      "schema:doi",
 	"aliases":  "skos:altLabel",
-	"authors":  "schema:author",
 	"author":   "schema:author",
 }
 
@@ -224,7 +225,10 @@ func TestSeedDeclaresEveryAssignedAlignment(t *testing.T) {
 func TestSeedFirstFixedProsePredicatesDeclareFirstWriteWin(t *testing.T) {
 	seed := service.Seed()
 
-	for _, name := range []string{"abstract", "description", "definition", "relevance"} {
+	// "definition" is retired under CORE 0.12 (BUG-001/FR-030); Entity's
+	// leading prose is now "text", which is deliberately MergeAppend, not
+	// firstWriteWin (see schema.go's CorePredicateDefs comment).
+	for _, name := range []string{"abstract", "description", "relevance"} {
 		raw, ok := seed[kernel.PredicatesDir+"/"+name+".md"]
 		it.Then(t).Should(it.True(ok))
 		it.Then(t).Should(it.String(string(raw)).Contain("merge: firstWriteWin"))
@@ -239,4 +243,40 @@ func TestSeedCitationPredicateDeclaresUnion(t *testing.T) {
 	it.Then(t).
 		Should(it.String(string(raw)).Contain("merge: union")).
 		ShouldNot(it.String(string(raw)).Contain("merge: append"))
+}
+
+// TestSeedRetiredPredicatesAreGoneEntirely is SC-009 ([BUG-001](../../../../specs/023-core-vocabulary-conformance/bugs/BUG-001.md)):
+// CORE 0.12 retires six predicate names outright (five renamed to an
+// already-registered replacement, one — "granularity" — dropped with no
+// replacement at all). None of the six may be seeded as its own Property
+// document, and none may appear in any seeded type's Required/Optional
+// bullets — a plain breaking change (FR-037), matching
+// TestAstExactlyMergeOpValues' exhaustive-set style for the merge
+// vocabulary (contract C1.1). "notes" (the seventh predicate BUG-001
+// touches) is deliberately excluded here: it stays registered and is still
+// legitimately seeded on Reference — only Entity/Resource's Optional lists
+// lose it (FR-033), asserted separately by
+// TestSeedResourceDocumentCarriesNoExternalWorkPredicate and
+// TestCoreTypeDefsOptionalListsIncludeCrossCuttingPredicates.
+func TestSeedRetiredPredicatesAreGoneEntirely(t *testing.T) {
+	seed := service.Seed()
+
+	retired := []string{"definition", "authors", "year", "ref", "status", "granularity"}
+
+	for _, name := range retired {
+		_, ok := seed[kernel.PredicatesDir+"/"+name+".md"]
+		it.Then(t).Should(it.True(!ok))
+	}
+
+	for path, raw := range seed {
+		if !strings.HasPrefix(path, kernel.TypesDir+"/") {
+			continue
+		}
+		content := string(raw)
+		for _, name := range retired {
+			it.Then(t).
+				ShouldNot(it.String(content).Contain("required:: [[" + name + "]]")).
+				ShouldNot(it.String(content).Contain("optional:: [[" + name + "]]"))
+		}
+	}
 }

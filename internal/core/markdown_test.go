@@ -254,7 +254,7 @@ func TestParseNode(t *testing.T) {
 	it.Then(t).
 		Should(it.Equal("Transport Layer Security", node.ID)).
 		Should(it.Equal("Entity", node.Type)).
-		Should(it.Equal("A cryptographic protocol that establishes an authenticated channel.", node.Texts["definition"])).
+		Should(it.Equal("A cryptographic protocol that establishes an authenticated channel.", node.Texts["text"])).
 		Should(it.Equal(3, len(node.Edges)))
 
 	it.Then(t).
@@ -557,7 +557,7 @@ func TestRenderNodeAttrsQuotedIDTypeFirstThenSorted(t *testing.T) {
 			"title": {{Value: "X"}},
 			"tags":  {{Value: "a"}, {Value: "b"}},
 		},
-		Texts: map[string]string{"definition": "Some text."},
+		Texts: map[string]string{"text": "Some text."},
 	}
 
 	out, err := core.RenderNode(n, testIndex)
@@ -590,7 +590,7 @@ func TestRenderNodeSchemaDrivenFlatAndGroupedMixOnOneNode(t *testing.T) {
 	n := core.Node{
 		ID:    "X",
 		Type:  "Entity",
-		Texts: map[string]string{"definition": "Some text."},
+		Texts: map[string]string{"text": "Some text."},
 		Edges: []core.Link{
 			{Predicate: "replaces", Target: "SSL Protocol"},
 			{Predicate: "mentions", Target: "A"},
@@ -638,7 +638,7 @@ func TestRenderNodeLinkRolePredicateUsesCustomLabel(t *testing.T) {
 	n := core.Node{
 		ID:    "X",
 		Type:  "Entity",
-		Texts: map[string]string{"definition": "Some text."},
+		Texts: map[string]string{"text": "Some text."},
 		Edges: []core.Link{
 			{Predicate: "required", Target: "title"},
 			{Predicate: "replaces", Target: "Y"},
@@ -661,7 +661,7 @@ func TestRenderNodeUnregisteredPredicateDefaultsToFlatEdge(t *testing.T) {
 	n := core.Node{
 		ID:    "X",
 		Type:  "Entity",
-		Texts: map[string]string{"definition": "Some text."},
+		Texts: map[string]string{"text": "Some text."},
 		Edges: []core.Link{
 			{Predicate: "unregisteredPredicate", Target: "Y"},
 		},
@@ -733,7 +733,7 @@ func TestRenderNodeWikilinkRepeatedTargetOnlyOneLinked(t *testing.T) {
 		ID:   "X",
 		Type: "Entity",
 		Texts: map[string]string{
-			"definition": "Transport Layer Security is great. Transport Layer Security is a protocol.",
+			"text": "Transport Layer Security is great. Transport Layer Security is a protocol.",
 		},
 		HRefs: []core.Link{
 			{Target: "Transport Layer Security"},
@@ -753,7 +753,7 @@ func TestRenderNodeWikilinkMidWordNotLinked(t *testing.T) {
 	n := core.Node{
 		ID:    "X",
 		Type:  "Entity",
-		Texts: map[string]string{"definition": "Insecurity is high here."},
+		Texts: map[string]string{"text": "Insecurity is high here."},
 		HRefs: []core.Link{
 			{Target: "Security"},
 		},
@@ -772,7 +772,7 @@ func TestRenderNodeWikilinkPrecededByWhitespaceLinked(t *testing.T) {
 	n := core.Node{
 		ID:    "X",
 		Type:  "Entity",
-		Texts: map[string]string{"definition": "We discussed Security today."},
+		Texts: map[string]string{"text": "We discussed Security today."},
 		HRefs: []core.Link{
 			{Target: "Security"},
 		},
@@ -789,7 +789,7 @@ func TestRenderNodeWikilinkAlreadyBracketedNotDoubleWrapped(t *testing.T) {
 	n := core.Node{
 		ID:    "X",
 		Type:  "Entity",
-		Texts: map[string]string{"definition": "See [[Security]] for details, not Security."},
+		Texts: map[string]string{"text": "See [[Security]] for details, not Security."},
 		HRefs: []core.Link{
 			{Target: "Security"},
 		},
@@ -924,7 +924,7 @@ func TestParsePatchBoldLabelBlocksNoDataLoss(t *testing.T) {
 	node := patch.Nodes[0]
 	it.Then(t).
 		Should(it.Equal("Arcnet-spec", node.ID)).
-		ShouldNot(it.String(node.Texts["definition"]).Contain("**")).
+		ShouldNot(it.String(node.Texts["text"]).Contain("**")).
 		Should(it.Equal(3, len(node.Edges)))
 
 	it.Then(t).
@@ -1208,7 +1208,7 @@ func TestRenderNodeWikilinkFollowedByInflectionalSuffixLinked(t *testing.T) {
 	n := core.Node{
 		ID:    "X",
 		Type:  "Entity",
-		Texts: map[string]string{"definition": "LLMs can be effectively trained on regulated structures."},
+		Texts: map[string]string{"text": "LLMs can be effectively trained on regulated structures."},
 		HRefs: []core.Link{{Target: "LLM"}},
 	}
 
@@ -1242,7 +1242,7 @@ func TestRenderPatchRoundTripsSingleNode(t *testing.T) {
 				ID:    "Widget",
 				Type:  "Entity",
 				Attrs: map[string][]core.Predicate{"category": {{Value: "form"}}},
-				Texts: map[string]string{"definition": "A widget."},
+				Texts: map[string]string{"text": "A widget."},
 			},
 		},
 	}
@@ -1270,7 +1270,7 @@ func TestRenderPatchRoundTripsSingleNode(t *testing.T) {
 	it.Then(t).
 		Should(it.Equal(wantNode.ID, gotNode.ID)).
 		Should(it.Equal(wantNode.Type, gotNode.Type)).
-		Should(it.Equal(wantNode.Texts["definition"], gotNode.Texts["definition"])).
+		Should(it.Equal(wantNode.Texts["text"], gotNode.Texts["text"])).
 		Should(it.Equal(1, len(gotNode.Attrs["category"])))
 }
 
@@ -1284,7 +1284,7 @@ func TestRenderPatchFenceAlwaysHasQuotedIDAndType(t *testing.T) {
 		Document:  "foo-2026-x2",
 		Published: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		Nodes: []core.Node{
-			{ID: "Widget", Type: "Entity", Attrs: map[string][]core.Predicate{"category": {{Value: "form"}}}, Texts: map[string]string{"definition": "A widget."}},
+			{ID: "Widget", Type: "Entity", Attrs: map[string][]core.Predicate{"category": {{Value: "form"}}}, Texts: map[string]string{"text": "A widget."}},
 		},
 	}
 
@@ -1305,7 +1305,7 @@ func TestRenderPatchFenceAlwaysHasQuotedIDAndType(t *testing.T) {
 func TestRenderPatchRoundTripsMultipleTypesSortedDeterministically(t *testing.T) {
 	nodes := []core.Node{
 		{ID: "z-source", Type: "Source", Texts: map[string]string{"abstract": "z body."}},
-		{ID: "Widget", Type: "Entity", Attrs: map[string][]core.Predicate{"category": {{Value: "form"}}}, Texts: map[string]string{"definition": "widget body."}},
+		{ID: "Widget", Type: "Entity", Attrs: map[string][]core.Predicate{"category": {{Value: "form"}}}, Texts: map[string]string{"text": "widget body."}},
 		{ID: "a-source", Type: "Source", Texts: map[string]string{"abstract": "a body."}},
 	}
 	p := core.Patch{Document: "foo-2026-y", Published: time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC), Nodes: nodes}
@@ -1344,7 +1344,7 @@ func TestRenderPatchRoundTripsNodeWithEdgesTextsHRefs(t *testing.T) {
 			Type:  "Entity",
 			Attrs: map[string][]core.Predicate{"category": {{Value: "form"}}},
 			Texts: map[string]string{
-				"definition": "TLS is the successor to SSL.",
+				"text": "TLS is the successor to SSL.",
 				"notes":      "See also RFC 8446.",
 			},
 			Edges: []core.Link{
@@ -1365,7 +1365,7 @@ func TestRenderPatchRoundTripsNodeWithEdgesTextsHRefs(t *testing.T) {
 	got := back.Nodes[0]
 	it.Then(t).
 		Should(it.Equal("Transport Layer Security", got.ID)).
-		Should(it.Equal("TLS is the successor to SSL.", got.Texts["definition"])).
+		Should(it.Equal("TLS is the successor to SSL.", got.Texts["text"])).
 		Should(it.Equal("See also RFC 8446.", got.Texts["notes"])).
 		Should(it.Equal(2, len(got.Edges))).
 		Should(it.Equal("rescorla-2026-tls13", got.Edges[0].Target)).
@@ -1542,7 +1542,7 @@ func TestRenderNodeRendersNonZeroPublished(t *testing.T) {
 		Type:      "Entity",
 		Published: time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC),
 		Attrs:     map[string][]core.Predicate{"title": {{Value: "X"}}},
-		Texts:     map[string]string{"definition": "Some text."},
+		Texts:     map[string]string{"text": "Some text."},
 	}
 
 	out, err := core.RenderNode(n, testIndex)
@@ -1573,7 +1573,7 @@ func TestRenderPatchRendersNonZeroPublished(t *testing.T) {
 		Document:  "foo-2026-x",
 		Published: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		Nodes: []core.Node{
-			{ID: "Widget", Type: "Entity", Published: time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC), Attrs: map[string][]core.Predicate{"category": {{Value: "form"}}}, Texts: map[string]string{"definition": "A widget."}},
+			{ID: "Widget", Type: "Entity", Published: time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC), Attrs: map[string][]core.Predicate{"category": {{Value: "form"}}}, Texts: map[string]string{"text": "A widget."}},
 		},
 	}
 
@@ -1590,7 +1590,7 @@ func TestRoundTripPublished(t *testing.T) {
 		Type:      "Entity",
 		Published: time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC),
 		Attrs:     map[string][]core.Predicate{"title": {{Value: "X"}}},
-		Texts:     map[string]string{"definition": "Some text."},
+		Texts:     map[string]string{"text": "Some text."},
 	}
 
 	raw, err := core.RenderNode(n, testIndex)
@@ -1632,7 +1632,7 @@ func TestIdempotentRoundTrip(t *testing.T) {
 		Type:  "Entity",
 		Attrs: map[string][]core.Predicate{"category": {{Value: "independent"}, {Value: "abstract"}}},
 		Texts: map[string]string{
-			"definition": "A cryptographic protocol that establishes an authenticated channel.",
+			"text": "A cryptographic protocol that establishes an authenticated channel.",
 			"notes":      "Superseded by later revisions.",
 		},
 		Edges: []core.Link{
@@ -2022,19 +2022,22 @@ func TestParsePatchManifestTypeDoesNotLeakIntoNodeTypes(t *testing.T) {
 // case: each of the five ARCNET-CORE v0.11 content types at both prose
 // positions, plus one type the table has no case for.
 //
-// Resource and Reference are the two rows this feature changes. Resource
-// means a fragment of an *ingested* document, so its leading prose belongs
-// under the "text" its own type requires; Reference means an un-ingested
-// external work, so its leading prose is the "relevance" that justifies
-// keeping the pointer. Trailing prose stays "notes" for every type, with no
-// per-type branch at all.
+// Resource and Reference are the two rows spec 022 changed. Resource means
+// a fragment of an *ingested* document, so its leading prose belongs under
+// the "text" its own type requires; Reference means an un-ingested external
+// work, so its leading prose is the "relevance" that justifies keeping the
+// pointer. Entity is the row BUG-001/FR-030 changes: CORE 0.12 retires its
+// own "text" predicate, so Entity now shares Resource's "text" key —
+// deliberately, to resolve the merge collision that would otherwise result
+// (plan.md F7) rather than register a new predicate. Trailing prose stays
+// "notes" for every type, with no per-type branch at all.
 func TestTextPredicateForCoreTypes(t *testing.T) {
 	for _, tt := range []struct {
 		nodeType string
 		leading  string
 	}{
 		{"Source", "abstract"},
-		{"Entity", "definition"},
+		{"Entity", "text"},
 		{"Resource", "text"},
 		{"Timeline", "text"},
 		{"Reference", "relevance"},

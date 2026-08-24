@@ -234,8 +234,9 @@ func TestCheckTypeRequiresV011FixtureIsClean(t *testing.T) {
 }
 
 // FR-029 / contract C2.2c: every predicate a v0.11-shaped node carries is
-// permitted by its own type — including a Timeline's optional granularity,
-// period, and heading (US3 scenario 3).
+// permitted by its own type — including a Timeline's optional period and
+// heading (US3 scenario 3). "granularity" is retired under CORE 0.12
+// (BUG-001/FR-035), so the fixture no longer carries it either.
 func TestCheckTypeOptionalV011FixtureIsClean(t *testing.T) {
 	index := v011Index(t)
 

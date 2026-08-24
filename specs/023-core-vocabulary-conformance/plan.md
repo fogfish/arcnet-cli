@@ -7,6 +7,10 @@
 **Upstream authority**: [ARCNET-CORE.md](https://github.com/fogfish/arcnet-spec/blob/main/ARCNET-CORE.md)
 — fetched and validated entry-by-entry on 2026-08-23. **Status: Draft · Version: 0.11.**
 
+**Bugfix**: 2026-08-23 — [BUG-001](bugs/BUG-001.md). Upstream moved again, 0.11 → 0.12, retiring
+or renaming six of the seven predicates this plan's F4 table and the Assumptions section (spec.md)
+settled in the tool's favour. See new "F7" below and the added Open Item for `/speckit-clarify`.
+
 ## Summary
 
 Correct the built-in predicate and type vocabulary `arc init` seeds so a new graph is conformant
@@ -110,6 +114,42 @@ effectively permanent — directly contradicting their own registered descriptio
 a validation/ingest pass"). Moving to `lastWriteWin` is both the conformance fix and a bug fix.
 This confirms `spec.md`'s assumption with a reason the assumption did not have (research D7).
 
+### F7. Upstream moved again — 0.11 → 0.12 ([BUG-001](bugs/BUG-001.md), added 2026-08-23)
+
+F1 above settled seven predicates' registration status in the tool's favour ("more conformant than
+the specification"). CORE 0.12 answers the same ambiguity from the spec side, in the opposite
+direction for six of them:
+
+| Predicate | 0.11 status (this plan) | 0.12 fix |
+| --- | --- | --- |
+| `definition` (`Entity` Requires) | Registered, kept | Renamed to `text` |
+| `authors` (plural) | Registered *alongside* `author` (F1) | Retired; `author` alone survives |
+| `year` | Registered, `MergeImmutable` (T042) | Retired; `Reference` points at the already-registered `published` instead |
+| `notes` (`Entity`/`Resource` Optional) | Registered, kept | Retired |
+| `ref` (`Reference` Optional) | Registered, kept (T035) | Retired |
+| `status` (`Reference` Optional) | Registered, kept (T035) | Retired |
+| `granularity` (`Timeline` Optional) | Registered, kept (T034) | Retired |
+| `relevance` (`Reference` leading prose) | Registered, `firstWriteWin` (T019) | Unaffected — 0.12 drops it from *prose* only, never from an actual Requires/Optional list; no code change |
+
+`href`-as-a-predicate (the ninth item in BUG-001, from CORE's own `.nt` worked example) does not
+apply to this codebase — no RDF/N-Triples exporter exists here today.
+
+One touch point this plan's Project Structure never listed: `internal/core/markdown.go`'s
+`textPredicateFor`, which hardcodes `"definition"` and a type-independent `"notes"` as literal
+round-trip keys, outside `CorePredicateDefs`/`CoreTypeDefs` entirely. Any 0.12 fix must update it
+in lockstep or parsing/rendering silently diverges (data-model.md's own round-trip warning from
+spec 022 applies here verbatim).
+
+**`definition`→`text` merge collision — resolved 2026-08-23 (round 2).** `textPredicateFor` already
+returns the literal `"text"` for `Resource`'s leading prose, and that predicate is seeded
+`MergeAppend` (T018/T019 deliberately gave `definition` `MergeFirstWriteWin` instead). Renaming
+`Entity`'s key to the same `"text"` predicate regresses `Entity`'s prose back to accumulating — the
+exact defect US1 of this feature fixed for `Entity` specifically. **Decision**: accept the
+regression. `text` stays `MergeAppend` uniformly; no per-type or role-qualified merge override is
+introduced — the merge algebra has no such scoping mechanism today, and inventing one to save one
+predicate's first-fixed behaviour was judged not worth the complexity. `Reference`'s `relevance`
+is unaffected and keeps `MergeFirstWriteWin`. Formerly Open Item 3 below; now closed.
+
 ### F6. Spec amendments applied
 
 `spec.md` has been amended in place: title and citations retargeted to v0.11; US1 and US4
@@ -210,7 +250,11 @@ internal/
 │   ├── rules.go                     # ▲ delete TypeDef.Merge
 │   ├── merge.go                     # ▲ freeze class loses validatedOverwrite
 │   ├── ast_test.go                  # ▲ assert exactly six (C1.1)
-│   └── merge_test.go                # ▲ + idempotency property test (SC-001)
+│   ├── merge_test.go                # ▲ + idempotency property test (SC-001)
+│   ├── markdown.go                  # ▲ NEW (BUG-001/F7) — textPredicateFor: Entity leading
+│   │                                 #   key definition→text, MergeAppend (Open Item 3 resolved);
+│   │                                 #   notes branch becomes type-aware, not universal
+│   └── markdown_test.go             # ▲ NEW (BUG-001/F7) — round-trip fixtures per renamed key
 └── app/
     ├── schema/
     │   ├── kernel/schema.go         # ▲ CorePredicateDefs (15▲ 3+), CoreTypeDefs (8▲)
@@ -270,15 +314,22 @@ Steps 1–3 are shippable without 4–6 and deliver US1–US4 for new graphs.
 | --- | --- | --- |
 | **XIV** — breaking change to graphs in the field: every previously-seeded graph fails to load until `arc upgrade` runs | §9.3's menu is closed at six and §14 requires profile predicates to draw from it. Keeping a seventh operation is *the* violation, not a workaround for it. `arc` is pre-1.0 and CORE is Draft. | *Lenient reader for one release* — contradicts FR-001/FR-004 and leaves the non-conformant value live indefinitely, since nothing would force the upgrade. *Silent rewrite on read* — mutates a user's graph without consent. The hard failure is mitigated to an inconvenience by C1.2's error naming `arc upgrade`, and by sequencing step 4 before step 5. |
 | **Superseding spec 022's Clarification** on `Reference` | v0.11's normative `Class` block replaced the revision note 022 relied on. | *Keep 022's decision* — leaves the tool requiring two predicates the current spec does not, which is the exact false-positive class this feature exists to remove. Raised explicitly per Principle I rather than diverged from quietly. |
+| **XIV** — breaking change (round 2, [BUG-001](bugs/BUG-001.md)): a graph carrying `definition`/`authors`/`year`/`notes`/`ref`/`status`/`granularity` front-matter is not specially supported once these are retired | Same reasoning as the row above, applied consistently: `arc` is pre-1.0 with no compatibility guarantee (`ARCHITECTURE.md` Compatibility Policy); introducing leniency for this retirement but not the merge-vocabulary one would be an arbitrary inconsistency. | *Reader leniency for one release* — FR-037 originally proposed this and was corrected during bugfix-verify precisely because it contradicts the row above's own rejection of the identical alternative for the same feature. |
+| **Accepting `Entity`'s prose-drift regression** ([BUG-001](bugs/BUG-001.md), round 2) | `definition`→`text` collides with `Resource`'s already-`MergeAppend` `text` predicate; the merge algebra has no per-type/role-qualified override. | *Invent a merge-scoping mechanism* (per-type `text`, or a role+type-qualified override) — rejected as new complexity to preserve one predicate's first-fixed behaviour, when the existing six-value, node-agnostic merge model is itself a load-bearing simplicity constraint (FR-001/FR-004). |
 
 ## Open Items for `/speckit-clarify`
 
-None blocking. Two worth confirming before implementation:
+None blocking. Three items below; #3 is resolved, #1 and #2 remain worth confirming:
 
 1. **`Reference` retraction (F3)** supersedes another feature's recorded Clarification. The
    reasoning is sound and the change is a pure relaxation, but it is the user's call whether to
    fold it into this feature or split it out.
-2. **`definition`/`relevance` → `firstWriteWin` (F4 defects 2–3)** rests on §10.2's rationale
-   sentence, not an explicit `merge:` declaration — §10.7 states none. Worth filing upstream
-   alongside the `cites` role contradiction (§10.6) and the seven-vs-`granularity` registration
-   gap.
+2. **`relevance` → `firstWriteWin` (F4 defect 3)** rests on §10.2's rationale sentence, not an
+   explicit `merge:` declaration — §10.7 states none. Worth filing upstream alongside the `cites`
+   role contradiction (§10.6) and the seven-vs-`granularity` registration gap. **Narrowed 2026-08-23
+   (round 2, [BUG-001](bugs/BUG-001.md)): this item no longer includes `definition` — CORE 0.12
+   retires that predicate outright (F7), so there is no upstream merge-value ambiguity left to
+   file for it, only for the surviving `relevance`.**
+3. ~~**`definition`→`text` merge collision (F7, [BUG-001](bugs/BUG-001.md)), added 2026-08-23.**~~
+   **Resolved 2026-08-23 (round 2)**: `text` adopts `MergeAppend` uniformly; see F7 above. No
+   longer blocking — T065 is unblocked.

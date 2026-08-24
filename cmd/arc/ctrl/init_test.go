@@ -550,6 +550,49 @@ func walkDirNames(t *testing.T, root string, skip map[string]bool) []string {
 }
 
 // arc init
+// BUG-001 (T073) / spec.md US6 Acceptance Scenarios 1 and 4: a freshly
+// initialized graph's seeded Entity type requires "text" (CORE 0.12 retires
+// "definition"), no "_schema/Property/definition.md" exists, and Entity's
+// Optional list no longer declares "notes".
+func TestInitSeedsEntityWithTextNotDefinition(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	content := readGraphFile(t, filepath.Join(dir, "_schema", "Class", "Entity.md"))
+	it.Then(t).
+		Should(it.Seq(schemaBullets(t, content, "required")).Contain("text")).
+		ShouldNot(it.Seq(schemaBullets(t, content, "required")).Contain("definition")).
+		ShouldNot(it.Seq(schemaBullets(t, content, "optional")).Contain("notes"))
+
+	_, statErr := os.Stat(filepath.Join(dir, "_schema", "Property", "definition.md"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+}
+
+// arc init
+// BUG-001 (T073) / spec.md US6 Acceptance Scenario 6: a freshly initialized
+// graph's seeded Timeline type no longer declares "granularity" — retired
+// outright under CORE 0.12, not merely optional (FR-035).
+func TestInitSeedsTimelineWithoutGranularity(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	_, err := sut(NewInitCmd(), []string{})
+	it.Then(t).Should(it.Nil(err))
+
+	content := readGraphFile(t, filepath.Join(dir, "_schema", "Class", "Timeline.md"))
+	it.Then(t).
+		Should(it.Seq(schemaBullets(t, content, "required")).Equal("cites")).
+		ShouldNot(it.Seq(schemaBullets(t, content, "optional")).Contain("granularity")).
+		Should(it.Seq(schemaBullets(t, content, "optional")).Contain("period"))
+
+	_, statErr := os.Stat(filepath.Join(dir, "_schema", "Property", "granularity.md"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+}
+
+// arc init
 // spec.md US1 Acceptance Scenario 1: a freshly initialized graph's seeded
 // Resource type node requires exactly text, tags, and mentionedIn, and
 // offers exactly notes (CORE §11.4 v0.11, contract C2).
@@ -564,11 +607,13 @@ func TestInitSeedsResourceWithIngestedFragmentContract(t *testing.T) {
 
 	it.Then(t).
 		Should(it.Seq(schemaBullets(t, content, "required")).Equal("text", "tags", "mentionedIn")).
-		// "indexed" joins §11.4's own sole optional "notes": it is not a
-		// CORE predicate but the arc extension arc apply stamps on every
-		// node it creates, so a Resource that did not permit it would fail
-		// its own conformance check on a graph the tool itself wrote.
-		Should(it.Seq(schemaBullets(t, content, "optional")).Equal("notes", "indexed")).
+		// "indexed" is not a CORE predicate but the arc extension arc apply
+		// stamps on every node it creates, so a Resource that did not
+		// permit it would fail its own conformance check on a graph the
+		// tool itself wrote. §11.4's own sole optional "notes" is retired
+		// outright under CORE 0.12 (BUG-001/FR-033) — "indexed" alone
+		// remains.
+		Should(it.Seq(schemaBullets(t, content, "optional")).Equal("indexed")).
 		Should(it.Seq(schemaBullets(t, content, "subClassOf")).Equal("Node"))
 }
 
@@ -609,9 +654,12 @@ func TestInitSeedsReferenceType(t *testing.T) {
 	it.Then(t).
 		Should(it.String(content).Contain(`"@type": Class`)).
 		// specs/023 FR-028 supersedes spec 022's Clarification: §11.6 v0.11
-		// requires "title" alone (plan.md F3).
+		// requires "title" alone (plan.md F3). "authors"/"year"/"ref"/
+		// "status"/"notes" are retired outright under CORE 0.12
+		// (BUG-001/FR-031/FR-032/FR-034/FR-033) — "author"/"published"
+		// replace the first two, the rest have no replacement.
 		Should(it.Seq(schemaBullets(t, content, "required")).Equal("title")).
-		Should(it.Seq(schemaBullets(t, content, "optional")).Equal("url", "authors", "year", "doi", "isCitedBy", "ref", "relevance", "status", "notes", "indexed")).
+		Should(it.Seq(schemaBullets(t, content, "optional")).Equal("url", "author", "published", "doi", "isCitedBy", "relevance", "indexed")).
 		Should(it.String(content).Contain("subClassOf:: [[Node]]"))
 
 	// FR-006: every predicate Reference declares must itself be seeded,

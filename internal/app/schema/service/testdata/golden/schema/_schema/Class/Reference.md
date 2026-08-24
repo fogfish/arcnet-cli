@@ -10,14 +10,11 @@ A node for an external work the graph points to but has not ingested, or a topic
 
 ## Optional
 - optional:: [[url]]
-- optional:: [[authors]]
-- optional:: [[year]]
+- optional:: [[author]]
+- optional:: [[published]]
 - optional:: [[doi]]
 - optional:: [[isCitedBy]]
-- optional:: [[ref]]
 - optional:: [[relevance]]
-- optional:: [[status]]
-- optional:: [[notes]]
 - optional:: [[indexed]]
 
 ## Requires

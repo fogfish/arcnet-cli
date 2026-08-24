@@ -9,7 +9,6 @@ A production-date index of ingested documents.
 - subClassOf:: [[Node]]
 
 ## Optional
-- optional:: [[granularity]]
 - optional:: [[period]]
 - optional:: [[heading]]
 - optional:: [[indexed]]

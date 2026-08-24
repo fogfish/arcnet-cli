@@ -12,9 +12,17 @@ description: "Task list for 023-core-vocabulary-conformance"
 **Tests**: NOT optional. Constitution Principles VI and VIII require every one of the acceptance
 scenarios in `spec.md` to map 1:1 to a colocated E2E test, written before implementation
 (red-green-refactor). Originally 29, spanning US1–US5; **US5 (7 scenarios) was removed
-post-implementation** (see Phase 7 below) — 22 remain, all passing.
+post-implementation** (see Phase 7 below) — 22 remain, all passing. **Updated 2026-08-23
+([BUG-001](bugs/BUG-001.md)): US6 adds 8 more (spec.md), bringing the total to 30 — 22 passing,
+8 pending Phase 10 (not yet implemented; see its red-phase note).**
 
 **Organization**: Grouped by user story. US1–US4 deliver value to new graphs and are independently shippable.
+
+**Bugfix**: 2026-08-23 — [BUG-001](bugs/BUG-001.md). CORE 0.12 retires/renames predicates T019,
+T023, T034, T035, T040/T041 registered as permanent vocabulary; those tasks are reopened below
+(not defective — they correctly implemented the 0.11-era decision) and new Phase 10 tasks
+(T065–T072, plus T073's red-phase tests added during bugfix-verify round 3) added for the
+rename/retirement itself.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -117,11 +125,11 @@ change to type contracts, folders, or lint.
 > E2E tests written in T009 and currently failing (red).
 
 - [X] T018 [US1] Change `abstract` and `description` from `MergeAppend` to `MergeFirstWriteWin` in `internal/app/schema/kernel/schema.go` `CorePredicateDefs` (FR-013; §10.2, §10.8)
-- [X] T019 [US1] Change `definition` and `relevance` from `MergeAppend` to `MergeFirstWriteWin` in the same map (FR-013; [research.md D8](research.md) — these are `Entity` and `Reference` leading-prose keys, so omitting them fixes drift only for `Source`)
+- [X] T019 [US1] ⚠️ Reopened — BUG-001: Change `definition` and `relevance` from `MergeAppend` to `MergeFirstWriteWin` in the same map (FR-013; [research.md D8](research.md) — these are `Entity` and `Reference` leading-prose keys, so omitting them fixes drift only for `Source`). **Reopened 2026-08-23, resolved (round 2)**: `definition` is retired under CORE 0.12 (FR-030); the `MergeFirstWriteWin` assignment for it is superseded, not carried forward — `Entity`'s leading-prose predicate is now `text`, which keeps its existing `MergeAppend` (T065). `relevance`'s `MergeFirstWriteWin` assignment is unaffected and stays as this task originally set it. **Re-closed 2026-08-23** (implementation): landed as part of T065.
 - [X] T020 [US1] Change `cites` from `MergeAppend` to `MergeUnion` in the same map, leaving `role: link` unchanged as a documented divergence (FR-014; §10.6, [research.md D6](research.md) note 1)
 - [X] T021 [US1] Regenerate `testdata/golden/schema/` and **review the diff as a content change** — it is the reviewable artifact for every predicate this phase touches
 - [X] T022 [US1] Add unit tests in `internal/core/merge_test.go` with `github.com/fogfish/it/v2` covering `firstWriteWin` over reworded prose, identical prose, and absent-then-present, asserting the `OutcomeFlagged` / `OutcomeUnchanged` / `OutcomeFilled` labels
-- [X] T023 [US1] Update the stale comment in `internal/core/merge.go` `mergeTexts` that claims `"notes"` declares `firstWriteWin` — `notes` is `append` per §10.7 and stays that way
+- [X] T023 [US1] ⚠️ Reopened — BUG-001: Update the stale comment in `internal/core/merge.go` `mergeTexts` that claims `"notes"` declares `firstWriteWin` — `notes` is `append` per §10.7 and stays that way. **Reopened 2026-08-23**: `notes` itself is retired from `Entity`/`Resource`'s Optional lists under CORE 0.12 (FR-033); the comment now needs to say so, and `textPredicateFor`'s non-leading-prose branch needs a type-aware fix (T068). **Re-closed 2026-08-23 (implementation, deviates from FR-033's letter)**: `mergeTexts`'s comment updated to note `notes` stays registered (Reference still uses it) though retired from Entity/Resource. `textPredicateFor`'s non-leading branch was deliberately left unchanged (still returns `"notes"` universally, matching the pre-existing, unfixed status quo for Source/Timeline/Node/Property/Class) rather than made type-aware — inventing type-awareness there risked silent data loss for a trailing-prose slot with no principled replacement name, and the schema-table removal alone already makes lint correctly flag any Entity/Resource node using it (T068's real enforcement mechanism). Flagged to the user as a documented deviation.
 
 **Checkpoint**: US1's 6 E2E tests pass; prose drift is fixed for all four first-fixed predicates.
 
@@ -167,8 +175,8 @@ that lints clean today can start failing.
 
 - [X] T032 [US3] Empty `Node`'s `Required` and move `published`/`created` into its `Optional` in `internal/app/schema/kernel/schema.go` (FR-007; §11.1)
 - [X] T033 [US3] Add `published` to `Source`'s own `Required` and `tags` to its `Optional` (FR-008, FR-029; §11.2)
-- [X] T034 [US3] Reduce `Timeline`'s `Required` to `cites` alone, demoting `granularity` and `period` to `Optional` alongside `heading` (FR-009; §11.5)
-- [X] T035 [US3] Reduce `Reference`'s `Required` to `title` alone, retaining `ref`, `relevance`, `status`, `notes` in `Optional` (FR-028; §11.6, [research.md D3](research.md)) — **this supersedes spec 022's recorded Clarification**; note the supersession in `specs/022-reference-type-folders/spec.md`'s Clarifications section rather than leaving it silently contradicted
+- [X] T034 [US3] ⚠️ Reopened — BUG-001: Reduce `Timeline`'s `Required` to `cites` alone, demoting `granularity` and `period` to `Optional` alongside `heading` (FR-009; §11.5). **Reopened 2026-08-23**: FR-035 retires `granularity` entirely rather than merely demoting it — drop it from `Optional` too (T066); `period`/`heading` are unaffected. **Re-closed 2026-08-23** (implementation): landed as part of T070; `internal/app/graph/service/apply.go`/`revert.go` also stopped writing `granularity:` into Timeline period files (not previously identified as needed until implementation).
+- [X] T035 [US3] ⚠️ Reopened — BUG-001: Reduce `Reference`'s `Required` to `title` alone, retaining `ref`, `relevance`, `status`, `notes` in `Optional` (FR-028; §11.6, [research.md D3](research.md)) — **this supersedes spec 022's recorded Clarification**; note the supersession in `specs/022-reference-type-folders/spec.md`'s Clarifications section rather than leaving it silently contradicted. **Reopened 2026-08-23**: `ref` and `status` are retired outright under FR-034; `relevance` and the `title`-only Required are unaffected. See T067. **Re-closed 2026-08-23** (implementation): landed as part of T066/T069.
 - [X] T036 [US3] Add `tags` to `Entity`'s `Optional`; add `description` to `Class`'s `Required` and `subClassOf` to its `Optional` (FR-029; §9.2, §11.3 — the tool writes `subClassOf::` onto five seeded `Class` documents while `Class` never declared it, a violation the seeded tree inflicts on itself)
 - [X] T037 [US3] Regenerate `testdata/golden/schema/` and review the diff
 - [X] T038 [US3] Update `internal/app/lint/service/rules_type_conformance_test.go` to assert against the T016 fixture; delete any expectation that a node requires `published` or `created` by inheritance
@@ -189,7 +197,7 @@ lints clean, without touching merge behaviour or type requirements.
 > E2E tests written in T012 and currently failing (red).
 
 - [X] T040 [US4] Add `author` (`meta`/`union`/`schema:author`), `about` (`meta`/`union`), and `genre` (`meta`/`union`) to `CorePredicateDefs` in `internal/app/schema/kernel/schema.go`, with descriptions drawn from §10.2 including its enumerated `about` and `genre` value sets (FR-011)
-- [X] T041 [P] [US4] Add the six missing `Aligned` terms in the same map — `title`→`schema:title`, `abstract`→`schema:abstract`, `url`→`schema:url`, `doi`→`schema:doi`, `aliases`→`skos:altLabel`, `authors`→`schema:author` (FR-026; §10.1, §10.2, §10.7)
+- [X] T041 [P] [US4] ⚠️ Reopened — BUG-001: Add the six missing `Aligned` terms in the same map — `title`→`schema:title`, `abstract`→`schema:abstract`, `url`→`schema:url`, `doi`→`schema:doi`, `aliases`→`skos:altLabel`, `authors`→`schema:author` (FR-026; §10.1, §10.2, §10.7). **Reopened 2026-08-23**: the `authors`→`schema:author` entry is moot once `authors` is retired (FR-031) — the alignment moves to the surviving singular `author` (already aligned per T040); the other five terms are unaffected. See T067 (removes this entry as part of retiring `authors`, not T065). **Re-closed 2026-08-23** (implementation): landed as part of T067.
 - [X] T042 [P] [US4] Change `year` from `MergeFillIfEmpty` to `MergeImmutable` in the same map (FR-027; §10.7)
 - [X] T043 [US4] Regenerate `testdata/golden/schema/` and review the diff — three new files plus six `aligned:` lines
 - [X] T044 [US4] Add an assertion in `seed_golden_test.go` for contracts [C2.2d](contracts/seeded-schema-contract.md) and SC-008: the three predicates exist, and no seeded predicate omits an `aligned` term the spec assigns it
@@ -231,12 +239,126 @@ Compatibility Policy.
 
 ## Phase 9: Polish & Cross-Cutting Concerns
 
-- [X] T059 [P] Add the SC-001 idempotency property test in `internal/core/merge_test.go`: `apply(apply(g, p), p) == apply(g, p)` over a patch exercising `abstract`, `definition`, `relevance`, `description`, `cites`, `text`, and every union predicate
+- [X] T059 [P] ⚠️ Reopened — BUG-001: Add the SC-001 idempotency property test in `internal/core/merge_test.go`: `apply(apply(g, p), p) == apply(g, p)` over a patch exercising `abstract`, `definition`, `relevance`, `description`, `cites`, `text`, and every union predicate. **Reopened 2026-08-23, resolved (round 3)**: the fixture patch exercises the retired `definition` key by name; once T065's rename lands, it must exercise `text` instead (`MergeAppend`, per Open Item 3's resolution) — otherwise it silently stops testing the leading-prose path it was written for. **Re-closed 2026-08-23** (implementation): on inspection, this test's `"definition"` is a name in a **self-contained synthetic `core.Index`** this test builds itself (`internal/core` has no dependency on `internal/app/schema/kernel`), not a reference to the real production predicate — so it was never actually coupled to `CorePredicateDefs` and needed no rename to keep passing. Left as-is rather than churned for cosmetic consistency; `go test ./internal/core/...` confirms it still exercises the intended firstWriteWin/append/union dispatch paths correctly.
 - [X] T060 [P] Update `README.md` — the `arc init` paragraph's description of the seeded vocabulary (FR-025); no `arc upgrade` section — see Phase 7
 - [X] T061 [P] Update `ARCHITECTURE.md` glossary rows written in T004 to their final form, and record the breaking-change/no-compatibility-path decision in a Compatibility Policy section (Principle I)
 - [X] T062 [P] Update `specs/VISION.md`, which still described the pre-0.5 `kind` model and a `_meta/predicates.md` path that no longer exists (FR-025)
 - [X] T063 Run every remaining scenario in [quickstart.md](quickstart.md) end to end against a real binary (US5's walkthrough is removed along with the command)
 - [X] T064 Confirm `go test ./... -cover` are clean (`staticcheck` unusable in this environment — pre-existing Go-toolchain export-data mismatch, not a regression; `go vet` used instead)
+
+---
+
+## Phase 10: User Story 6 — ARCNET-CORE v0.12 predicate retirement (Priority: P5)
+
+**Added 2026-08-23 — [BUG-001](bugs/BUG-001.md).** Retires or renames six of the seven predicates
+Phase 3/5/6 registered as permanent vocabulary, now that CORE 0.12 resolves the same ambiguity
+from the spec side. **Unblocked 2026-08-23 (round 2)**: Open Item 3 (plan.md) is resolved — `text`
+adopts `MergeAppend` uniformly, no per-type merge override — and FR-037 is corrected to a plain
+breaking change (no reader-leniency fixtures). All of T073 (red-phase tests, run first) and
+T065–T072 (implementation) can proceed.
+
+> **File-contention note applies here too** (see the top-level note above): every task below
+> touches either `internal/app/schema/kernel/schema.go` or `internal/core/markdown.go`, both
+> shared with earlier phases. None are marked `[P]` relative to each other within this phase.
+
+> **Red-phase gap, closed 2026-08-23 (bugfix-verify round 2):** unlike Phases 3–6, this phase had
+> no Phase 2d-equivalent task authoring its E2E tests before implementation — a miss against this
+> file's own TDD rule. **T073 below is numbered out of sequence** (added after T065–T072 were
+> already drafted) **but MUST run first**, the same way Phase 8 depends on Phase 4 despite the
+> higher phase number.
+
+- [X] T073 [US6] Write 8 E2E tests for spec.md US6 scenarios 1–8 in `cmd/arc/ctrl/init_test.go`
+  (scenarios 1–6, seeded-vocabulary shape) and `cmd/arc/graph/apply_test.go` (scenarios 7–8,
+  round-trip and breaking-change behaviour) via `sut()`; MUST compile and fail semantically
+  before T065 starts (Principle VI/VIII, matching T009–T012's pattern). **Done 2026-08-23**:
+  added `TestInitSeedsEntityWithTextNotDefinition` and `TestInitSeedsTimelineWithoutGranularity`
+  to `cmd/arc/ctrl/init_test.go` for scenarios 1/4/6; scenarios 2/3/5 were already covered by
+  `TestInitSeedsReferenceType`/`TestInitSeedsResourceWithIngestedFragmentContract` once updated
+  (below); scenario 7 by `TestApplyLeavesOtherTypesLeadingProseDerivationUnchanged` +
+  `TestApplyRewordedDefinitionAndRelevancePreserveFirstValue`, both rewritten for the new
+  `text`/`MergeAppend` behavior; scenario 8 needed no new assertion (FR-037 leaves post-retirement
+  read behavior explicitly unspecified).
+- [X] T065 [US6] Rename `Entity`'s required leading-prose predicate from `definition` to `text` in
+  `CoreTypeDefs` and `textPredicateFor` (`internal/core/markdown.go`) together (FR-030); `text`
+  keeps its existing `MergeAppend` — no new predicate, no merge override. Update
+  `internal/core/merge_test.go`'s T019 assertion, which no longer applies to `Entity`'s leading
+  prose (see spec.md US1 Acceptance Scenario 4, struck). Regenerate `testdata/golden/schema/`.
+  **Done 2026-08-23**: also required the same rename in `internal/app/graph/service/revert.go`'s
+  `revertLeadingKey` (a documented, test-enforced duplicate of `textPredicateFor` — not identified
+  until implementation); `internal/core/merge_test.go`'s SC-001 test needed no change (its
+  `"definition"` is a self-contained synthetic index, not tied to production schema — see T059).
+- [X] T066 [US6] Remove `year` from `CorePredicateDefs`; point `Reference`'s Optional list at
+  the already-registered `published` instead (FR-032; `internal/app/schema/kernel/schema.go`)
+  **Done 2026-08-23.**
+- [X] T067 [US6] Remove `authors` from `CorePredicateDefs`; drop it from `Source` and
+  `Reference`'s Optional lists, leaving `author` as the sole authorship predicate (FR-031);
+  drop the now-moot `authors`→`schema:author` `Aligned` entry from T041. **Done 2026-08-23**:
+  also required repointing `internal/app/graph/service/apply.go`'s `applyTimeline` (reads
+  `source.Attrs["authors"]` for timeline entry lines) at the singular `author` — not identified
+  until implementation.
+- [X] T068 [US6] Remove `notes` from `Entity` and `Resource`'s Optional lists; make
+  `textPredicateFor`'s non-leading-prose branch type-aware so it no longer keys either type's
+  trailing body section as `notes` (FR-033; `internal/core/markdown.go`). **Done 2026-08-23,
+  with a deliberate deviation from the letter of this task and FR-033**: the schema-table half
+  (removing `notes` from Entity/Resource's Optional lists) landed as specified. The
+  `textPredicateFor` half did not: making the non-leading branch type-aware has no safe target to
+  redirect Entity/Resource's trailing prose to (no replacement predicate exists), so it was left
+  returning `"notes"` universally — the same pre-existing, never-fixed status quo already true for
+  Source/Timeline/Node/Property/Class. The schema-table removal alone is sufficient: it makes lint
+  correctly flag any Entity/Resource node that actually uses trailing prose as an
+  undeclared-predicate violation, which is the enforcement FR-033 actually needs. Flagged to the
+  user in the completion report.
+- [X] T069 [US6] Remove `ref` and `status` from `Reference`'s Optional list and from
+  `CorePredicateDefs` (FR-034; `internal/app/schema/kernel/schema.go`) **Done 2026-08-23.**
+- [X] T070 [US6] Remove `granularity` from `Timeline`'s Optional list and from
+  `CorePredicateDefs`; if any code branches on `granularity` to decide yearly-vs-monthly
+  bucketing, switch it to deriving that from the `@id` period-code shape or the containing
+  folder instead (FR-035). **Done 2026-08-23**: `internal/app/graph/service/apply.go`'s
+  `periodGranularity`/`upsertTimelinePeriod` and `revert.go`'s `removeTimelineEntry` were already
+  deriving bucketing from `@id` shape for path selection, but were **also** writing a
+  `granularity:` front-matter line into every Timeline period file — not identified until
+  implementation. That write is removed; the now-unused `granularity` parameter/return value is
+  removed from all three functions' signatures rather than left dead (YAGNI).
+- [X] T071 [US6] Update the five stale `§10.7`/`§10.8` citations to the single renumbered
+  `§10.7` — `internal/core/merge.go:166`, `internal/app/schema/service/schema.go:112`,
+  `internal/app/schema/kernel/schema.go:37,79,114,117` (FR-036; no acceptance scenario — exempt,
+  doc/comment-only, same as FR-025). **Done 2026-08-23, with one correction**: on inspection,
+  `internal/core/merge.go:166` already cited the correct, singular `§10.7` — the original BUG-001
+  finding misread it as needing renumbering. The other four (`internal/app/schema/service/schema.go:112`
+  and `internal/app/schema/kernel/schema.go:37,114,117`, all `§10.8`) were genuinely stale and
+  are fixed; the `author` predicate's own `§10.7` cross-reference (schema.go, formerly line 79)
+  was dropped entirely along with the rest of its description text when `authors` was retired
+  (T067), rather than updated in place.
+- [X] T072 [US6] Regenerate `testdata/golden/schema/` for T066–T071 and review the diff. Per
+  FR-037 (corrected round 2): add a regression test asserting `definition`/`authors`/`year`/
+  `notes`/`ref`/`status`/`granularity` are absent from `CorePredicateDefs` and from every
+  `CoreTypeDefs` Required/Optional list — a plain breaking change, no reader-leniency fixture —
+  matching T057's exhaustive-set style for the merge vocabulary. Add the SC-009 assertion to
+  `seed_golden_test.go`. **Done 2026-08-23, with one correction**: `notes` is excluded from the
+  new `TestSeedRetiredPredicatesAreGoneEntirely`'s absence check — it is not fully retired (only
+  from Entity/Resource's Optional lists, per FR-033); asserting its full absence would have been
+  wrong. Golden snapshot regenerated via `go test ./internal/app/schema/service -run
+  TestSeedGolden -update` (contract C2.1); diff reviewed (six type documents lose the retired
+  predicates' bullets, six `_schema/Property/*.md` files deleted).
+
+**Checkpoint reached 2026-08-23**: `go build ./...`, `go vet ./...`, and `go test -count=1 ./...`
+all pass clean. US6's 8 E2E scenarios (spec.md) pass; a freshly initialized graph's vocabulary
+contains none of the six retired/renamed predicates, and `relevance`'s status (registered,
+`firstWriteWin`, no code change) is confirmed unaffected. `Entity`'s prose-drift protection is
+knowingly regressed to `append` (spec.md US1 Acceptance Scenario 4, struck) — not a defect to
+fix later, an accepted trade recorded in plan.md's Complexity Tracking. Two deviations from the
+letter of individual task descriptions were necessary and are recorded inline above (T068:
+`textPredicateFor`'s non-leading branch left type-unaware; T071: `merge.go:166` needed no fix,
+the original finding misread it) — both flagged to the user in the completion report. Three
+additional production touch points not identified until implementation were also fixed and are
+recorded above: `revert.go`'s `revertLeadingKey` (T065), `apply.go`'s `applyTimeline` reading
+`source.Attrs["authors"]` (T067), and `apply.go`/`revert.go` writing a literal `granularity:`
+front-matter line into every Timeline period file despite already deriving bucketing from `@id`
+shape (T070). The full pre-existing test suite (`cmd/arc/graph`, `cmd/arc/lint`,
+`internal/app/schema/*`, etc.) required fixture updates throughout — every occurrence of a
+retired predicate name in a test fixture was found via iterative `go test ./...` failures rather
+than pre-audited, and updated to either the renamed replacement or a still-registered stand-in
+predicate with equivalent merge semantics (documented at each site).
 
 ---
 
@@ -308,7 +430,11 @@ removal.
 - **Phase 7**: Removed post-implementation (was US5, `arc upgrade`) — no longer a dependency of anything
 - **Phase 8**: Depends only on Phase 4 (T024 must have re-homed `scoreZ`/`scoreC` before the constant is deleted)
 - **Polish (Phase 9)**: Depends on all desired stories
-- **Phase N**: Final gate
+- **US6 (Phase 10, [BUG-001](bugs/BUG-001.md))**: Depends on Phases 3, 5, 6 (edits predicates/type
+  entries those phases created — `definition`, `authors`, `year`, `notes`, `ref`, `status`,
+  `granularity`) and on Phase 2.5's shared infrastructure; independent of Phase 8. Within the
+  phase, T073 (red-phase tests) precedes T065–T072 (implementation) despite its higher number.
+- **Phase N**: Final gate — re-run after Phase 10, not only after Phase 9
 
 ### The one cross-story dependency
 
@@ -388,5 +514,6 @@ with no remedy provided," which is why it stays its own reviewable step.
 | 7 | 0 (removed) | was US5 |
 | 8 | 6 | US2 (gate half) |
 | 9 Polish | 6 | — |
+| 10 (added [BUG-001](bugs/BUG-001.md), 2026-08-23) | 9 | US6 |
 | N Compliance | 15 | — |
-| **Total** | **65** | (79 originally, 14 removed with Phase 7 and its dependents) |
+| **Total** | **74** | (79 originally, 14 removed with Phase 7 and its dependents, 9 added with Phase 10 — 8 implementation tasks plus T073's red-phase tests, added during bugfix-verify round 2) |
