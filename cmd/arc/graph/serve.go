@@ -207,11 +207,53 @@ func subgraphGetHandler(dir string, cfg configkernel.SubgraphConfig, index core.
 	}
 }
 
+// contextRetrieveArgs is context_retrieve's input schema.
+type contextRetrieveArgs struct {
+	Query  string     `json:"query" jsonschema:"free text, matched literally and case-insensitively"`
+	Filter *mcpFilter `json:"filter,omitempty" jsonschema:"optional filter narrowing every retrieval pass"`
+	Limit  *int       `json:"limit,omitempty" jsonschema:"maximum number of node objects to return, default 10"`
+}
+
+// contextRetrieveHandler runs the three-pass retrieval (content match,
+// attribute match, neighbor expansion) and renders the ranked, truncated
+// result as one patch-exchange document, byte-shape-identical to
+// subgraph_get's own reply construction (contracts/mcp-contract.md).
+// contextRetrieveArgs.Limit's nil-resolution mirrors subgraphGetArgs.Depth's
+// existing pattern.
+func contextRetrieveHandler(dir string, cfgGrep configkernel.GrepConfig, cfgSubgraph configkernel.SubgraphConfig, index core.Index) func(context.Context, *mcp.CallToolRequest, contextRetrieveArgs) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, args contextRetrieveArgs) (*mcp.CallToolResult, any, error) {
+		limit := 10
+		if args.Limit != nil {
+			limit = *args.Limit
+		}
+		logArgs := fmt.Sprintf("query=%q filter=%t limit=%d", args.Query, args.Filter != nil, limit)
+
+		filter, err := args.Filter.toCoreFilter()
+		if err != nil {
+			logCall("context_retrieve", logArgs, err)
+			return nil, nil, err
+		}
+
+		result, err := appgraph.ContextRetrieve(ctx, fsys.Local{}, filter, args.Query, limit, cfgGrep, cfgSubgraph, dir)
+		logCall("context_retrieve", logArgs, err)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		text, err := core.RenderPatch(result.Patch, index)
+		if err != nil {
+			return nil, nil, err
+		}
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(text)}}}, nil, nil
+	}
+}
+
 // buildServer mounts dir, preflights EnsureGraph (spec FR-004), loads
-// .arc/config.yml once, and registers node_get/node_grep/subgraph_get on a
-// new mcp.Server — the same construction RunE runs before selecting a
-// transport, factored out so tests can exercise the real, registered tool
-// handlers directly over mcp.NewInMemoryTransports() (research.md D7).
+// .arc/config.yml once, and registers node_get/node_grep/subgraph_get/
+// context_retrieve on a new mcp.Server — the same construction RunE runs
+// before selecting a transport, factored out so tests can exercise the
+// real, registered tool handlers directly over mcp.NewInMemoryTransports()
+// (research.md D7).
 func buildServer(ctx context.Context, dir string) (*mcp.Server, error) {
 	if err := appgraph.EnsureGraph(ctx, fsys.Local{}, dir); err != nil {
 		return nil, err
@@ -256,6 +298,12 @@ func buildServer(ctx context.Context, dir string) (*mcp.Server, error) {
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 	}, subgraphGetHandler(dir, subgraphCfg, index))
 
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "context_retrieve",
+		Description: "Assemble the full content of every node relevant to a free-text query in one call — content match, attribute match, and neighbor expansion combined, ranked, deduplicated, and truncated to limit.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
+	}, contextRetrieveHandler(dir, cfgFile.Grep, subgraphCfg, index))
+
 	return server, nil
 }
 
@@ -267,10 +315,13 @@ func NewServeCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "Run an MCP server exposing the graph to LLM clients.",
 		Long: `
-arc serve starts a Model Context Protocol (MCP) server exposing exactly
-three read-only tools — node_get, node_grep, subgraph_get — backed by the
-same use-case functions arc grep/arc subgraph already call. It serves over
-stdio by default, or over Streamable HTTP/SSE when --http <addr> is given.
+arc serve starts a Model Context Protocol (MCP) server exposing four
+read-only tools — node_get, node_grep, subgraph_get, context_retrieve —
+the first three backed by the same use-case functions arc grep/arc
+subgraph already call; context_retrieve (query + attribute match plus
+one-hop neighbor expansion, ranked and truncated to a limit) is MCP-only,
+with no Cobra command of its own. It serves over stdio by default, or over
+Streamable HTTP/SSE when --http <addr> is given.
 A bare port or :port binds 127.0.0.1 only; an explicit host binds exactly
 that host. serve is strictly read-only and never modifies the graph or its
 git history.

@@ -11,9 +11,12 @@ package graph
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -619,4 +622,302 @@ func TestResolveHTTPAddrExplicitHostPreservedUnchanged(t *testing.T) {
 func TestResolveHTTPAddrInvalidAddressReturnsErrHTTPAddr(t *testing.T) {
 	_, err := resolveHTTPAddr("not a valid addr!!")
 	it.Then(t).Should(it.True(errors.Is(err, service.ErrHTTPAddr)))
+}
+
+// contextNodeHeaderRe matches every "## <id>" node-section header
+// core.RenderPatch emits, letting tests compare the set/order of nodes a
+// context_retrieve reply carries without depending on the document
+// manifest's own timestamp (which always differs between calls).
+var contextNodeHeaderRe = regexp.MustCompile(`(?m)^## (.+)$`)
+
+func nodeHeaders(text string) []string {
+	matches := contextNodeHeaderRe.FindAllStringSubmatch(text, -1)
+	out := make([]string, len(matches))
+	for i, m := range matches {
+		out[i] = m[1]
+	}
+	return out
+}
+
+// seedManyServeSources writes n Source nodes, each matching the literal
+// query "TLS", used by US3's limit scenarios to exceed the default limit
+// of 10.
+func seedManyServeSources(t *testing.T, dir string, n int) {
+	t.Helper()
+	for i := 0; i < n; i++ {
+		id := fmt.Sprintf("tls-source-%02d", i)
+		content := "---\n\"@id\": " + id + "\n\"@type\": Source\n---\n# " + id + "\n\nTLS content number " + strconv.Itoa(i) + ".\n"
+		writeGrepNode(t, dir, "Source/"+id+".md", content)
+	}
+}
+
+// { "name": "context_retrieve", "arguments": { "query": "TLS 1.3" } }
+// Scenario 1 from spec.md US1: a topic query returns both the direct
+// content match and its directly-connected neighbor, as full node objects.
+func TestServeContextRetrieveReturnsDirectAndNeighborMatches(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "context_retrieve",
+		Arguments: map[string]any{"query": "TLS 1.3"},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("## rescorla-2026-tls13")).
+		Should(it.String(text).Contain("## Transport Layer Security"))
+}
+
+// Scenario 2 from spec.md US1: a node connected only by edge to a direct
+// match is included as a full node object (attrs/text/edges), not a stub.
+func TestServeContextRetrieveIncludesConnectedNeighborAsFullNodeObject(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "context_retrieve",
+		Arguments: map[string]any{"query": "TLS 1.3"},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("## Transport Layer Security")).
+		Should(it.String(text).Contain("TLS is the successor to SSL."))
+}
+
+// Scenario 3 from spec.md US1: two calls with the same query against an
+// unchanged graph return the same set of nodes in the same order — the
+// document manifest's own timestamp always differs, so headers (not full
+// text) are compared.
+func TestServeContextRetrieveRepeatCallReturnsSameNodesInSameOrder(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	args := map[string]any{"query": "TLS 1.3"}
+	result1, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "context_retrieve", Arguments: args})
+	it.Then(t).Should(it.Nil(err))
+	result2, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "context_retrieve", Arguments: args})
+	it.Then(t).Should(it.Nil(err))
+
+	it.Then(t).Should(it.Equal(
+		strings.Join(nodeHeaders(textOf(t, result1)), ","),
+		strings.Join(nodeHeaders(textOf(t, result2)), ","),
+	))
+}
+
+// Scenario 4 from spec.md US1: a query matching nothing (no content, no
+// attribute, no reachable neighbor) returns an empty, valid patch, not an
+// error.
+func TestServeContextRetrieveNoMatchReturnsEmptyResultNotError(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "context_retrieve",
+		Arguments: map[string]any{"query": "quantum key distribution"},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	it.Then(t).Should(it.Equal(0, len(nodeHeaders(textOf(t, result)))))
+}
+
+// { "name": "context_retrieve", "arguments": { "query": "TLS", "filter": { "type": ["Source"] } } }
+// Scenario 1 from spec.md US2: a filter object narrows the result to one
+// kind, even though the unfiltered query matches nodes of more than one
+// kind.
+func TestServeContextRetrieveFilterNarrowsResult(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "context_retrieve",
+		Arguments: map[string]any{
+			"query":  "TLS",
+			"filter": map[string]any{"type": []string{"Source"}},
+		},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("## rescorla-2026-tls13")).
+		ShouldNot(it.String(text).Contain("## Transport Layer Security"))
+}
+
+// Scenario 2 from spec.md US2: a node reachable only through neighbor
+// expansion is excluded once a filter it does not satisfy is supplied,
+// even though it appears in the unfiltered call.
+func TestServeContextRetrieveFilterExcludesNeighborReachableOnlyThroughExpansion(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	unfiltered, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "context_retrieve",
+		Arguments: map[string]any{"query": "TLS 1.3"},
+	})
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.String(textOf(t, unfiltered)).Contain("## Transport Layer Security"))
+
+	filtered, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "context_retrieve",
+		Arguments: map[string]any{
+			"query":  "TLS 1.3",
+			"filter": map[string]any{"type": []string{"Source"}},
+		},
+	})
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(filtered.IsError))
+	it.Then(t).ShouldNot(it.String(textOf(t, filtered)).Contain("## Transport Layer Security"))
+}
+
+// Scenario 3 from spec.md US2: a filter excluding every candidate the
+// query would otherwise surface returns an empty result, not an error.
+func TestServeContextRetrieveFullyExcludingFilterReturnsEmptyNotError(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "context_retrieve",
+		Arguments: map[string]any{
+			"query":  "TLS",
+			"filter": map[string]any{"type": []string{"Resource"}},
+		},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	it.Then(t).Should(it.Equal(0, len(nodeHeaders(textOf(t, result)))))
+}
+
+// Scenario 1 from spec.md US3: with no limit given, a query matching more
+// than 10 candidates never returns more than the default of 10.
+func TestServeContextRetrieveDefaultLimitCapsAtTen(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedManyServeSources(t, dir, 15)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "context_retrieve",
+		Arguments: map[string]any{"query": "TLS"},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	it.Then(t).Should(it.True(len(nodeHeaders(textOf(t, result))) <= 10))
+}
+
+// Scenario 2 from spec.md US3: an explicit limit bounds the result to
+// exactly that many candidates when more are available.
+func TestServeContextRetrieveExplicitLimitBoundsResult(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedManyServeSources(t, dir, 15)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "context_retrieve",
+		Arguments: map[string]any{"query": "TLS", "limit": 3},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	it.Then(t).Should(it.Equal(3, len(nodeHeaders(textOf(t, result)))))
+}
+
+// Scenario 3 from spec.md US3: a limit larger than the candidate count
+// returns every candidate found, with no padding and no error.
+func TestServeContextRetrieveLimitLargerThanCandidatesReturnsAllNoPadding(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "context_retrieve",
+		Arguments: map[string]any{"query": "TLS 1.3", "limit": 50},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	it.Then(t).Should(it.Equal(2, len(nodeHeaders(textOf(t, result)))))
+}
+
+// Scenario 4 from spec.md US3: a limit of zero reports a clear tool error,
+// and the server itself keeps running and answers the next call normally
+// (spec FR-012).
+func TestServeContextRetrieveInvalidLimitReturnsToolError(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "context_retrieve",
+		Arguments: map[string]any{"query": "TLS", "limit": 0},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.True(result.IsError))
+	it.Then(t).Should(it.String(textOf(t, result)).Contain("must be a positive integer"))
+
+	result2, err2 := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "context_retrieve",
+		Arguments: map[string]any{"query": "TLS"},
+	})
+	it.Then(t).Should(it.Nil(err2))
+	it.Then(t).ShouldNot(it.True(result2.IsError))
 }

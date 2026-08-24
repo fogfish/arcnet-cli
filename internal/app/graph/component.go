@@ -70,3 +70,11 @@ func NodeGet(ctx context.Context, mounter fsys.Mounter, dir, id string) (core.No
 func EnsureGraph(ctx context.Context, mounter fsys.Mounter, dir string) error {
 	return service.EnsureGraph(ctx, mounter, dir)
 }
+
+// ContextRetrieve assembles the full content of every node relevant to a
+// free-text query — content match, attribute match, and one-hop neighbor
+// expansion, deduplicated, ranked, and truncated to limit — from the graph
+// rooted at dir. It is a thin delegator into service.ContextRetrieve.
+func ContextRetrieve(ctx context.Context, mounter fsys.Mounter, filter core.Filter, query string, limit int, cfgGrep configkernel.GrepConfig, cfgSubgraph configkernel.SubgraphConfig, dir string) (kernel.ContextRetrieveResult, error) {
+	return service.ContextRetrieve(ctx, mounter, filter, query, limit, cfgGrep, cfgSubgraph, dir)
+}
