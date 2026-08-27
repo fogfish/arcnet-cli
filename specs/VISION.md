@@ -135,6 +135,7 @@ Fast graph navigation depends on never re-parsing every `.md` file on every comm
 Expose the full graph navigation surface as a [Model Context Protocol](https://modelcontextprotocol.io) server so any MCP-compatible LLM client can consume the knowledge graph as a set of structured tools. Backed by the Phase 4 index; all tool responses are fast. The server is bidirectional: read tools let an agent navigate the graph, and the write tool lets an agent append to it by streaming a patch it constructed itself.
 
 - [ ] `arc serve` — start an MCP server (stdio transport by default; `--http <port>` for SSE) exposing these tools:
+  - [ ] `schema()` → full schema of the graph, class/predicates and its description 
   - [x] `node_get(id)` → full node object (ARCNET-AST §4): attrs, text, edges, links
   - [ ] `node_list(filter?)` → array of `{id, kind, title}` for nodes matching the filter object (see Filtering — MCP filter object)
   - [x] `node_grep(pattern, filter?)` → list of `{id, kind, line, snippet}` for nodes whose content matches a regexp pattern, optionally pre-filtered by the filter object

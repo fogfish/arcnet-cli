@@ -533,6 +533,151 @@ func TestServeHTTPAddrAlreadyInUseRefusesToStart(t *testing.T) {
 	it.Then(t).ShouldNot(it.Nil(err))
 }
 
+// { "name": "schema", "arguments": {} }
+// Scenario 1 from spec.md US1: a freshly initialized graph with only the
+// built-in vocabulary returns every built-in predicate and class, each with
+// a description.
+func TestServeSchemaReturnsBuiltInVocabulary(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "schema",
+		Arguments: map[string]any{},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("## Predicates")).
+		Should(it.String(text).Contain("## Classes")).
+		Should(it.String(text).Contain("category")).
+		Should(it.String(text).Contain("### Entity"))
+}
+
+// Scenario 2 from spec.md US1: a graph with a project-specific addition on
+// top of the built-in vocabulary includes both in the schema reply.
+func TestServeSchemaIncludesProjectSpecificAdditions(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	writeGrepNode(t, dir, "_schema/Property/customPredicate.md", `---
+"@id": customPredicate
+"@type": Property
+role: meta
+merge: union
+---
+# customPredicate
+
+A project-specific predicate added on top of the built-in vocabulary.
+`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "schema",
+		Arguments: map[string]any{},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("category")).
+		Should(it.String(text).Contain("customPredicate")).
+		Should(it.String(text).Contain("A project-specific predicate added on top of the built-in vocabulary."))
+}
+
+// Scenario 3 from spec.md US1 (and US3 T016): a class's required/optional
+// attributes are readable from the reply, and the description is present
+// verbatim so a reader can distinguish the class from every other one.
+func TestServeSchemaClassShowsRequiredAndOptionalAttributes(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "schema",
+		Arguments: map[string]any{},
+	})
+	it.Then(t).Should(it.Nil(err))
+	text := textOf(t, result)
+
+	it.Then(t).
+		Should(it.String(text).Contain("### Entity")).
+		Should(it.String(text).Contain("A node for a subject occurring in sources, typed by Sowa category.")).
+		Should(it.String(text).Contain("Required: category, text, mentionedIn")).
+		Should(it.String(text).Contain("Optional: "))
+}
+
+// Scenario 4 from spec.md US1 (and US3 T016): a predicate's description is
+// readable from the reply verbatim, distinguishing it from every other one
+// (role/merge behavior are out of scope for this feature's projection —
+// research.md D2 — so only description is asserted here).
+func TestServeSchemaPredicateShowsDescription(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "schema",
+		Arguments: map[string]any{},
+	})
+	it.Then(t).Should(it.Nil(err))
+	text := textOf(t, result)
+
+	it.Then(t).Should(it.String(text).Contain(
+		"- **category**: John F. Sowa's top-level category, decoded into a bag of words (e.g. independent/physical/continuant/object).",
+	))
+}
+
+// spec.md US2 acceptance scenario 1: a freshly connected session's
+// InitializeResult.Instructions names schema and recommends it first.
+func TestServeInitializeInstructionsRecommendSchemaFirst(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	instructions := session.InitializeResult().Instructions
+	it.Then(t).
+		Should(it.String(instructions).Contain("schema")).
+		ShouldNot(it.Equal("", instructions))
+}
+
+// spec.md US2 acceptance scenario 2: the same guidance is presented on a
+// second, independent connection, regardless of what the client remembers
+// from a prior session.
+func TestServeInitializeInstructionsConsistentAcrossConnections(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	session1 := connectServeSession(t, ctx, dir)
+	first := session1.InitializeResult().Instructions
+
+	session2 := connectServeSession(t, ctx, dir)
+	second := session2.InitializeResult().Instructions
+
+	it.Then(t).Should(it.Equal(first, second))
+}
+
 // T031: node_get's handler function, called directly (bypassing the
 // transport), returns a non-nil error for an unknown id and nil content —
 // mcp.AddTool's own generic wrapper is what packs that error into

@@ -12,12 +12,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -42,6 +44,12 @@ const (
 	serveImplName    = "arc"
 	serveImplVersion = "0.1.0"
 )
+
+// schemaAdvertisement is sent to every connecting client as
+// InitializeResult.Instructions (research.md D3, spec FR-008/FR-009) — the
+// session-level guidance naming schema and recommending it as the first
+// call, independent of schema's own mcp.Tool.Description.
+const schemaAdvertisement = `This server exposes a knowledge graph. Call the schema tool first, before any other tool — it returns the graph's full ontology (every predicate and class, with descriptions), which makes every subsequent node_get/node_grep/subgraph_get/context_retrieve call more accurate.`
 
 // mcpFilter is node_grep's optional filter argument's wire shape (research.md
 // D4, data-model.md in specs/008-arc-serve-mcp) — a JSON-native counterpart
@@ -248,6 +256,58 @@ func contextRetrieveHandler(dir string, cfgGrep configkernel.GrepConfig, cfgSubg
 	}
 }
 
+// schemaArgs is schema's input schema — empty, since schema takes no
+// arguments (spec FR-006).
+type schemaArgs struct{}
+
+// renderSchema renders index as schema's markdown reply (research.md D2,
+// contracts/mcp-contract.md, data-model.md): a sorted-by-name Predicates
+// bullet list (name + description only), followed by a sorted-by-name
+// Classes section, one subsection per class with its description and its
+// required/optional predicate names ("(none)" for an empty list). Pure
+// function, no I/O — mirrors renderMatchTable's existing shape.
+func renderSchema(index core.Index) string {
+	var b strings.Builder
+
+	b.WriteString("## Predicates\n\n")
+	for _, name := range slices.Sorted(maps.Keys(index.Predicates)) {
+		fmt.Fprintf(&b, "- **%s**: %s\n", name, index.Predicates[name].Description)
+	}
+
+	b.WriteString("\n## Classes\n\n")
+	for _, name := range slices.Sorted(maps.Keys(index.Types)) {
+		def := index.Types[name]
+		fmt.Fprintf(&b, "### %s\n\n%s\n\n", name, def.Description)
+		fmt.Fprintf(&b, "Required: %s\n", joinOrNone(def.Required))
+		fmt.Fprintf(&b, "Optional: %s\n\n", joinOrNone(def.Optional))
+	}
+
+	return b.String()
+}
+
+// joinOrNone joins names with ", ", or renders "(none)" for an empty list
+// (research.md D2).
+func joinOrNone(names []string) string {
+	if len(names) == 0 {
+		return "(none)"
+	}
+	return strings.Join(names, ", ")
+}
+
+// schemaHandler renders the already-resolved index as schema's reply — the
+// operation cannot fail once index is already in hand, so the returned
+// error is always nil (kept only because mcp.AddTool's handler signature
+// requires an error return). dir mirrors nodeGetHandler/subgraphGetHandler's
+// existing factory shape (data-model.md) though schema makes no domain call
+// of its own and never reads it.
+func schemaHandler(dir string, index core.Index) func(context.Context, *mcp.CallToolRequest, schemaArgs) (*mcp.CallToolResult, any, error) {
+	return func(context.Context, *mcp.CallToolRequest, schemaArgs) (*mcp.CallToolResult, any, error) {
+		text := renderSchema(index)
+		logCall("schema", "", nil)
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, nil, nil
+	}
+}
+
 // buildServer mounts dir, preflights EnsureGraph (spec FR-004), loads
 // .arc/config.yml once, and registers node_get/node_grep/subgraph_get/
 // context_retrieve on a new mcp.Server — the same construction RunE runs
@@ -278,7 +338,7 @@ func buildServer(ctx context.Context, dir string) (*mcp.Server, error) {
 		subgraphCfg.BacklinkCap = defaultSubgraphBacklinkCap
 	}
 
-	server := mcp.NewServer(&mcp.Implementation{Name: serveImplName, Version: serveImplVersion}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: serveImplName, Version: serveImplVersion}, &mcp.ServerOptions{Instructions: schemaAdvertisement})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "node_get",
@@ -304,6 +364,12 @@ func buildServer(ctx context.Context, dir string) (*mcp.Server, error) {
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 	}, contextRetrieveHandler(dir, cfgFile.Grep, subgraphCfg, index))
 
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "schema",
+		Description: "Return the graph's full ontology — every currently defined class and predicate, with descriptions — so a client knows what vocabulary is available before reading or writing the graph. Recommended as the first tool call of a session.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
+	}, schemaHandler(dir, index))
+
 	return server, nil
 }
 
@@ -315,13 +381,16 @@ func NewServeCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "Run an MCP server exposing the graph to LLM clients.",
 		Long: `
-arc serve starts a Model Context Protocol (MCP) server exposing four
-read-only tools — node_get, node_grep, subgraph_get, context_retrieve —
-the first three backed by the same use-case functions arc grep/arc
+arc serve starts a Model Context Protocol (MCP) server exposing five
+read-only tools — node_get, node_grep, subgraph_get, context_retrieve,
+schema — the first three backed by the same use-case functions arc grep/arc
 subgraph already call; context_retrieve (query + attribute match plus
-one-hop neighbor expansion, ranked and truncated to a limit) is MCP-only,
-with no Cobra command of its own. It serves over stdio by default, or over
-Streamable HTTP/SSE when --http <addr> is given.
+one-hop neighbor expansion, ranked and truncated to a limit) and schema
+(the graph's full ontology: every class and predicate, with descriptions)
+are MCP-only, with no Cobra command of their own. schema is the recommended
+first call of a session — every connecting client is told so via the
+server's own session-start guidance. It serves over stdio by default, or
+over Streamable HTTP/SSE when --http <addr> is given.
 A bare port or :port binds 127.0.0.1 only; an explicit host binds exactly
 that host. serve is strictly read-only and never modifies the graph or its
 git history.
