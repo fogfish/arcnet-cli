@@ -37,12 +37,16 @@ cmd/arc/                    # sole primary (driving) adapter: Cobra command tree
 │   │                         #   bios.SCHEMA styling (specs/007-arc-subgraph, research.md D10)
 │   └── serve.go             # `arc serve [--http <addr>]` command: the codebase's second
 │                             #   primary-adapter family (ADR 003) — registers node_get/
-│                             #   node_grep/subgraph_get/context_retrieve as MCP Tools on an
-│                             #   mcp.Server, calling internal/app/graph.NodeGet/Grep/Subgraph/
-│                             #   ContextRetrieve exactly like every Cobra command does, over
-│                             #   stdio by default or Streamable HTTP/SSE when --http names a
-│                             #   Bind Address (specs/008-arc-serve-mcp,
-│                             #   specs/025-context-retrieve-tool)
+│                             #   node_grep/subgraph_get/context_retrieve/schema as MCP Tools
+│                             #   on an mcp.Server, calling internal/app/graph.NodeGet/Grep/
+│                             #   Subgraph/ContextRetrieve exactly like every Cobra command
+│                             #   does, over stdio by default or Streamable HTTP/SSE when
+│                             #   --http names a Bind Address (specs/008-arc-serve-mcp,
+│                             #   specs/025-context-retrieve-tool, specs/026-mcp-schema-tool);
+│                             #   schema alone renders the already-resolved core.Index
+│                             #   directly with no domain call of its own, and the server's
+│                             #   mcp.ServerOptions.Instructions advertises it as the
+│                             #   recommended first call of every session
 └── lint/                   # Cobra wiring for the lint (graph conformance validation) domain
     └── lint.go               # `arc lint` command: flag/arg parsing, calls
                               #   internal/app/schema.Resolve then internal/app/lint.Lint
@@ -271,7 +275,7 @@ This project uses **bare top-level verbs** (`arc init`, `arc apply`, `arc list`,
 | **Reachable Node** | Any node other than the seed found within `arc subgraph`'s requested hop count by following structural `Edges`/`Links` in either direction; subject to the optional `Filter` and to its traversal direction's cap. `specs/007-arc-subgraph`. |
 | **Subgraph** | The seed node plus the set of reachable nodes selected for one `arc subgraph` extraction, serialized as one patch-exchange document grouped by type via `internal/core.RenderPatch`. `internal/app/graph/kernel.SubgraphResult`, `internal/app/graph/service.Subgraph` (`specs/007-arc-subgraph`). |
 | **Traversal Cap** | A configurable ceiling — `subgraph.directCap` (outgoing, default `4096`) and `subgraph.backlinkCap` (incoming, default `1024`), `internal/app/config/kernel.SubgraphConfig` — on how many nodes `arc subgraph` retains per traversal direction before filtering; when exceeded, the highest-degree candidates are kept and the run still succeeds (soft cap). `specs/007-arc-subgraph`, research.md D4/D5. |
-| **MCP Tool** | One callable capability `arc serve` registers on its `mcp.Server` via `mcp.AddTool` — `node_get`, `node_grep`, `subgraph_get`, or `context_retrieve`. Each is a thin wrapper: decode MCP JSON arguments, call the identical `internal/app/graph` primary-port function every Cobra command already calls (except `context_retrieve`, which is MCP-only in this increment — no Cobra twin), render the result as markdown text (`core.RenderNode`/`RenderPatch`, or a new table for `node_grep`), never new business logic (ADR 003). `specs/008-arc-serve-mcp`, `specs/025-context-retrieve-tool`. |
+| **MCP Tool** | One callable capability `arc serve` registers on its `mcp.Server` via `mcp.AddTool` — `node_get`, `node_grep`, `subgraph_get`, `context_retrieve`, or `schema`. Each is a thin wrapper: decode MCP JSON arguments, call the identical `internal/app/graph` primary-port function every Cobra command already calls (except `context_retrieve`, which is MCP-only in this increment — no Cobra twin), render the result as markdown text (`core.RenderNode`/`RenderPatch`, or a new table for `node_grep`), never new business logic (ADR 003). `schema` takes no arguments and makes no domain call at all — it renders the already-resolved `core.Index` value `buildServer` computes once per server lifetime, listing every predicate/class with its description (plus a class's required/optional predicates), and the server advertises it as the session's recommended first call via `mcp.ServerOptions.Instructions`. `specs/008-arc-serve-mcp`, `specs/025-context-retrieve-tool`, `specs/026-mcp-schema-tool`. |
 | **Retrieval Candidate** | A node surfaced by any of `context_retrieve`'s three passes — content match, attribute match, or one-hop neighbor expansion from a match — before dedup, ranking, and truncation to `limit`. Ranked direct matches (content/attribute) ahead of neighbor-only matches, then by `degree` descending, then id ascending; deduplicated by id so a node reachable by more than one pass appears once. `internal/app/graph/kernel.ContextRetrieveResult`, `internal/app/graph/service.ContextRetrieve` (`specs/025-context-retrieve-tool`). |
 | **Transport** | The wire framing `arc serve` runs its `mcp.Server` over: `mcp.StdioTransport` by default (newline-delimited JSON over stdin/stdout) or `mcp.NewStreamableHTTPHandler` (Streamable HTTP/SSE) when `--http <addr>` is given. Both front the identical registered tool set — only the framing differs (spec SC-007). ADR 003, `specs/008-arc-serve-mcp`. |
 | **Bind Address** | The `[host]:port` value `arc serve --http <addr>` parses via `resolveHTTPAddr`: a bare port or `:port` (no host) resolves to `127.0.0.1` (loopback-only); an explicit host binds exactly that host. A syntactically invalid address, or one already in use, refuses to start (spec FR-003/FR-005). `specs/008-arc-serve-mcp`, research.md D5. |

@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/025-context-retrieve-tool/plan.md`
+`specs/026-mcp-schema-tool/plan.md`
 <!-- SPECKIT END -->
 
 ## Go file license header

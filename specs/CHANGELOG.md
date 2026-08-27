@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-27
+
+/speckit-specify Add `schema()` function to MCP server. Its purpose to explain a full ontology of the graph. It return all existing class/predicates and its description. The MCP server should advertise usage of the function as the first operation in the session. 
+
+/speckit-plan Add `schema()` function to existing server using existing schema management functionality available at application. For properties return only property name and textual description. For classes, return its description and all required and optional properties / predicates. Advertise usage of schema as part of server description.   
+
+
 ## 2026-08-23 (ARCNET-CORE v0.11)
 
 **Breaking format change, with no migration** — three related corrections that
