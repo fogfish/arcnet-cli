@@ -10,6 +10,7 @@ package graph
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -18,12 +19,14 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
@@ -48,45 +51,119 @@ const (
 // schemaAdvertisement is sent to every connecting client as
 // InitializeResult.Instructions (research.md D3, spec FR-008/FR-009) — the
 // session-level guidance naming schema and recommending it as the first
-// call, independent of schema's own mcp.Tool.Description.
-const schemaAdvertisement = `This server exposes a knowledge graph. Call the schema tool first, before any other tool — it returns the graph's full ontology (every predicate and class, with descriptions), which makes every subsequent node_get/node_grep/subgraph_get/context_retrieve call more accurate.`
+// call, independent of schema's own mcp.Tool.Description. research.md D9:
+// also names predicate-scoped filtering/traversal, via the triple
+// filter.statements shape, as available.
+const schemaAdvertisement = `This server exposes a knowledge graph. Call the schema tool first, before any other tool — it returns the graph's full ontology (every predicate and class, with descriptions), which makes every subsequent node_get/node_grep/subgraph_get/context_retrieve call more accurate. node_grep, subgraph_get, and context_retrieve each accept an optional filter.statements argument (triple source/predicate/target constraints) — a predicate-only statement scopes subgraph_get/context_retrieve's neighbor traversal to a named relation, while a statement also naming source/target narrows which nodes are returned.`
 
-// mcpFilter is node_grep's optional filter argument's wire shape (research.md
-// D4, data-model.md in specs/008-arc-serve-mcp) — a JSON-native counterpart
-// to grep.go's own optsFilter, kept private to this file since the two
-// drivers' native input shapes (CLI flags vs. MCP JSON) do not share a
-// common decoding path.
-type mcpFilter struct {
-	Type         []string          `json:"type,omitempty"`
-	Tags         []string          `json:"tags,omitempty"`
-	Attrs        map[string]string `json:"attrs,omitempty"`
-	AttrPatterns map[string]string `json:"attrPatterns,omitempty"`
+// stringOrArray decodes a JSON value that may be either a single string or
+// an array of strings into a []string (research.md D7) — used by every
+// mcpStatement field so a client can write either shape.
+type stringOrArray []string
+
+func (s *stringOrArray) UnmarshalJSON(data []byte) error {
+	var one string
+	if err := json.Unmarshal(data, &one); err == nil {
+		*s = stringOrArray{one}
+		return nil
+	}
+	var many []string
+	if err := json.Unmarshal(data, &many); err != nil {
+		return err
+	}
+	*s = many
+	return nil
 }
 
-// toCoreFilter converts f into a core.Filter, compiling every AttrPatterns
-// value via regexp.Compile and returning service.ErrInvalidFilterPattern on
-// the first invalid one (research.md D4). A nil f converts to a zero-value
+// mcpStatement is one triple statement in mcpFilter's wire shape
+// (research.md D7, contracts/mcp-contract.md): source/predicate/target
+// each accept a single string or an array of strings (OR-of-values), with
+// an optional sibling *Pattern field for the regexp case, mirroring
+// core.Matcher's Values/Patterns split.
+type mcpStatement struct {
+	Source           stringOrArray `json:"source,omitempty"`
+	SourcePattern    stringOrArray `json:"sourcePattern,omitempty"`
+	Predicate        stringOrArray `json:"predicate,omitempty"`
+	PredicatePattern stringOrArray `json:"predicatePattern,omitempty"`
+	Target           stringOrArray `json:"target,omitempty"`
+	TargetPattern    stringOrArray `json:"targetPattern,omitempty"`
+}
+
+// mcpFilter is node_grep's/subgraph_get's/context_retrieve's optional
+// filter argument's wire shape (research.md D7, contracts/mcp-contract.md)
+// — a JSON-native list of triple statements, kept private to this file
+// since the two drivers' native input shapes (CLI flags vs. MCP JSON) do
+// not share a common decoding path.
+type mcpFilter struct {
+	Statements []mcpStatement `json:"statements,omitempty"`
+}
+
+// toMatcher compiles values/patterns into a core.Matcher, returning
+// service.ErrInvalidFilterPattern on the first invalid regexp
+// (research.md D7).
+func toMatcher(values, patterns stringOrArray) (core.Matcher, error) {
+	m := core.Matcher{Values: []string(values)}
+	for _, p := range patterns {
+		re, err := regexp.Compile(p)
+		if err != nil {
+			return core.Matcher{}, service.ErrInvalidFilterPattern.With(err, p)
+		}
+		m.Patterns = append(m.Patterns, re)
+	}
+	return m, nil
+}
+
+// toCoreFilter converts f into a core.Filter, compiling every *Pattern
+// field via regexp.Compile and returning service.ErrInvalidFilterPattern on
+// the first invalid one (research.md D7). A nil f converts to a zero-value
 // core.Filter{} (matches every node).
 func (f *mcpFilter) toCoreFilter() (core.Filter, error) {
 	if f == nil {
 		return core.Filter{}, nil
 	}
 
-	out := core.Filter{Tags: f.Tags, Types: append([]string(nil), f.Type...)}
-	if len(f.Attrs) > 0 {
-		out.Attrs = f.Attrs
-	}
-	for name, pattern := range f.AttrPatterns {
-		re, err := regexp.Compile(pattern)
+	var out core.Filter
+	for _, s := range f.Statements {
+		source, err := toMatcher(s.Source, s.SourcePattern)
 		if err != nil {
-			return core.Filter{}, service.ErrInvalidFilterPattern.With(err, pattern)
+			return core.Filter{}, err
 		}
-		if out.AttrPatterns == nil {
-			out.AttrPatterns = map[string]*regexp.Regexp{}
+		predicate, err := toMatcher(s.Predicate, s.PredicatePattern)
+		if err != nil {
+			return core.Filter{}, err
 		}
-		out.AttrPatterns[name] = re
+		target, err := toMatcher(s.Target, s.TargetPattern)
+		if err != nil {
+			return core.Filter{}, err
+		}
+		out.Statements = append(out.Statements, core.Statement{Source: source, Predicate: predicate, Target: target})
 	}
 	return out, nil
+}
+
+// stringOrArraySchema is stringOrArray's JSON Schema: either a single
+// string or an array of strings (research.md D7) — jsonschema.ForType's
+// default struct-derived reflection would otherwise type a []string-backed
+// field as "array" only, rejecting the single-string convenience form
+// before toCoreFilter's custom decoding ever runs.
+func stringOrArraySchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		AnyOf: []*jsonschema.Schema{
+			{Type: "string"},
+			{Type: "array", Items: &jsonschema.Schema{Type: "string"}},
+		},
+	}
+}
+
+// inputSchemaFor derives T's input schema via reflection, substituting
+// stringOrArraySchema() for every stringOrArray-typed field so a tool's
+// filter.statements argument accepts either wire shape (research.md D7).
+func inputSchemaFor[T any]() (*jsonschema.Schema, error) {
+	return jsonschema.ForType(reflect.TypeFor[T](), &jsonschema.ForOptions{
+		TypeSchemas: map[reflect.Type]*jsonschema.Schema{
+			reflect.TypeFor[stringOrArray](): stringOrArraySchema(),
+		},
+	})
 }
 
 // resolveHTTPAddr resolves --http's address argument (research.md D5, spec
@@ -178,10 +255,14 @@ func nodeGrepHandler(dir string, cfg configkernel.GrepConfig) func(context.Conte
 	}
 }
 
-// subgraphGetArgs is subgraph_get's input schema.
+// subgraphGetArgs is subgraph_get's input schema. Filter is new
+// (research.md D8) — subgraph_get had no filter argument before this
+// feature, so both flat-inclusion narrowing and predicate-scoped traversal
+// were unreachable from it.
 type subgraphGetArgs struct {
-	ID    string `json:"id" jsonschema:"seed node basename"`
-	Depth *int   `json:"depth,omitempty" jsonschema:"number of hops to traverse from the seed, default 1"`
+	ID     string     `json:"id" jsonschema:"seed node basename"`
+	Depth  *int       `json:"depth,omitempty" jsonschema:"number of hops to traverse from the seed, default 1"`
+	Filter *mcpFilter `json:"filter,omitempty" jsonschema:"optional filter; a predicate-only statement scopes traversal, a source/target-naming statement narrows the result"`
 }
 
 // subgraphGetHandler extracts the seed plus every node reachable within
@@ -201,7 +282,13 @@ func subgraphGetHandler(dir string, cfg configkernel.SubgraphConfig, index core.
 			return nil, nil, err
 		}
 
-		result, err := appgraph.Subgraph(ctx, fsys.Local{}, core.Filter{}, args.ID, depth, cfg, dir, false)
+		filter, err := args.Filter.toCoreFilter()
+		if err != nil {
+			logCall("subgraph_get", logArgs, err)
+			return nil, nil, err
+		}
+
+		result, err := appgraph.Subgraph(ctx, fsys.Local{}, filter, args.ID, depth, cfg, dir, false)
 		logCall("subgraph_get", logArgs, err)
 		if err != nil {
 			return nil, nil, err
@@ -346,21 +433,36 @@ func buildServer(ctx context.Context, dir string) (*mcp.Server, error) {
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 	}, nodeGetHandler(dir, index))
 
+	nodeGrepSchema, err := inputSchemaFor[nodeGrepArgs]()
+	if err != nil {
+		return nil, err
+	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "node_grep",
-		Description: "Search node content for lines matching a regexp pattern, optionally narrowed by a filter.",
+		Description: "Search node content for lines matching a regexp pattern, optionally narrowed by a filter.statements triple filter (see schema).",
+		InputSchema: nodeGrepSchema,
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 	}, nodeGrepHandler(dir, cfgFile.Grep))
 
+	subgraphGetSchema, err := inputSchemaFor[subgraphGetArgs]()
+	if err != nil {
+		return nil, err
+	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "subgraph_get",
-		Description: "Return the fully-resolved subgraph rooted at a node, to a given hop depth.",
+		Description: "Return the fully-resolved subgraph rooted at a node, to a given hop depth, optionally scoped/narrowed by a filter.statements triple filter (see schema) — a predicate-only statement restricts which relations traversal follows.",
+		InputSchema: subgraphGetSchema,
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 	}, subgraphGetHandler(dir, subgraphCfg, index))
 
+	contextRetrieveSchema, err := inputSchemaFor[contextRetrieveArgs]()
+	if err != nil {
+		return nil, err
+	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "context_retrieve",
-		Description: "Assemble the full content of every node relevant to a free-text query in one call — content match, attribute match, and neighbor expansion combined, ranked, deduplicated, and truncated to limit.",
+		Description: "Assemble the full content of every node relevant to a free-text query in one call — content match, attribute match, and neighbor expansion combined, ranked, deduplicated, and truncated to limit; optionally scoped/narrowed by a filter.statements triple filter (see schema).",
+		InputSchema: contextRetrieveSchema,
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 	}, contextRetrieveHandler(dir, cfgFile.Grep, subgraphCfg, index))
 

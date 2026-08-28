@@ -14,85 +14,129 @@ import (
 	"strings"
 )
 
-// Filter is the optional, composable node-selection criteria shared by
-// every VISION.md Filtering-section command (research.md D8 in
-// specs/006-arc-grep-content-search). A zero-value Filter{} matches every
-// node.
-type Filter struct {
-	// Types is empty-matches-every-type, otherwise OR'd: a node matches if
-	// its Type is any listed value.
-	Types []string
-	// Tags is empty-matches-every-node, otherwise AND'd: every listed tag
-	// must be present among the values of node.Attrs["tags"].
-	Tags []string
-	// Attrs is empty-matches-every-node, otherwise AND'd: name=value,
-	// case-insensitive equality against any Predicate value in
-	// node.Attrs[name].
-	Attrs map[string]string
-	// AttrPatterns is empty-matches-every-node, otherwise AND'd:
-	// name~=pattern, regexp match against any Predicate value in
-	// node.Attrs[name].
-	AttrPatterns map[string]*regexp.Regexp
+// Matcher constrains one position (Source, Predicate, or Target) of a
+// Statement. A zero-value Matcher is a wildcard: it matches every string.
+// Otherwise it matches s iff s case-insensitively equals any Values entry,
+// or s matches any Patterns entry — the two slices are OR'd together, and
+// either or both may be populated (research.md D1).
+type Matcher struct {
+	Values   []string
+	Patterns []*regexp.Regexp
 }
 
-// Match reports whether node satisfies every condition in f. Match mutates
-// neither f nor node.
-func (f Filter) Match(node Node) bool {
-	return f.matchTypes(node) && f.matchTags(node) && f.matchAttrs(node) && f.matchAttrPatterns(node)
+// IsWildcard reports whether m constrains nothing (both slices empty).
+func (m Matcher) IsWildcard() bool {
+	return len(m.Values) == 0 && len(m.Patterns) == 0
 }
 
-func (f Filter) matchTypes(node Node) bool {
-	if len(f.Types) == 0 {
+// Match reports whether s satisfies m: wildcard, a case-insensitive Values
+// match, or a Patterns match.
+func (m Matcher) Match(s string) bool {
+	if m.IsWildcard() {
 		return true
 	}
-	for _, k := range f.Types {
-		if node.Type == k {
+	for _, v := range m.Values {
+		if strings.EqualFold(s, v) {
+			return true
+		}
+	}
+	for _, p := range m.Patterns {
+		if p.MatchString(s) {
 			return true
 		}
 	}
 	return false
 }
 
-func (f Filter) matchTags(node Node) bool {
-	if len(f.Tags) == 0 {
+// Statement is one clause of a Filter: independently-wildcardable
+// constraints on the (Source, Predicate, Target) triple of a fact.
+type Statement struct {
+	Source    Matcher
+	Predicate Matcher
+	Target    Matcher
+}
+
+// IsTraversalConstraint reports whether s constrains only Predicate
+// (Source and Target both wildcard) — research.md D3. Such a statement
+// scopes which structural connections BFS follows, rather than narrowing
+// which already-reached nodes survive into a flat result.
+func (s Statement) IsTraversalConstraint() bool {
+	return s.Source.IsWildcard() && !s.Predicate.IsWildcard() && s.Target.IsWildcard()
+}
+
+// match reports whether s is satisfied by the (source, predicate, target)
+// triple.
+func (s Statement) match(source, predicate, target string) bool {
+	return s.Source.Match(source) && s.Predicate.Match(predicate) && s.Target.Match(target)
+}
+
+// Filter is the optional, composable node-selection criteria shared by
+// every VISION.md Filtering-section command and by arc serve's MCP tools.
+// A zero-value Filter{} matches every node.
+type Filter struct {
+	Statements []Statement
+}
+
+// Match reports whether node satisfies every statement in f (AND across
+// statements; each statement independently satisfied by any one of the
+// node's own attribute or edge facts — spec FR-005). Match mutates neither
+// f nor node.
+func (f Filter) Match(node Node) bool {
+	for _, s := range f.Statements {
+		if !statementSatisfiedBy(s, node) {
+			return false
+		}
+	}
+	return true
+}
+
+// statementSatisfiedBy reports whether any fact carried by node — the
+// synthesized type fact (research.md D2), an attribute fact, or an edge
+// fact — satisfies s.
+func statementSatisfiedBy(s Statement, node Node) bool {
+	if s.match(node.ID, "type", node.Type) {
 		return true
 	}
-	tags := attrStrings(node.Attrs["tags"])
-	for _, want := range f.Tags {
-		if !containsFold(tags, want) {
-			return false
+	for name, preds := range node.Attrs {
+		for _, p := range preds {
+			if p.Value == nil {
+				continue
+			}
+			if s.match(node.ID, name, toString(p.Value)) {
+				return true
+			}
 		}
 	}
-	return true
-}
-
-func (f Filter) matchAttrs(node Node) bool {
-	for name, want := range f.Attrs {
-		if !matchAttrValue(node.Attrs[name], want) {
-			return false
+	for _, e := range node.Edges {
+		if s.match(node.ID, e.Predicate, e.Target) {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
-func (f Filter) matchAttrPatterns(node Node) bool {
-	for name, want := range f.AttrPatterns {
-		if !matchAttrPattern(node.Attrs[name], want) {
-			return false
+// Traversal returns the subset of f.Statements that are traversal
+// constraints (research.md D3) — used to gate BFS edge admission.
+func (f Filter) Traversal() Filter {
+	var out Filter
+	for _, s := range f.Statements {
+		if s.IsTraversalConstraint() {
+			out.Statements = append(out.Statements, s)
 		}
 	}
-	return true
+	return out
 }
 
-// attrStrings converts a Predicate slice into its stringified values,
-// skipping any reference-valued Predicate (nil Value, non-empty Target).
-func attrStrings(preds []Predicate) []string {
-	out := make([]string, 0, len(preds))
-	for _, p := range preds {
-		if p.Value == nil {
-			continue
+// Narrowing returns the subset of f.Statements that are NOT traversal
+// constraints — used for flat-inclusion narrowing of already-reached,
+// non-seed candidates. Traversal() and Narrowing() partition f.Statements;
+// their statement counts sum to len(f.Statements).
+func (f Filter) Narrowing() Filter {
+	var out Filter
+	for _, s := range f.Statements {
+		if !s.IsTraversalConstraint() {
+			out.Statements = append(out.Statements, s)
 		}
-		out = append(out, toString(p.Value))
 	}
 	return out
 }
@@ -102,37 +146,4 @@ func toString(v any) string {
 		return s
 	}
 	return fmt.Sprint(v)
-}
-
-func containsFold(items []string, want string) bool {
-	for _, item := range items {
-		if strings.EqualFold(item, want) {
-			return true
-		}
-	}
-	return false
-}
-
-func matchAttrValue(preds []Predicate, want string) bool {
-	for _, p := range preds {
-		if p.Value == nil {
-			continue
-		}
-		if strings.EqualFold(toString(p.Value), want) {
-			return true
-		}
-	}
-	return false
-}
-
-func matchAttrPattern(preds []Predicate, want *regexp.Regexp) bool {
-	for _, p := range preds {
-		if p.Value == nil {
-			continue
-		}
-		if want.MatchString(toString(p.Value)) {
-			return true
-		}
-	}
-	return false
 }

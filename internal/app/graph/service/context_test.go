@@ -149,7 +149,7 @@ func TestContextRetrieveFilterExcludesReachableNeighbor(t *testing.T) {
 		"Source/tls-source.md": contextSourceMatch,
 		"Entity/tls-entity.md": contextEntityNeighbor,
 	})
-	filter := core.Filter{Types: []string{"Source"}}
+	filter := filterType("Source")
 
 	result, err := service.ContextRetrieve(context.Background(), mounter, filter, "TLS 1.3", 10, configkernel.GrepConfig{}, configkernel.SubgraphConfig{}, "/graph")
 
@@ -163,7 +163,7 @@ func TestContextRetrieveFullyExcludingFilterReturnsEmptyNotError(t *testing.T) {
 	mounter := newGrepGraph(map[string]string{
 		"Source/tls-source.md": contextSourceMatch,
 	})
-	filter := core.Filter{Types: []string{"Resource"}}
+	filter := filterType("Resource")
 
 	result, err := service.ContextRetrieve(context.Background(), mounter, filter, "TLS 1.3", 10, configkernel.GrepConfig{}, configkernel.SubgraphConfig{}, "/graph")
 

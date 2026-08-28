@@ -18,7 +18,7 @@ The `.arc/` directory is the single location for all arc-managed state that is n
 
 ## Filtering
 
-Several commands accept a filter to narrow the set of nodes they operate on. Filters are composable: all flags present in a single invocation are ANDed together. Where a flag is repeatable, the repeated values combine as stated below.
+Several commands accept a filter to narrow the set of nodes they operate on. Underneath every filter-accepting command, a filter is a list of triple **statements** — each one an independently-wildcardable `(source, predicate, target)` constraint, ANDed together (`specs/027-triple-filter-model`). A statement is satisfied by any one of a node's own facts: its `"@type"` (synthesized as a `(id, "type", type)` fact), one of its front-matter attributes, or one of its outgoing structural connections (edges) — so a selection criterion can match a node via either what it *is* (attributes) or what it *points at* (relations), uniformly. `--type`/`--tag`/`--attr` are convenience flags that lower to specific statement shapes; they keep the exact CLI contract described below.
 
 **Type filter**
 
@@ -30,11 +30,15 @@ Several commands accept a filter to narrow the set of nodes they operate on. Fil
 
 **Attribute filter**
 
-`--attr <name>=<value>` restricts results to nodes where the front-matter attribute `<name>` equals `<value>`. For scalar attributes the comparison is case-insensitive string equality. For array attributes the check is membership — `<value>` must be an element of the array. Applies to any attribute of any kind: `ref`, `status`, `maturity`, `class`, `category`, `published`, or any attribute introduced by a domain profile.
+`--attr <name>=<value>` restricts results to nodes where the front-matter attribute `<name>` equals `<value>`. For scalar attributes the comparison is case-insensitive string equality. For array attributes the check is membership — `<value>` must be an element of the array. Applies to any attribute of any kind: `ref`, `status`, `maturity`, `class`, `category`, `published`, or any attribute introduced by a domain profile. Because a statement is satisfied by *any* matching fact, `--attr <name>=<value>` also matches a node whose outgoing edge has predicate `<name>` and target `<value>` — attributes and relations share one matching rule.
 
 `--attr <name>~=<pattern>` restricts results to nodes where the front-matter attribute `<name>` matches the regexp `<pattern>`. For array attributes the pattern is tested against each element; the node matches if any element matches.
 
 The `--attr` flag is repeatable with AND semantics — all specified attribute conditions must hold simultaneously.
+
+**Relation filter (traversal scoping)**
+
+`--predicate <name>` — `arc subgraph` only — restricts which structural connections neighbor expansion follows, in both directions, to those whose relation name is `<name>`. The flag is repeatable with OR semantics. Unlike `--type`/`--tag`/`--attr`, which narrow *which reached nodes survive* into the result, `--predicate` narrows *what gets reached* in the first place; the seed is always present regardless. The two compose freely in one invocation: `arc subgraph TLS --predicate cites --type Source` follows only `cites` edges, then keeps only the `Source`-typed nodes among what was reached.
 
 **Datalog query as a filter**
 
@@ -42,18 +46,20 @@ TBD
 
 **MCP filter object**
 
-MCP tools that accept a filter receive it as a single JSON object parameter `filter`. The schema mirrors the CLI flags:
+MCP tools that accept a filter (`node_grep`, `subgraph_get`, `context_retrieve`) receive it as a single JSON object parameter `filter`, holding a `statements` array — each entry the wire shape of one triple statement:
 
 ```json
 {
-  "type":         ["source", "entity"],
-  "tags":         ["cryptography", "protocols"],
-  "attrs":        { "status": "backlog", "ref": "standard" },
-  "attrPatterns": { "title": "TLS.*", "category": "independent" }
+  "statements": [
+    { "predicate": "cites" },
+    { "predicate": "type", "target": "Source" },
+    { "predicate": "tags", "target": ["cryptography", "protocols"] },
+    { "predicate": "title", "targetPattern": "^TLS 1\\.3" }
+  ]
 }
 ```
 
-All fields are optional. `kind` is an array with OR semantics. `tags` is an array with AND semantics. `attrs` is a map of exact-match conditions, all ANDed. `attrPatterns` is a map of regexp-match conditions, all ANDed. An absent or empty `filter` object matches all nodes.
+Each statement's `source`/`predicate`/`target` (plus the regexp-matching `sourcePattern`/`predicatePattern`/`targetPattern` siblings) is optional and accepts either a single string or an array of strings (OR-of-values); an omitted position is a wildcard. Statements are ANDed together. A statement naming only `predicate` (`source`/`target` both omitted) scopes `subgraph_get`/`context_retrieve`'s neighbor traversal to that relation instead of narrowing the result — the same split `--predicate` expresses on the CLI. An absent `filter`, or one with an empty/absent `statements` list, matches every node.
 
 ---
 

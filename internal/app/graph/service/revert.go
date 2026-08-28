@@ -338,10 +338,10 @@ func sweepBacklinks(store fsys.Store, index core.Index, preIndex nodeIndex, rev 
 	referrers := map[string]bool{}
 	for id := range removedIDs {
 		for _, r := range rev[id] {
-			if removedIDs[r] {
+			if removedIDs[r.Source] {
 				continue
 			}
-			referrers[r] = true
+			referrers[r.Source] = true
 		}
 	}
 

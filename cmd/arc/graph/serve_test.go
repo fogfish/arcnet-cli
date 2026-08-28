@@ -196,7 +196,7 @@ func TestServeNodeGrepReturnsOneRowPerMatch(t *testing.T) {
 		Should(it.String(text).Contain("rescorla-2026-tls13"))
 }
 
-// { "name": "node_grep", "arguments": { "pattern": "TLS", "filter": { "type": ["Source"] } } }
+// { "name": "node_grep", "arguments": { "pattern": "TLS", "filter": { "statements": [{ "predicate": "type", "target": "Source" }] } } }
 // Scenario 2 from spec.md US2: a filter object narrows the matched nodes.
 func TestServeNodeGrepFilterNarrowsMatchedNodes(t *testing.T) {
 	dir := t.TempDir()
@@ -211,7 +211,9 @@ func TestServeNodeGrepFilterNarrowsMatchedNodes(t *testing.T) {
 		Name: "node_grep",
 		Arguments: map[string]any{
 			"pattern": "TLS",
-			"filter":  map[string]any{"type": []string{"Source"}},
+			"filter": map[string]any{"statements": []map[string]any{
+				{"predicate": "type", "target": "Source"},
+			}},
 		},
 	})
 
@@ -220,6 +222,47 @@ func TestServeNodeGrepFilterNarrowsMatchedNodes(t *testing.T) {
 	text := textOf(t, result)
 	it.Then(t).
 		Should(it.String(text).Contain("rescorla-2026-tls13")).
+		ShouldNot(it.String(text).Contain("Transport Layer Security |"))
+}
+
+// { "name": "node_grep", "arguments": { "pattern": "TLS", "filter": { "statements": [{ "predicate": "cites", "target": "rescorla-2026-tls13" }] } } }
+// Mirrors T017's arc grep edge-fact scenario over MCP: node_grep matches a
+// node via one of its own edges, not only its attributes.
+func TestServeNodeGrepMatchesNodeViaEdgeFact(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeFixture(t, dir)
+	writeGrepNode(t, dir, "Entity/Citing Note.md", `---
+"@id": Citing Note
+"@type": Entity
+---
+# Citing Note
+
+TLS discussion.
+
+- cites:: [[rescorla-2026-tls13]]
+`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "node_grep",
+		Arguments: map[string]any{
+			"pattern": "TLS",
+			"filter": map[string]any{"statements": []map[string]any{
+				{"predicate": "cites", "target": "rescorla-2026-tls13"},
+			}},
+		},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("Citing Note")).
+		ShouldNot(it.String(text).Contain("rescorla-2026-tls13 |")).
 		ShouldNot(it.String(text).Contain("Transport Layer Security |"))
 }
 
@@ -451,6 +494,179 @@ func TestServeSubgraphGetUnknownSeedReturnsToolError(t *testing.T) {
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.True(result.IsError))
 	it.Then(t).Should(it.String(textOf(t, result)).Contain("no node found"))
+}
+
+const servePaperA = `---
+"@id": paper-a
+"@type": Source
+---
+# paper-a
+
+- cites:: [[paper-b]]
+- mentions:: [[paper-c]]
+`
+const servePaperB = `---
+"@id": paper-b
+"@type": Source
+---
+# paper-b
+`
+const servePaperC = `---
+"@id": paper-c
+"@type": Source
+---
+# paper-c
+`
+
+func seedServePredicateFixture(t *testing.T, dir string) {
+	t.Helper()
+	writeGrepNode(t, dir, "Source/paper-a.md", servePaperA)
+	writeGrepNode(t, dir, "Source/paper-b.md", servePaperB)
+	writeGrepNode(t, dir, "Source/paper-c.md", servePaperC)
+}
+
+// { "name": "subgraph_get", "arguments": { "id": "paper-a", "filter": { "statements": [{ "predicate": "cites" }] } } }
+// Quickstart Scenario 2 / spec.md US1: subgraph_get's filter.statements
+// scopes traversal identically to arc subgraph's own --predicate.
+func TestServeSubgraphGetPredicateScopesTraversal(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServePredicateFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "subgraph_get",
+		Arguments: map[string]any{
+			"id": "paper-a",
+			"filter": map[string]any{"statements": []map[string]any{
+				{"predicate": "cites"},
+			}},
+		},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("## paper-a")).
+		Should(it.String(text).Contain("## paper-b")).
+		ShouldNot(it.String(text).Contain("## paper-c"))
+}
+
+// Absent filter argument at all — subgraph_get's output is identical to
+// today's (pre-feature) reply for the same id/depth (research.md D8).
+func TestServeSubgraphGetNoFilterArgumentBehavesAsBeforeFeature(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServePredicateFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "subgraph_get",
+		Arguments: map[string]any{"id": "paper-a"},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("## paper-a")).
+		Should(it.String(text).Contain("## paper-b")).
+		Should(it.String(text).Contain("## paper-c"))
+}
+
+// { "name": "context_retrieve", "arguments": { "query": "paper", "filter": { "statements": [{ "predicate": "cites" }] } } }
+// Scenario mirroring subgraph_get's predicate-scoping test, over
+// context_retrieve's own neighbor-expansion pass (research.md D3).
+func TestServeContextRetrievePredicateScopesNeighborExpansion(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServePredicateFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "context_retrieve",
+		Arguments: map[string]any{
+			"query": "paper-a",
+			"filter": map[string]any{"statements": []map[string]any{
+				{"predicate": "cites"},
+			}},
+		},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("## paper-a")).
+		Should(it.String(text).Contain("## paper-b")).
+		ShouldNot(it.String(text).Contain("## paper-c"))
+}
+
+// { "name": "subgraph_get", "arguments": { "id": "paper-a", "filter": { "statements": [{ "predicate": "type", "target": "Resource" }] } } }
+// Scenario 4 from spec.md US2: the seed always survives narrowing,
+// regardless of whether it matches — mirrors arc subgraph's own seed
+// exemption (spec FR-009).
+func TestServeSubgraphGetSeedSurvivesNarrowingDespiteMismatch(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServePredicateFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "subgraph_get",
+		Arguments: map[string]any{
+			"id": "paper-a",
+			"filter": map[string]any{"statements": []map[string]any{
+				{"predicate": "type", "target": "Resource"},
+			}},
+		},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	it.Then(t).Should(it.String(textOf(t, result)).Contain("## paper-a"))
+}
+
+// { "name": "context_retrieve", "arguments": { "query": "paper-a", "filter": { "statements": [{ "predicate": "type", "target": "Resource" }] } } }
+// Scenario 4 from spec.md US2, mirrored over context_retrieve: a direct
+// content match that fails a narrowing statement is excluded — unlike
+// subgraph_get, context_retrieve has no seed exemption (its "direct match"
+// set is itself governed by the full, unsplit filter, research.md D3).
+func TestServeContextRetrieveDirectMatchExcludedByNarrowingStatement(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServePredicateFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "context_retrieve",
+		Arguments: map[string]any{
+			"query": "paper-a",
+			"filter": map[string]any{"statements": []map[string]any{
+				{"predicate": "type", "target": "Resource"},
+			}},
+		},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	it.Then(t).Should(it.Equal(0, len(nodeHeaders(textOf(t, result)))))
 }
 
 // Edge case (spec FR-004): the target not being an initialized graph refuses
@@ -891,7 +1107,7 @@ func TestServeContextRetrieveNoMatchReturnsEmptyResultNotError(t *testing.T) {
 	it.Then(t).Should(it.Equal(0, len(nodeHeaders(textOf(t, result)))))
 }
 
-// { "name": "context_retrieve", "arguments": { "query": "TLS", "filter": { "type": ["Source"] } } }
+// { "name": "context_retrieve", "arguments": { "query": "TLS", "filter": { "statements": [{ "predicate": "type", "target": "Source" }] } } }
 // Scenario 1 from spec.md US2: a filter object narrows the result to one
 // kind, even though the unfiltered query matches nodes of more than one
 // kind.
@@ -907,8 +1123,10 @@ func TestServeContextRetrieveFilterNarrowsResult(t *testing.T) {
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "context_retrieve",
 		Arguments: map[string]any{
-			"query":  "TLS",
-			"filter": map[string]any{"type": []string{"Source"}},
+			"query": "TLS",
+			"filter": map[string]any{"statements": []map[string]any{
+				{"predicate": "type", "target": "Source"},
+			}},
 		},
 	})
 
@@ -942,8 +1160,10 @@ func TestServeContextRetrieveFilterExcludesNeighborReachableOnlyThroughExpansion
 	filtered, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "context_retrieve",
 		Arguments: map[string]any{
-			"query":  "TLS 1.3",
-			"filter": map[string]any{"type": []string{"Source"}},
+			"query": "TLS 1.3",
+			"filter": map[string]any{"statements": []map[string]any{
+				{"predicate": "type", "target": "Source"},
+			}},
 		},
 	})
 	it.Then(t).Should(it.Nil(err))
@@ -965,8 +1185,10 @@ func TestServeContextRetrieveFullyExcludingFilterReturnsEmptyNotError(t *testing
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "context_retrieve",
 		Arguments: map[string]any{
-			"query":  "TLS",
-			"filter": map[string]any{"type": []string{"Resource"}},
+			"query": "TLS",
+			"filter": map[string]any{"statements": []map[string]any{
+				{"predicate": "type", "target": "Resource"},
+			}},
 		},
 	})
 

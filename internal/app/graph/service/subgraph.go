@@ -25,10 +25,19 @@ import (
 // (research.md D7).
 type nodeIndex map[string]core.Node
 
-// reverseIndex maps a target ID to the IDs of every node carrying a
-// structural connection (Edges) to it — the backlink adjacency
-// (research.md D4).
-type reverseIndex map[string][]string
+// backlinkEdge is one incoming structural connection recorded by
+// buildReverseIndex: the id of the node that carries the edge, and that
+// edge's own predicate (research.md D5) — enough to re-derive the
+// (sourceID, predicate, targetID) triple a scope check needs for the
+// backlink direction.
+type backlinkEdge struct {
+	Source    string
+	Predicate string
+}
+
+// reverseIndex maps a target ID to every backlinkEdge pointing at it — the
+// backlink adjacency (research.md D5).
+type reverseIndex map[string][]backlinkEdge
 
 // enumerateNodes walks every node file in the graph (reusing walkNodeFiles,
 // research.md D7), parsing each into the id -> core.Node index; a file that
@@ -53,6 +62,8 @@ func enumerateNodes(store fsys.Store) (nodeIndex, error) {
 
 // nodeTargets returns every structural target n points at: its own Edges
 // (research.md D3/D4) — HRefs are never navigable structural connections.
+// Unscoped by any Filter — used where scoping does not apply (degree
+// ranking, research.md D6; boundary-target discovery).
 func nodeTargets(n core.Node) []string {
 	var out []string
 	for _, e := range n.Edges {
@@ -61,13 +72,45 @@ func nodeTargets(n core.Node) []string {
 	return out
 }
 
+// admittedEdges returns n's own outgoing edges whose (n.ID, edge.Predicate,
+// edge.Target) triple satisfies scope — an empty scope admits every edge,
+// preserving today's unscoped default (research.md D5).
+func admittedEdges(n core.Node, scope core.Filter) []core.Link {
+	if len(scope.Statements) == 0 {
+		return n.Edges
+	}
+	var out []core.Link
+	for _, e := range n.Edges {
+		if scope.Match(core.Node{ID: n.ID, Edges: []core.Link{e}}) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// admittedBacklinks mirrors admittedEdges for the reverse direction, over
+// one target id's recorded backlinkEdge list (research.md D5).
+func admittedBacklinks(id string, rev reverseIndex, scope core.Filter) []backlinkEdge {
+	edges := rev[id]
+	if len(scope.Statements) == 0 {
+		return edges
+	}
+	var out []backlinkEdge
+	for _, e := range edges {
+		if scope.Match(core.Node{ID: e.Source, Edges: []core.Link{{Predicate: e.Predicate, Target: id}}}) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // buildReverseIndex builds the backlink adjacency for every node in index
-// (research.md D4).
+// (research.md D5).
 func buildReverseIndex(index nodeIndex) reverseIndex {
 	rev := reverseIndex{}
 	for id, n := range index {
-		for _, target := range nodeTargets(n) {
-			rev[target] = append(rev[target], id)
+		for _, e := range n.Edges {
+			rev[e.Target] = append(rev[e.Target], backlinkEdge{Source: id, Predicate: e.Predicate})
 		}
 	}
 	return rev
@@ -81,9 +124,9 @@ func outDegree(n core.Node) int {
 
 // degree is id's total structural connectivity across the whole graph —
 // its own out-degree plus its in-degree (len(rev[id])) — used to rank
-// cap-truncation candidates (research.md D4/D5). A degree computed for an
-// id absent from index is 0 (out-degree) plus whatever in-degree the
-// reverse index recorded.
+// cap-truncation candidates (research.md D4/D5/D6, unaffected by traversal
+// scoping). A degree computed for an id absent from index is 0 (out-degree)
+// plus whatever in-degree the reverse index recorded.
 func degree(index nodeIndex, rev reverseIndex, id string) int {
 	return outDegree(index[id]) + len(rev[id])
 }
@@ -180,8 +223,11 @@ func slugify(s string) string {
 
 // Subgraph mounts dir, enumerates and indexes every node, resolves the
 // seed by basename, runs two independent BFS passes (direct/backlink)
-// bounded by depth, applies cfg's caps, restricts the surviving non-seed
-// candidates to filter (the seed is always included, regardless of
+// bounded by depth — each scoped to filter.Traversal() via
+// admittedEdges/admittedBacklinks, so a predicate-only statement restricts
+// which connections BFS follows (specs/027-triple-filter-model research.md
+// D3/D5) — applies cfg's caps, restricts the surviving non-seed candidates
+// to filter.Narrowing() (the seed is always included, regardless of
 // filter), and synthesizes a core.Patch document ready for
 // core.RenderPatch or re-ingestion via arc apply (research.md D2-D5,
 // spec.md FR-001 through FR-016). When stubs is true (spec FR-017,
@@ -212,9 +258,25 @@ func Subgraph(ctx context.Context, mounter fsys.Mounter, filter core.Filter, bas
 	}
 
 	rev := buildReverseIndex(index)
+	scope := filter.Traversal()
 
-	directReached := bfs(index, func(id string) []string { return nodeTargets(index[id]) }, seed.ID, depth)
-	backlinkReached := bfs(index, func(id string) []string { return rev[id] }, seed.ID, depth)
+	directNeighbors := func(id string) []string {
+		var out []string
+		for _, e := range admittedEdges(index[id], scope) {
+			out = append(out, e.Target)
+		}
+		return out
+	}
+	backlinkNeighbors := func(id string) []string {
+		var out []string
+		for _, e := range admittedBacklinks(id, rev, scope) {
+			out = append(out, e.Source)
+		}
+		return out
+	}
+
+	directReached := bfs(index, directNeighbors, seed.ID, depth)
+	backlinkReached := bfs(index, backlinkNeighbors, seed.ID, depth)
 
 	directKept, directTruncated := capPool(index, rev, directReached, cfg.DirectCap)
 	backlinkKept, backlinkTruncated := capPool(index, rev, backlinkReached, cfg.BacklinkCap)
@@ -222,12 +284,13 @@ func Subgraph(ctx context.Context, mounter fsys.Mounter, filter core.Filter, bas
 	included := map[string]bool{seed.ID: true}
 	nodes := []core.Node{seed}
 
+	narrowing := filter.Narrowing()
 	addCandidate := func(id string) {
 		if included[id] {
 			return
 		}
 		n := index[id]
-		if !filter.Match(n) {
+		if !narrowing.Match(n) {
 			return
 		}
 		included[id] = true

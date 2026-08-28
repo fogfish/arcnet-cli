@@ -113,7 +113,7 @@ func TestGrepFilterExcludesNonMatchingNodesFromScan(t *testing.T) {
 		"Source/a.md": grepSourceNodeA,
 		"Entity/b.md": grepEntityNodeB,
 	})
-	filter := core.Filter{Types: []string{"Entity"}}
+	filter := filterType("Entity")
 
 	result, err := service.Grep(context.Background(), mounter, filter, "TLS", configkernel.GrepConfig{}, "/graph")
 
@@ -166,7 +166,7 @@ func TestGrepCombinedFilterMatchesZeroNodes(t *testing.T) {
 		"Source/a.md": grepSourceNodeA,
 		"Entity/b.md": grepEntityNodeB,
 	})
-	filter := core.Filter{Types: []string{"Resource"}}
+	filter := filterType("Resource")
 
 	result, err := service.Grep(context.Background(), mounter, filter, "TLS", configkernel.GrepConfig{}, "/graph")
 

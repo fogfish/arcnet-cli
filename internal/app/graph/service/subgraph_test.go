@@ -34,12 +34,67 @@ func entityNode(id string, edges ...string) string {
 	return body
 }
 
+// predicateEdgeNode builds a minimal on-disk entity node file whose edges
+// each carry an explicit predicate (name:target pairs), used by --predicate
+// traversal-scoping tests (research.md D5).
+func predicateEdgeNode(id string, edges ...[2]string) string {
+	body := "---\n\"@id\": " + id + "\n\"@type\": Entity\n---\n# " + id + "\n"
+	if len(edges) > 0 {
+		body += "\n"
+		for _, e := range edges {
+			body += "- " + e[0] + ":: [[" + e[1] + "]]\n"
+		}
+	}
+	return body
+}
+
 func sourceNodeWithAttrs(id, tags, status string) string {
 	return "---\n\"@id\": " + id + "\n\"@type\": Source\ntags: [" + tags + "]\nstatus: " + status + "\n---\n# " + id + "\n"
 }
 
 func resourceNodeWithAttrs(id, tags, status string) string {
 	return "---\n\"@id\": " + id + "\n\"@type\": Resource\ntags: [" + tags + "]\nstatus: " + status + "\n---\n# " + id + "\n"
+}
+
+// filterType/filterTag/filterAttr/filterPredicate build a core.Filter from
+// one statement each, mirroring the CLI's own --type/--tag/--attr/
+// --predicate lowering (research.md D4/D10) — shared across this package's
+// test files.
+func filterType(values ...string) core.Filter {
+	return core.Filter{Statements: []core.Statement{{
+		Predicate: core.Matcher{Values: []string{"type"}},
+		Target:    core.Matcher{Values: values},
+	}}}
+}
+
+func filterTag(value string) core.Filter {
+	return core.Filter{Statements: []core.Statement{{
+		Predicate: core.Matcher{Values: []string{"tags"}},
+		Target:    core.Matcher{Values: []string{value}},
+	}}}
+}
+
+func filterAttr(name, value string) core.Filter {
+	return core.Filter{Statements: []core.Statement{{
+		Predicate: core.Matcher{Values: []string{name}},
+		Target:    core.Matcher{Values: []string{value}},
+	}}}
+}
+
+func filterPredicate(values ...string) core.Filter {
+	return core.Filter{Statements: []core.Statement{{Predicate: core.Matcher{Values: values}}}}
+}
+
+// mergeFilters concatenates every argument's Statements into one Filter —
+// used to compose several single-statement filterX helpers the way a
+// combined --type/--tag/--attr invocation would (each flag repeat is its
+// own statement, ANDed via Filter.Match, research.md D4).
+func mergeFilters(filters ...core.Filter) core.Filter {
+	var out core.Filter
+	for _, f := range filters {
+		out.Statements = append(out.Statements, f.Statements...)
+	}
+	return out
 }
 
 func TestSubgraphGuardNotAGraph(t *testing.T) {
@@ -205,7 +260,7 @@ func TestSubgraphFilterExcludesNonSeedCandidatesOnlyNeverSeed(t *testing.T) {
 		"Resource/RFC 8446.md":          resourceNodeWithAttrs("RFC 8446", "cryptography", "draft"),
 	})
 
-	filter := core.Filter{Types: []string{"Source"}}
+	filter := filterType("Source")
 	result, err := service.Subgraph(context.Background(), mounter, filter, "TLS", 1, configkernel.SubgraphConfig{}, "/graph", false)
 
 	it.Then(t).Should(it.Nil(err))
@@ -223,7 +278,7 @@ func TestSubgraphFilterMatchingZeroReachableNodesYieldsSeedAloneNoError(t *testi
 		"Source/rescorla-2026-tls13.md": sourceNodeWithAttrs("rescorla-2026-tls13", "cryptography", "mature"),
 	})
 
-	filter := core.Filter{Types: []string{"Resource"}}
+	filter := filterType("Resource")
 	result, err := service.Subgraph(context.Background(), mounter, filter, "TLS", 1, configkernel.SubgraphConfig{}, "/graph", false)
 
 	it.Then(t).
@@ -239,11 +294,7 @@ func TestSubgraphCombinedKindTagAttrFilterNarrowsToExactSubset(t *testing.T) {
 		"Source/other-2026.md":          sourceNodeWithAttrs("other-2026", "cryptography", "draft"),
 	})
 
-	filter := core.Filter{
-		Types: []string{"Source"},
-		Tags:  []string{"cryptography"},
-		Attrs: map[string]string{"status": "mature"},
-	}
+	filter := mergeFilters(filterType("Source"), filterTag("cryptography"), filterAttr("status", "mature"))
 	result, err := service.Subgraph(context.Background(), mounter, filter, "TLS", 1, configkernel.SubgraphConfig{}, "/graph", false)
 
 	it.Then(t).Should(it.Nil(err))
@@ -347,4 +398,84 @@ func TestSubgraphStubCarriesOnlyKindAndIDNoOtherContent(t *testing.T) {
 		Should(it.Equal(0, len(stub.Attrs))).
 		Should(it.Equal(0, len(stub.Texts))).
 		Should(it.Equal(0, len(stub.Edges)))
+}
+
+// --- User Story 1: predicate-scoped traversal (research.md D3/D5) ---
+
+// TestSubgraphPredicateScopesOutgoingTraversal exercises spec.md US1
+// Acceptance Scenario 1 at the service layer: a traversal-constraint
+// statement admits only same-predicate outgoing edges.
+func TestSubgraphPredicateScopesOutgoingTraversal(t *testing.T) {
+	mounter := newGrepGraph(map[string]string{
+		"Entity/A.md": predicateEdgeNode("A", [2]string{"cites", "B"}, [2]string{"mentions", "C"}),
+		"Entity/B.md": entityNode("B"),
+		"Entity/C.md": entityNode("C"),
+	})
+
+	result, err := service.Subgraph(context.Background(), mounter, filterPredicate("cites"), "A", 1, configkernel.SubgraphConfig{}, "/graph", false)
+
+	it.Then(t).Should(it.Nil(err))
+	ids := nodeIDSet(result.Patch.Nodes)
+	it.Then(t).
+		Should(it.True(ids["A"])).
+		Should(it.True(ids["B"])).
+		ShouldNot(it.True(ids["C"]))
+}
+
+// TestSubgraphPredicateScopesBacklinkTraversal mirrors the above for the
+// reverse (backlink) direction — a node whose only connection to the seed
+// is a different-predicate edge is not reached.
+func TestSubgraphPredicateScopesBacklinkTraversal(t *testing.T) {
+	mounter := newGrepGraph(map[string]string{
+		"Entity/Hub.md":  entityNode("Hub"),
+		"Entity/Cit.md":  predicateEdgeNode("Cit", [2]string{"cites", "Hub"}),
+		"Entity/Ment.md": predicateEdgeNode("Ment", [2]string{"mentions", "Hub"}),
+	})
+
+	result, err := service.Subgraph(context.Background(), mounter, filterPredicate("cites"), "Hub", 1, configkernel.SubgraphConfig{}, "/graph", false)
+
+	it.Then(t).Should(it.Nil(err))
+	ids := nodeIDSet(result.Patch.Nodes)
+	it.Then(t).
+		Should(it.True(ids["Hub"])).
+		Should(it.True(ids["Cit"])).
+		ShouldNot(it.True(ids["Ment"]))
+}
+
+// TestSubgraphPredicateReachedNodeSurvivesNarrowingUnconditionally proves
+// the one-directional-relation case research.md D3 exists to protect
+// (spec.md US1 Acceptance Scenario 5's underlying concern): a
+// traversal-only filter (no narrowing statement) must not, by itself,
+// re-exclude the very node it scoped traversal to reach — even though that
+// node carries no reciprocal "cites" fact of its own.
+func TestSubgraphPredicateReachedNodeSurvivesNarrowingUnconditionally(t *testing.T) {
+	mounter := newGrepGraph(map[string]string{
+		"Entity/A.md": predicateEdgeNode("A", [2]string{"cites", "B"}),
+		"Entity/B.md": entityNode("B"), // no reciprocal "cites" fact
+	})
+
+	result, err := service.Subgraph(context.Background(), mounter, filterPredicate("cites"), "A", 1, configkernel.SubgraphConfig{}, "/graph", false)
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.True(nodeIDSet(result.Patch.Nodes)["B"]))
+}
+
+// TestSubgraphPredicateCombinedWithNarrowingStatementBothApply: a filter
+// combining a traversal constraint and an ordinary narrowing statement
+// still narrows via the ordinary statement (research.md D3).
+func TestSubgraphPredicateCombinedWithNarrowingStatementBothApply(t *testing.T) {
+	mounter := newGrepGraph(map[string]string{
+		"Entity/A.md":   predicateEdgeNode("A", [2]string{"cites", "B"}, [2]string{"cites", "C"}),
+		"Source/B.md":   sourceNodeWithAttrs("B", "cryptography", "mature"),
+		"Resource/C.md": resourceNodeWithAttrs("C", "cryptography", "draft"),
+	})
+
+	result, err := service.Subgraph(context.Background(), mounter, mergeFilters(filterPredicate("cites"), filterType("Source")), "A", 1, configkernel.SubgraphConfig{}, "/graph", false)
+
+	it.Then(t).Should(it.Nil(err))
+	ids := nodeIDSet(result.Patch.Nodes)
+	it.Then(t).
+		Should(it.True(ids["A"])).
+		Should(it.True(ids["B"])).
+		ShouldNot(it.True(ids["C"]))
 }

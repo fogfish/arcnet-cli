@@ -47,10 +47,14 @@ func matchesAttrs(node core.Node, query string) bool {
 // candidate pool from three passes — content match (grep.Search, escaped
 // and case-insensitive), attribute match (matchesAttrs), and one-hop
 // neighbor expansion (bfs, both directions, pooled across every direct-
-// match seed and capped via cfgSubgraph) — narrowed throughout to filter,
-// deduplicated by id, ranked (direct matches before neighbor-only, then
-// degree descending, then id ascending), and truncated to limit
-// (research.md D2-D8, spec.md FR-001 through FR-013).
+// match seed and capped via cfgSubgraph, each direction scoped to
+// filter.Traversal() exactly like Subgraph's own BFS passes —
+// specs/027-triple-filter-model research.md D3/D5) — the upfront
+// direct-match universe stays narrowed to the full, unsplit filter, while
+// pooled neighbor-only candidates are narrowed to filter.Narrowing()
+// instead (research.md D3), deduplicated by id, ranked (direct matches
+// before neighbor-only, then degree descending, then id ascending), and
+// truncated to limit (research.md D2-D8, spec.md FR-001 through FR-013).
 func ContextRetrieve(ctx context.Context, mounter fsys.Mounter, filter core.Filter, query string, limit int, cfgGrep configkernel.GrepConfig, cfgSubgraph configkernel.SubgraphConfig, dir string) (kernel.ContextRetrieveResult, error) {
 	store, err := mounter.Mount(dir)
 	if err != nil {
@@ -139,16 +143,33 @@ func ContextRetrieve(ctx context.Context, mounter fsys.Mounter, filter core.Filt
 	// Neighbor-expansion pass (research.md D5): one hop, both directions,
 	// from every direct-match seed, pooled before capping once per
 	// direction with the same safeguards subgraph_get applies (spec
-	// FR-009).
+	// FR-009). research.md D3: neighbor expansion is scoped by filter's
+	// traversal-constraint statements only, mirroring Subgraph's own split.
 	rev := buildReverseIndex(index)
+	scope := filter.Traversal()
+
+	directNeighbors := func(id string) []string {
+		var out []string
+		for _, e := range admittedEdges(index[id], scope) {
+			out = append(out, e.Target)
+		}
+		return out
+	}
+	backlinkNeighbors := func(id string) []string {
+		var out []string
+		for _, e := range admittedBacklinks(id, rev, scope) {
+			out = append(out, e.Source)
+		}
+		return out
+	}
 
 	directPool := map[string]bool{}
 	backlinkPool := map[string]bool{}
 	for id := range directMatch {
-		for _, n := range bfs(index, func(nid string) []string { return nodeTargets(index[nid]) }, id, 1) {
+		for _, n := range bfs(index, directNeighbors, id, 1) {
 			directPool[n] = true
 		}
-		for _, n := range bfs(index, func(nid string) []string { return rev[nid] }, id, 1) {
+		for _, n := range bfs(index, backlinkNeighbors, id, 1) {
 			backlinkPool[n] = true
 		}
 	}
@@ -180,12 +201,25 @@ func ContextRetrieve(ctx context.Context, mounter fsys.Mounter, filter core.Filt
 	isDirect := map[string]bool{}
 	var nodes []core.Node
 
+	narrowing := filter.Narrowing()
 	addCandidate := func(id string, direct bool) {
 		if included[id] {
 			return
 		}
 		n, ok := index[id]
-		if !ok || !filter.Match(n) {
+		if !ok {
+			return
+		}
+		// research.md D3: a direct match was already vetted by the full
+		// filter (filterIncluded/pathIncluded, above); a neighbor-only
+		// candidate is narrowed by filter.Narrowing() alone, so a bare
+		// traversal-constraint filter does not re-exclude the very node it
+		// scoped expansion to reach.
+		if direct {
+			if !filter.Match(n) {
+				return
+			}
+		} else if !narrowing.Match(n) {
 			return
 		}
 		included[id] = true

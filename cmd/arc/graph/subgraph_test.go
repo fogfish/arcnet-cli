@@ -427,6 +427,184 @@ func TestSubgraphCombinedFilterNarrowsFurtherCLI(t *testing.T) {
 		ShouldNot(it.String(out).Contain("## RFC 8446"))
 }
 
+const subgraphPaperA = `---
+"@id": paper-a
+"@type": Source
+title: Paper A
+---
+# paper-a
+
+Paper A discusses foundational work.
+
+- cites:: [[paper-b]]
+- mentions:: [[paper-c]]
+`
+
+const subgraphPaperB = `---
+"@id": paper-b
+"@type": Source
+title: Paper B
+---
+# paper-b
+
+Paper B is the cited work.
+`
+
+const subgraphPaperC = `---
+"@id": paper-c
+"@type": Source
+title: Paper C
+---
+# paper-c
+
+Paper C is merely mentioned.
+`
+
+// seedSubgraphPredicateFixture writes quickstart.md's Setup fixture: paper-a
+// carries two distinct-predicate edges (cites -> paper-b, mentions ->
+// paper-c), used by every --predicate scenario below.
+func seedSubgraphPredicateFixture(t *testing.T, dir string) {
+	t.Helper()
+	writeGrepNode(t, dir, "Source/paper-a.md", subgraphPaperA)
+	writeGrepNode(t, dir, "Source/paper-b.md", subgraphPaperB)
+	writeGrepNode(t, dir, "Source/paper-c.md", subgraphPaperC)
+}
+
+// arc subgraph paper-a --predicate cites
+// Scenario 1 from spec.md US1: --predicate excludes a mentions-only target.
+func TestSubgraphPredicateExcludesTargetReachedByDifferentPredicate(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedSubgraphPredicateFixture(t, dir)
+	chdir(t, dir)
+
+	cmd := NewSubgraphCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("predicate", "cites")))
+	out, err := sut(cmd, []string{"paper-a"})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).
+		Should(it.String(out).Contain("## paper-a")).
+		Should(it.String(out).Contain("## paper-b")).
+		ShouldNot(it.String(out).Contain("## paper-c"))
+}
+
+// arc subgraph paper-a
+// Scenario 2 from spec.md US1: omitting --predicate includes both.
+func TestSubgraphOmittingPredicateIncludesEveryRelation(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedSubgraphPredicateFixture(t, dir)
+	chdir(t, dir)
+
+	out, err := sut(NewSubgraphCmd(), []string{"paper-a"})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).
+		Should(it.String(out).Contain("## paper-b")).
+		Should(it.String(out).Contain("## paper-c"))
+}
+
+// arc subgraph paper-a --predicate no-such-relation
+// Scenario 3 from spec.md US1: a --predicate matching no edge yields the
+// seed alone, no error.
+func TestSubgraphPredicateMatchingNoEdgeYieldsSeedAlone(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedSubgraphPredicateFixture(t, dir)
+	chdir(t, dir)
+
+	cmd := NewSubgraphCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("predicate", "no-such-relation")))
+	out, err := sut(cmd, []string{"paper-a"})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).
+		Should(it.String(out).Contain("## paper-a")).
+		ShouldNot(it.String(out).Contain("## paper-b")).
+		ShouldNot(it.String(out).Contain("## paper-c"))
+}
+
+const subgraphPaperChainB = `---
+"@id": chain-b
+"@type": Source
+---
+# chain-b
+
+- cites:: [[chain-c]]
+`
+
+const subgraphPaperChainC = `---
+"@id": chain-c
+"@type": Source
+---
+# chain-c
+`
+
+const subgraphPaperChainA = `---
+"@id": chain-a
+"@type": Source
+---
+# chain-a
+
+- cites:: [[chain-b]]
+- mentions:: [[chain-c]]
+`
+
+// arc subgraph chain-a --predicate cites --depth 2
+// Scenario 4 from spec.md US1: --predicate applies at every hop of a
+// depth>1 expansion — chain-c is reachable via cites (chain-a->chain-b-
+// >chain-c) but also via a mentions-only edge from chain-a; only the
+// cites-reached path should survive.
+func TestSubgraphPredicateAppliesAtEveryHop(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	writeGrepNode(t, dir, "Source/chain-a.md", subgraphPaperChainA)
+	writeGrepNode(t, dir, "Source/chain-b.md", subgraphPaperChainB)
+	writeGrepNode(t, dir, "Source/chain-c.md", subgraphPaperChainC)
+	chdir(t, dir)
+
+	cmd := NewSubgraphCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("predicate", "cites")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("depth", "2")))
+	out, err := sut(cmd, []string{"chain-a"})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).
+		Should(it.String(out).Contain("## chain-a")).
+		Should(it.String(out).Contain("## chain-b")).
+		Should(it.String(out).Contain("## chain-c"))
+}
+
+// arc subgraph paper-a --predicate cites --type Source
+// Scenario 5 from spec.md US1: --predicate combined with --type/--tag/--attr
+// narrows the surviving set on top of scoping — the seed's own attribute
+// mismatch never excludes it (spec FR-009's existing seed exemption).
+func TestSubgraphPredicateCombinedWithTypeNarrowsOnTopOfScoping(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedSubgraphPredicateFixture(t, dir)
+	writeGrepNode(t, dir, "Entity/paper-a-note.md", `---
+"@id": paper-a-note
+"@type": Entity
+---
+# paper-a-note
+
+- cites:: [[paper-b]]
+`)
+	chdir(t, dir)
+
+	cmd := NewSubgraphCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("predicate", "cites")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("type", "Entity")))
+	out, err := sut(cmd, []string{"paper-a-note"})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).
+		Should(it.String(out).Contain("## paper-a-note")).
+		ShouldNot(it.String(out).Contain("## paper-b"))
+}
+
 // arc subgraph "Transport Layer Security" --depth -1
 // Edge case: a negative --depth refuses with a clear usage error, no
 // output (spec FR-012).

@@ -218,6 +218,108 @@ func TestGrepFilterMatchingZeroNodesProducesNoOutputAndNonZeroExit(t *testing.T)
 	it.Then(t).ShouldNot(it.Nil(err))
 }
 
+const grepPaperA = `---
+"@id": paper-a
+"@type": Source
+---
+# paper-a
+
+TLS discovery notes.
+
+- cites:: [[paper-b]]
+`
+
+const grepPaperB = `---
+"@id": paper-b
+"@type": Source
+status: mature
+---
+# paper-b
+
+TLS is cited here too.
+`
+
+func seedGrepEdgeFixture(t *testing.T, dir string) {
+	t.Helper()
+	writeGrepNode(t, dir, "Source/paper-a.md", grepPaperA)
+	writeGrepNode(t, dir, "Source/paper-b.md", grepPaperB)
+}
+
+// arc grep --attr status=mature TLS
+// Scenario 1 from spec.md US2: a node matched via an attribute-fact
+// statement.
+func TestGrepMatchesNodeViaAttributeFact(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedGrepEdgeFixture(t, dir)
+	chdir(t, dir)
+
+	cmd := NewGrepCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("attr", "status=mature")))
+	out, err := sut(cmd, []string{"TLS"})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).
+		Should(it.String(out).Contain("paper-b")).
+		ShouldNot(it.String(out).Contain("paper-a"))
+}
+
+// arc grep --attr cites=paper-b TLS
+// Scenario 2 from spec.md US2: a different node matched via an edge-fact
+// statement — paper-a carries no "cites" attribute, only a "cites" edge to
+// paper-b, yet --attr's uniform Matcher (research.md D1) finds it via that
+// edge fact.
+func TestGrepMatchesNodeViaEdgeFact(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedGrepEdgeFixture(t, dir)
+	chdir(t, dir)
+
+	cmd := NewGrepCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("attr", "cites=paper-b")))
+	out, err := sut(cmd, []string{"TLS"})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).
+		Should(it.String(out).Contain("paper-a")).
+		ShouldNot(it.String(out).Contain("paper-b"))
+}
+
+// arc grep --attr cites=paper-b --attr status=mature TLS
+// Scenario 3 from spec.md US2: a combined-statement AND, one statement
+// satisfied by an edge fact on paper-a's own connections and the other by
+// an attribute fact — matches only when both hold on the *same* node.
+// Neither paper-a (no status=mature attribute) nor paper-b (no cites=
+// paper-b edge/attribute of its own) individually satisfies both.
+func TestGrepCombinedEdgeAndAttributeStatementsRequireSameNode(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedGrepEdgeFixture(t, dir)
+	writeGrepNode(t, dir, "Source/paper-c.md", `---
+"@id": paper-c
+"@type": Source
+status: mature
+---
+# paper-c
+
+TLS notes, cites paper-b too.
+
+- cites:: [[paper-b]]
+`)
+	chdir(t, dir)
+
+	cmd := NewGrepCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("attr", "cites=paper-b")))
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("attr", "status=mature")))
+	out, err := sut(cmd, []string{"TLS"})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	it.Then(t).
+		Should(it.Equal(1, len(lines))).
+		Should(it.String(out).Contain("Source  paper-c"))
+}
+
 // arc grep TLS | wc -l
 // Scenario 1 from spec.md US3: piped through a line-counting tool yields
 // the exact match count, no header/footer/summary lines.
