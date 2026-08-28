@@ -35,27 +35,58 @@ const (
 // optsFilter is arc grep's own local --type/--tag/--attr options struct
 // (ADR 002 DS-02, research.md D14) — not yet promoted to a shared location,
 // since arc grep is the first command in this codebase to implement
-// VISION.md's Filtering section.
+// VISION.md's Filtering section. predicate backs --predicate (research.md
+// D10), populated only when apply is called with traversal=true — arc grep
+// never registers it, since arc grep never traverses (research.md D10).
 type optsFilter struct {
-	typ  []string
-	tag  []string
-	attr []string
+	typ       []string
+	tag       []string
+	attr      []string
+	predicate []string
 }
 
+// apply registers --type/--tag/--attr, common to every filtering command.
 func (o *optsFilter) apply(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&o.typ, "type", nil, "Restrict to nodes of this type (repeatable, OR)")
 	cmd.Flags().StringArrayVar(&o.tag, "tag", nil, "Restrict to nodes carrying this tag (repeatable, AND)")
 	cmd.Flags().StringArrayVar(&o.attr, "attr", nil, "Restrict to nodes matching name=value or name~=pattern (repeatable, AND)")
 }
 
-// build assembles a core.Filter from the parsed flag values, per VISION.md's
-// Filtering section (research.md D8): --type is OR'd, --tag/--attr are
-// AND'd, all three groups are ANDed together.
-func (o optsFilter) build() (core.Filter, error) {
-	f := core.Filter{}
+// applyTraversal additionally registers --predicate (research.md D10) — only
+// arc subgraph calls this, since --predicate scopes BFS traversal and arc
+// grep never traverses.
+func (o *optsFilter) applyTraversal(cmd *cobra.Command) {
+	o.apply(cmd)
+	cmd.Flags().StringArrayVar(&o.predicate, "predicate", nil, "Restrict traversal to structural connections of this relation (repeatable, OR)")
+}
 
-	f.Types = append(f.Types, o.typ...)
-	f.Tags = append(f.Tags, o.tag...)
+// build assembles a core.Filter from the parsed flag values (research.md
+// D4): --type lowers to one OR'd statement, --tag/--attr each lower to
+// one statement per repeat (AND'd via one statement per Filter.Match call),
+// --predicate lowers to one OR'd traversal-constraint statement
+// (research.md D10) — the accumulation logic itself (dedup-by-name,
+// last-write-wins for --attr) is unchanged from before this feature.
+func (o optsFilter) build() (core.Filter, error) {
+	var f core.Filter
+
+	if len(o.typ) > 0 {
+		f.Statements = append(f.Statements, core.Statement{
+			Predicate: core.Matcher{Values: []string{"type"}},
+			Target:    core.Matcher{Values: append([]string(nil), o.typ...)},
+		})
+	}
+
+	for _, tag := range o.tag {
+		f.Statements = append(f.Statements, core.Statement{
+			Predicate: core.Matcher{Values: []string{"tags"}},
+			Target:    core.Matcher{Values: []string{tag}},
+		})
+	}
+
+	attrValues := map[string]string{}
+	var attrValueOrder []string
+	attrPatterns := map[string]*regexp.Regexp{}
+	var attrPatternOrder []string
 
 	for _, a := range o.attr {
 		if idx := strings.Index(a, "~="); idx >= 0 {
@@ -64,21 +95,40 @@ func (o optsFilter) build() (core.Filter, error) {
 			if err != nil {
 				return core.Filter{}, service.ErrInvalidAttrFlag.With(err, a)
 			}
-			if f.AttrPatterns == nil {
-				f.AttrPatterns = map[string]*regexp.Regexp{}
+			if _, ok := attrPatterns[name]; !ok {
+				attrPatternOrder = append(attrPatternOrder, name)
 			}
-			f.AttrPatterns[name] = re
+			attrPatterns[name] = re
 			continue
 		}
 		if idx := strings.Index(a, "="); idx >= 0 {
 			name, value := a[:idx], a[idx+1:]
-			if f.Attrs == nil {
-				f.Attrs = map[string]string{}
+			if _, ok := attrValues[name]; !ok {
+				attrValueOrder = append(attrValueOrder, name)
 			}
-			f.Attrs[name] = value
+			attrValues[name] = value
 			continue
 		}
 		return core.Filter{}, service.ErrInvalidAttrFlag.With(nil, a)
+	}
+
+	for _, name := range attrValueOrder {
+		f.Statements = append(f.Statements, core.Statement{
+			Predicate: core.Matcher{Values: []string{name}},
+			Target:    core.Matcher{Values: []string{attrValues[name]}},
+		})
+	}
+	for _, name := range attrPatternOrder {
+		f.Statements = append(f.Statements, core.Statement{
+			Predicate: core.Matcher{Values: []string{name}},
+			Target:    core.Matcher{Patterns: []*regexp.Regexp{attrPatterns[name]}},
+		})
+	}
+
+	if len(o.predicate) > 0 {
+		f.Statements = append(f.Statements, core.Statement{
+			Predicate: core.Matcher{Values: append([]string(nil), o.predicate...)},
+		})
 	}
 
 	return f, nil
