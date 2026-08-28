@@ -1263,6 +1263,207 @@ func TestServeContextRetrieveLimitLargerThanCandidatesReturnsAllNoPadding(t *tes
 // Scenario 4 from spec.md US3: a limit of zero reports a clear tool error,
 // and the server itself keeps running and answers the next call normally
 // (spec FR-012).
+// { "name": "node_match", "arguments": { "filter": { "statements": [{ "predicate": "type", "target": "Source" }] } } }
+// Scenario 1 from spec.md US1: node_match returns one row per matching
+// node, shaped {id, property: "type", value: "Source"}.
+func TestServeNodeMatchReturnsOneRowPerMatchingFact(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "node_match",
+		Arguments: map[string]any{
+			"filter": map[string]any{"statements": []map[string]any{
+				{"predicate": "type", "target": "Source"},
+			}},
+		},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("| id | property | value |")).
+		Should(it.String(text).Contain("| rescorla-2026-tls13 | type | Source |")).
+		ShouldNot(it.String(text).Contain("Transport Layer Security |"))
+}
+
+// Scenario 2 from spec.md US1: a filter matching zero nodes returns an
+// empty (header-only) table, not an error.
+func TestServeNodeMatchEmptyResultForNoMatches(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "node_match",
+		Arguments: map[string]any{
+			"filter": map[string]any{"statements": []map[string]any{
+				{"predicate": "type", "target": "Resource"},
+			}},
+		},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("| id | property | value |")).
+		ShouldNot(it.String(text).Contain("\n| "))
+}
+
+// { "name": "node_match", "arguments": { "filter": { "statements": [{ "predicate": "type", "target": "Source" }, { "predicate": "tags", "target": "cryptography" }] } } }
+// Scenario 1 from spec.md US2: a filter combining a type statement and a
+// tag statement returns two distinct rows (one per satisfying fact) for a
+// node satisfying both.
+func TestServeNodeMatchMultiStatementReportsBothFacts(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	writeGrepNode(t, dir, "Source/tagged-source.md", `---
+"@id": tagged-source
+"@type": Source
+tags: cryptography
+---
+# tagged-source
+
+A source about cryptography.
+`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "node_match",
+		Arguments: map[string]any{
+			"filter": map[string]any{"statements": []map[string]any{
+				{"predicate": "type", "target": "Source"},
+				{"predicate": "tags", "target": "cryptography"},
+			}},
+		},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("| tagged-source | type | Source |")).
+		Should(it.String(text).Contain("| tagged-source | tags | cryptography |"))
+}
+
+// Scenario 2 from spec.md US2: a node whose array-valued tags attribute has
+// two elements each matching the same statement produces two separate rows
+// for that node.
+func TestServeNodeMatchArrayAttributeReportsEachElement(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	writeGrepNode(t, dir, "Source/multi-tagged.md", `---
+"@id": multi-tagged
+"@type": Source
+tags:
+  - cryptography
+  - protocols
+---
+# multi-tagged
+
+A source about cryptography and protocols.
+`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "node_match",
+		Arguments: map[string]any{
+			"filter": map[string]any{"statements": []map[string]any{
+				{"predicate": "tags", "target": []string{"cryptography", "protocols"}},
+			}},
+		},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("| multi-tagged | tags | cryptography |")).
+		Should(it.String(text).Contain("| multi-tagged | tags | protocols |"))
+}
+
+// { "name": "node_match", "arguments": { "filter": { "statements": [{ "predicate": "cites" }] } } }
+// Scenario 1 from spec.md US3: a predicate-only statement returns one row
+// per citing node, property equal to cites, value equal to the cited
+// node's id.
+func TestServeNodeMatchPredicateOnlyStatementMatchesEdgeFact(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServePredicateFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "node_match",
+		Arguments: map[string]any{
+			"filter": map[string]any{"statements": []map[string]any{
+				{"predicate": "cites"},
+			}},
+		},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("| paper-a | cites | paper-b |")).
+		ShouldNot(it.String(text).Contain("\n| paper-b |")).
+		ShouldNot(it.String(text).Contain("\n| paper-c |"))
+}
+
+// spec.md Edge Case: an empty/missing filter returns a validation error
+// (service.ErrEmptyFilter), never an empty table and never every node's
+// facts.
+func TestServeNodeMatchEmptyFilterReturnsValidationError(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_match",
+		Arguments: map[string]any{"filter": map[string]any{"statements": []map[string]any{}}},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.True(result.IsError))
+	it.Then(t).Should(it.String(textOf(t, result)).Contain("filter must contain at least one statement"))
+
+	// The server itself keeps running and answers the next call normally.
+	result2, err2 := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "node_match",
+		Arguments: map[string]any{
+			"filter": map[string]any{"statements": []map[string]any{
+				{"predicate": "type", "target": "Source"},
+			}},
+		},
+	})
+	it.Then(t).Should(it.Nil(err2))
+	it.Then(t).ShouldNot(it.True(result2.IsError))
+}
+
 func TestServeContextRetrieveInvalidLimitReturnsToolError(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)

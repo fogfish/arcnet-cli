@@ -51,4 +51,10 @@ const (
 	// RuleIdentityCharset violation, so the two surfaces word the same
 	// underlying rule identically (research.md D8).
 	ErrIdentityCharset = faults.Safe2[string, string]("identity %q %s")
+
+	// ErrEmptyFilter is node_match's own sentinel (specs/028-node-match-
+	// filter, research.md D2): a missing or zero-statement filter is
+	// rejected outright rather than silently matching (and reporting
+	// facts for) every node.
+	ErrEmptyFilter = faults.Type("filter must contain at least one statement")
 )

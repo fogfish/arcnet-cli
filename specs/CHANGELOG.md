@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-28
+
+/speckit-specify Add `node_match(filter)` function to MCP server. It list of `{id, property, value}` for nodes matching the filter object (see Filtering — MCP filter object). Apparently the result is list of "statements" matching the filter pattern.
+
+/speckit-plan Add `node_match(filter)` function to existing server using existing primitive, implement the matching service within `internal/app/graph` in future release the match feature to be exposed as command.
+
+   
 ## 2026-08-27
 
 /speckit-specify Replace `core.Filter`'s node-matching model with a single-hop conjunctive triple filter, so both node attributes and graph edges can be matched — and, critically, so neighbor expansion in `arc subgraph`/`arc serve`'s `subgraph_get`/`context_retrieve` can be scoped by edge predicate instead of walking every outgoing/incoming edge regardless of what relation it represents.

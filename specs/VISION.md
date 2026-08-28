@@ -143,7 +143,7 @@ Expose the full graph navigation surface as a [Model Context Protocol](https://m
 - [ ] `arc serve` — start an MCP server (stdio transport by default; `--http <port>` for SSE) exposing these tools:
   - [ ] `schema()` → full schema of the graph, class/predicates and its description 
   - [x] `node_get(id)` → full node object (ARCNET-AST §4): attrs, text, edges, links
-  - [ ] `node_list(filter?)` → array of `{id, kind, title}` for nodes matching the filter object (see Filtering — MCP filter object)
+  - [x] `node_match(filter)` → list of `{id, property, value}` for nodes matching the filter object (see Filtering — MCP filter object)
   - [x] `node_grep(pattern, filter?)` → list of `{id, kind, line, snippet}` for nodes whose content matches a regexp pattern, optionally pre-filtered by the filter object
   - [ ] `node_edges(id)` → outgoing edges: `[{predicate, target}]` from `edges` + `links`
   - [ ] `node_backlinks(id)` → incoming edges: `[{source, predicate}]` from the backlink index
