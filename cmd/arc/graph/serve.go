@@ -54,7 +54,7 @@ const (
 // call, independent of schema's own mcp.Tool.Description. research.md D9:
 // also names predicate-scoped filtering/traversal, via the triple
 // filter.statements shape, as available.
-const schemaAdvertisement = `This server exposes a knowledge graph. Call the schema tool first, before any other tool — it returns the graph's full ontology (every predicate and class, with descriptions), which makes every subsequent node_get/node_grep/subgraph_get/context_retrieve call more accurate. node_grep, subgraph_get, and context_retrieve each accept an optional filter.statements argument (triple source/predicate/target constraints) — a predicate-only statement scopes subgraph_get/context_retrieve's neighbor traversal to a named relation, while a statement also naming source/target narrows which nodes are returned.`
+const schemaAdvertisement = `This server exposes a knowledge graph. Call the schema tool first, before any other tool — it returns the graph's full ontology (every predicate and class, with descriptions), which makes every subsequent node_get/node_grep/subgraph_get/context_retrieve/node_match call more accurate. node_grep, subgraph_get, and context_retrieve each accept an optional filter.statements argument (triple source/predicate/target constraints) — a predicate-only statement scopes subgraph_get/context_retrieve's neighbor traversal to a named relation, while a statement also naming source/target narrows which nodes are returned. node_match also accepts a filter.statements argument, but — unlike the other three — it is required: node_match lists every distinct fact ({id, property, value}) that justified each match, never a node's full content.`
 
 // stringOrArray decodes a JSON value that may be either a single string or
 // an array of strings into a []string (research.md D7) — used by every
@@ -207,6 +207,18 @@ func renderMatchTable(matches []kernel.Match) string {
 	return b.String()
 }
 
+// renderFactTable renders node_match's markdown reply (specs/028-node-
+// match-filter contracts/mcp-contract.md): a fixed header, one row per
+// matching fact, header only when matches is empty (spec FR-007).
+func renderFactTable(matches []kernel.MatchEntry) string {
+	var b strings.Builder
+	b.WriteString("| id | property | value |\n|---|---|---|\n")
+	for _, m := range matches {
+		fmt.Fprintf(&b, "| %s | %s | %s |\n", m.ID, m.Property, m.Value)
+	}
+	return b.String()
+}
+
 // nodeGetArgs is node_get's input schema.
 type nodeGetArgs struct {
 	ID string `json:"id" jsonschema:"the node's basename"`
@@ -343,6 +355,37 @@ func contextRetrieveHandler(dir string, cfgGrep configkernel.GrepConfig, cfgSubg
 	}
 }
 
+// nodeMatchArgs is node_match's input schema. Unlike node_grep/
+// subgraph_get/context_retrieve, Filter is REQUIRED (non-pointer, no
+// "omitempty") — spec FR-001/FR-005.
+type nodeMatchArgs struct {
+	Filter mcpFilter `json:"filter" jsonschema:"required filter; at least one statement"`
+}
+
+// nodeMatchHandler evaluates filter against every node's own facts and
+// renders one markdown table row per distinct fact that satisfied at
+// least one statement (contracts/mcp-contract.md). args.Filter is a
+// concrete, always-non-nil value here, unlike the other tools' *mcpFilter
+// — toCoreFilter is called on &args.Filter; the empty-statements check
+// itself happens in service.Match, not here, so the validation lives in
+// one place regardless of transport.
+func nodeMatchHandler(dir string) func(context.Context, *mcp.CallToolRequest, nodeMatchArgs) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, args nodeMatchArgs) (*mcp.CallToolResult, any, error) {
+		filter, err := args.Filter.toCoreFilter()
+		if err != nil {
+			logCall("node_match", "", err)
+			return nil, nil, err
+		}
+
+		result, err := appgraph.Match(ctx, fsys.Local{}, filter, dir)
+		logCall("node_match", "", err)
+		if err != nil {
+			return nil, nil, err
+		}
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: renderFactTable(result.Matches)}}}, nil, nil
+	}
+}
+
 // schemaArgs is schema's input schema — empty, since schema takes no
 // arguments (spec FR-006).
 type schemaArgs struct{}
@@ -397,10 +440,10 @@ func schemaHandler(dir string, index core.Index) func(context.Context, *mcp.Call
 
 // buildServer mounts dir, preflights EnsureGraph (spec FR-004), loads
 // .arc/config.yml once, and registers node_get/node_grep/subgraph_get/
-// context_retrieve on a new mcp.Server — the same construction RunE runs
-// before selecting a transport, factored out so tests can exercise the
-// real, registered tool handlers directly over mcp.NewInMemoryTransports()
-// (research.md D7).
+// context_retrieve/node_match on a new mcp.Server — the same construction
+// RunE runs before selecting a transport, factored out so tests can
+// exercise the real, registered tool handlers directly over
+// mcp.NewInMemoryTransports() (research.md D7).
 func buildServer(ctx context.Context, dir string) (*mcp.Server, error) {
 	if err := appgraph.EnsureGraph(ctx, fsys.Local{}, dir); err != nil {
 		return nil, err
@@ -472,6 +515,17 @@ func buildServer(ctx context.Context, dir string) (*mcp.Server, error) {
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 	}, schemaHandler(dir, index))
 
+	nodeMatchSchema, err := inputSchemaFor[nodeMatchArgs]()
+	if err != nil {
+		return nil, err
+	}
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "node_match",
+		Description: "List every distinct fact ({id, property, value}) on nodes that fully satisfy a required filter.statements triple filter (see schema) — evidence of why each node matched, not the node's full content.",
+		InputSchema: nodeMatchSchema,
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
+	}, nodeMatchHandler(dir))
+
 	return server, nil
 }
 
@@ -483,13 +537,15 @@ func NewServeCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "Run an MCP server exposing the graph to LLM clients.",
 		Long: `
-arc serve starts a Model Context Protocol (MCP) server exposing five
+arc serve starts a Model Context Protocol (MCP) server exposing six
 read-only tools — node_get, node_grep, subgraph_get, context_retrieve,
-schema — the first three backed by the same use-case functions arc grep/arc
-subgraph already call; context_retrieve (query + attribute match plus
-one-hop neighbor expansion, ranked and truncated to a limit) and schema
-(the graph's full ontology: every class and predicate, with descriptions)
-are MCP-only, with no Cobra command of their own. schema is the recommended
+schema, node_match — the first three backed by the same use-case functions
+arc grep/arc subgraph already call; context_retrieve (query + attribute
+match plus one-hop neighbor expansion, ranked and truncated to a limit),
+schema (the graph's full ontology: every class and predicate, with
+descriptions), and node_match (every distinct {id, property, value} fact
+justifying a match against a required filter.statements filter) are
+MCP-only, with no Cobra command of their own. schema is the recommended
 first call of a session — every connecting client is told so via the
 server's own session-start guidance. It serves over stdio by default, or
 over Streamable HTTP/SSE when --http <addr> is given.

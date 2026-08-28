@@ -11,6 +11,7 @@ package core
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -113,6 +114,63 @@ func statementSatisfiedBy(s Statement, node Node) bool {
 		}
 	}
 	return false
+}
+
+// Fact is one (property, value) pair carried by a node that satisfied a
+// Filter statement (specs/028-node-match-filter) — node_match's unit of
+// evidence for why a node matched.
+type Fact struct {
+	Property string
+	Value    string
+}
+
+// MatchingFacts returns every distinct fact on node — its synthesized type
+// fact, an attribute fact, or an edge fact — that satisfies at least one
+// statement in f, deduplicated by (Property, Value) and sorted for
+// deterministic output (research.md D1/D3, specs/028-node-match-filter).
+// MatchingFacts mutates neither f nor node; it does not itself require
+// f.Match(node) — callers that want facts only for nodes satisfying every
+// statement call Match first (research.md D4).
+func (f Filter) MatchingFacts(node Node) []Fact {
+	seen := map[Fact]bool{}
+	var out []Fact
+	add := func(property, value string) {
+		fact := Fact{Property: property, Value: value}
+		if !seen[fact] {
+			seen[fact] = true
+			out = append(out, fact)
+		}
+	}
+
+	for _, s := range f.Statements {
+		if s.match(node.ID, "type", node.Type) {
+			add("type", node.Type)
+		}
+		for name, preds := range node.Attrs {
+			for _, p := range preds {
+				if p.Value == nil {
+					continue
+				}
+				value := toString(p.Value)
+				if s.match(node.ID, name, value) {
+					add(name, value)
+				}
+			}
+		}
+		for _, e := range node.Edges {
+			if s.match(node.ID, e.Predicate, e.Target) {
+				add(e.Predicate, e.Target)
+			}
+		}
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Property != out[j].Property {
+			return out[i].Property < out[j].Property
+		}
+		return out[i].Value < out[j].Value
+	})
+	return out
 }
 
 // Traversal returns the subset of f.Statements that are traversal

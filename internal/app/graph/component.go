@@ -78,3 +78,11 @@ func EnsureGraph(ctx context.Context, mounter fsys.Mounter, dir string) error {
 func ContextRetrieve(ctx context.Context, mounter fsys.Mounter, filter core.Filter, query string, limit int, cfgGrep configkernel.GrepConfig, cfgSubgraph configkernel.SubgraphConfig, dir string) (kernel.ContextRetrieveResult, error) {
 	return service.ContextRetrieve(ctx, mounter, filter, query, limit, cfgGrep, cfgSubgraph, dir)
 }
+
+// Match enumerates every node file in the graph rooted at dir, keeps only
+// nodes fully satisfying filter, and reports every distinct fact on each
+// kept node that satisfied at least one filter statement. It is a thin
+// delegator into service.Match.
+func Match(ctx context.Context, mounter fsys.Mounter, filter core.Filter, dir string) (kernel.MatchResult, error) {
+	return service.Match(ctx, mounter, filter, dir)
+}

@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/027-triple-filter-model/plan.md`
+`specs/028-node-match-filter/plan.md`
 <!-- SPECKIT END -->
 
 ## Go file license header

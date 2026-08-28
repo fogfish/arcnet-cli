@@ -264,3 +264,101 @@ func TestFilterNarrowingOfPureTraversalFilterIsVacuouslyTrue(t *testing.T) {
 		Should(it.Equal(0, len(f.Narrowing().Statements))).
 		Should(it.True(f.Narrowing().Match(core.Node{Type: "Anything"})))
 }
+
+// --- specs/028-node-match-filter: Filter.MatchingFacts ---
+
+func TestMatchingFactsTypeFact(t *testing.T) {
+	node := core.Node{ID: "n1", Type: "Source"}
+	f := core.Filter{Statements: []core.Statement{typeStatement("Source")}}
+
+	it.Then(t).Should(it.Seq(f.MatchingFacts(node)).Equal(core.Fact{Property: "type", Value: "Source"}))
+}
+
+func TestMatchingFactsAttributeFact(t *testing.T) {
+	node := core.Node{Attrs: map[string][]core.Predicate{"status": {{Value: "mature"}}}}
+	f := core.Filter{Statements: []core.Statement{attrStatement("status", "mature")}}
+
+	it.Then(t).Should(it.Seq(f.MatchingFacts(node)).Equal(core.Fact{Property: "status", Value: "mature"}))
+}
+
+// spec.md US2 Scenario 1: a type fact and a tag fact each independently
+// satisfy their own statement — two distinct entries, sorted by Property.
+func TestMatchingFactsMultiStatementProducesTwoDistinctFacts(t *testing.T) {
+	node := core.Node{
+		Type:  "Entity",
+		Attrs: map[string][]core.Predicate{"tags": {{Value: "cryptography"}}},
+	}
+	f := core.Filter{Statements: []core.Statement{typeStatement("Entity"), tagStatement("cryptography")}}
+
+	it.Then(t).Should(it.Seq(f.MatchingFacts(node)).Equal(
+		core.Fact{Property: "tags", Value: "cryptography"},
+		core.Fact{Property: "type", Value: "Entity"},
+	))
+}
+
+// spec.md US2 Scenario 2: two elements of the same array-valued attribute
+// each independently satisfy one statement — one entry per element.
+func TestMatchingFactsArrayValuedAttributeOneEntryPerMatchingElement(t *testing.T) {
+	node := core.Node{Attrs: map[string][]core.Predicate{"category": {{Value: "independent"}, {Value: "abstract"}}}}
+	f := core.Filter{Statements: []core.Statement{attrPatternStatement("category", regexp.MustCompile(`^(independent|abstract)$`))}}
+
+	it.Then(t).Should(it.Seq(f.MatchingFacts(node)).Equal(
+		core.Fact{Property: "category", Value: "abstract"},
+		core.Fact{Property: "category", Value: "independent"},
+	))
+}
+
+// spec.md Edge Case: two statements independently satisfied by the exact
+// same fact collapse to one entry, not two.
+func TestMatchingFactsTwoStatementsSameFactCollapseToOneEntry(t *testing.T) {
+	node := core.Node{Attrs: map[string][]core.Predicate{"status": {{Value: "mature"}}}}
+	f := core.Filter{Statements: []core.Statement{
+		attrStatement("status", "mature"),
+		attrPatternStatement("status", regexp.MustCompile(`^mat`)),
+	}}
+
+	it.Then(t).Should(it.Seq(f.MatchingFacts(node)).Equal(core.Fact{Property: "status", Value: "mature"}))
+}
+
+func TestMatchingFactsZeroStatementsYieldsNil(t *testing.T) {
+	node := core.Node{Type: "Source"}
+
+	it.Then(t).Should(it.Equal(0, len(core.Filter{}.MatchingFacts(node))))
+}
+
+func TestMatchingFactsZeroMatchesYieldsNil(t *testing.T) {
+	node := core.Node{Type: "Source"}
+	f := core.Filter{Statements: []core.Statement{typeStatement("Resource")}}
+
+	it.Then(t).Should(it.Equal(0, len(f.MatchingFacts(node))))
+}
+
+// --- specs/028-node-match-filter User Story 3: edge-fact MatchingFacts ---
+
+func TestMatchingFactsEdgeFactAlone(t *testing.T) {
+	node := core.Node{ID: "paper-a", Edges: []core.Link{{Predicate: "cites", Target: "paper-b"}}}
+	f := core.Filter{Statements: []core.Statement{{
+		Predicate: core.Matcher{Values: []string{"cites"}},
+	}}}
+
+	it.Then(t).Should(it.Seq(f.MatchingFacts(node)).Equal(core.Fact{Property: "cites", Value: "paper-b"}))
+}
+
+// A node matched via both an attribute (one statement) and an edge (a
+// different statement) reports both facts.
+func TestMatchingFactsAttributeAndEdgeFromDifferentStatements(t *testing.T) {
+	node := core.Node{
+		ID:    "paper-a",
+		Attrs: map[string][]core.Predicate{"status": {{Value: "mature"}}},
+		Edges: []core.Link{{Predicate: "cites", Target: "paper-b"}},
+	}
+	f := core.Filter{Statements: []core.Statement{
+		attrStatement("status", "mature"),
+		{Predicate: core.Matcher{Values: []string{"cites"}}},
+	}}
+
+	it.Then(t).Should(it.Seq(f.MatchingFacts(node)).Equal(
+		core.Fact{Property: "cites", Value: "paper-b"},
+		core.Fact{Property: "status", Value: "mature"},
+	))
+}
