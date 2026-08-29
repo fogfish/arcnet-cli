@@ -180,6 +180,24 @@
 
 ---
 
+## Bugfix: BUG-001 — Structured call logging with filters and result counts
+
+**Purpose**: Closes the gap identified in `bugs/BUG-001.md` — `logCall`'s per-call log line never included the `filter` argument's actual content (on any of the four filter-accepting tools) or a count of what a successful call returned, and used a plain `fmt.Fprintf` line rather than the requested structured/colored output. Implements the revised FR-019 and new FR-020/FR-021. Note: the six per-tool call sites below live in `cmd/arc/graph/serve_tool_<name>.go`, not `serve.go` itself — this feature's original single-file `serve.go` was split into one file per tool by a later feature (029-mcp-tool-metadata); `logCall`'s own definition remains in `serve.go`.
+
+- [X] T043 [P] Add `github.com/fogfish/logger/v3` (v3.2.1) to `go.mod`/`go.sum` (BUG-001, spec FR-021)
+- [X] T044 Replace `logCall`'s `fmt.Fprintf`-based body in `cmd/arc/graph/serve.go` with a package-level `*slog.Logger` (built once via `logger.New(logger.Console...)`) and structured `Info`/`Error` calls carrying the tool name, its key arguments (including a filter summary when passed), and outcome — one line per call, matching FR-021's single-line constraint (depends on T043; BUG-001, spec FR-019 revised/FR-021)
+- [X] T045 [P] Update `serve_tool_node_grep.go`'s `logCall("node_grep", ...)` call sites: include `filter`'s compact summary when set, and on success pass `len(result.Matches)` as the result-size count (depends on T044; BUG-001, spec FR-019 revised/FR-020)
+- [X] T046 [P] Update `serve_tool_subgraph_get.go`'s `logCall("subgraph_get", ...)` call sites: include `filter`'s compact summary when set, and on success pass the returned patch's node count (depends on T044; BUG-001, spec FR-019 revised/FR-020)
+- [X] T047 [P] Update `serve_tool_context_retrieve.go`'s `logCall("context_retrieve", ...)` call sites: replace the current boolean `filter=%t` presence flag with `filter`'s actual compact summary when set, and on success pass the returned patch's node count (depends on T044; BUG-001, spec FR-019 revised/FR-020)
+- [X] T048 [P] Update `serve_tool_node_match.go`'s `logCall("node_match", ...)` call sites — today logs an empty args string on both its call sites despite `filter` being required — to include `filter`'s compact summary, and on success pass `len(result.Matches)` as the result-size count (depends on T044; BUG-001, spec FR-019 revised/FR-020)
+- [X] T049 [P] Update `serve_tool_schema.go`'s `logCall("schema", ...)` call site to pass the returned predicate/class counts as the result-size value on success (depends on T044; BUG-001, spec FR-020)
+- [X] T050 Extend `TestLogCallOutputShape` in `cmd/arc/graph/serve_test.go` for the new structured line shape; add coverage asserting a filter's actual content and a result-size count both appear in a successful call's log line, for at least `node_grep` and `node_match` (depends on T044-T049; BUG-001, spec FR-019 revised/FR-020)
+- [X] T051 [P] Run `govulncheck ./...` and confirm `github.com/fogfish/logger/v3` introduces no known-critical vulnerability (constitution Principle XIV, BUG-001) (depends on T043)
+
+**Bugfix**: 2026-08-29 — BUG-001 Added T043-T051 to implement the revised FR-019 and new FR-020/FR-021 (structured, colored, filter- and result-size-aware call logging). T025 is not reopened — it accurately described what was built against FR-019's original, pre-filter scope.
+
+---
+
 ## Phase N: Constitution Compliance Verification
 
 **Purpose**: Implements the constitution's Compliance Checklist (Implementation Phase). This phase MUST be retained verbatim; do not omit or merge it into other phases.
@@ -216,7 +234,8 @@
 - **Foundational Infrastructure (Phase 2.5)**: Depends on Phase 2 completion (specifically T009's ADR)
 - **User Stories (Phase 3+)**: All depend on Phase 2.5; User Story 1 is the deepest since it implements the server's full startup sequence — User Stories 2, 3, and 4 extend the same `RunE`/`serve.go` and therefore depend on Phase 3's tasks as well as Phase 2.5
 - **Additional Polish**: Depends on all desired user stories being complete
-- **Constitution Compliance Verification (Phase N)**: Final gate — depends on all preceding phases
+- **Bugfix: BUG-001** (added — BUG-001): Independent of Additional Polish; depends only on all four user stories being complete (every `logCall` call site it touches must already exist)
+- **Constitution Compliance Verification (Phase N)**: Final gate — depends on all preceding phases, including Bugfix: BUG-001
 
 ### User Story Dependencies
 

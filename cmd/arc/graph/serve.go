@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -21,20 +20,18 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 
+	"github.com/fogfish/logger/v3"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
 	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
 	appconfig "github.com/fogfish/arcnet-cli/internal/app/config"
-	configkernel "github.com/fogfish/arcnet-cli/internal/app/config/kernel"
 	appgraph "github.com/fogfish/arcnet-cli/internal/app/graph"
-	"github.com/fogfish/arcnet-cli/internal/app/graph/kernel"
 	"github.com/fogfish/arcnet-cli/internal/app/graph/service"
 	"github.com/fogfish/arcnet-cli/internal/core"
 )
@@ -48,13 +45,29 @@ const (
 	serveImplVersion = "0.1.0"
 )
 
-// schemaAdvertisement is sent to every connecting client as
-// InitializeResult.Instructions (research.md D3, spec FR-008/FR-009) — the
-// session-level guidance naming schema and recommending it as the first
-// call, independent of schema's own mcp.Tool.Description. research.md D9:
-// also names predicate-scoped filtering/traversal, via the triple
-// filter.statements shape, as available.
-const schemaAdvertisement = `This server exposes a knowledge graph. Call the schema tool first, before any other tool — it returns the graph's full ontology (every predicate and class, with descriptions), which makes every subsequent node_get/node_grep/subgraph_get/context_retrieve/node_match call more accurate. node_grep, subgraph_get, and context_retrieve each accept an optional filter.statements argument (triple source/predicate/target constraints) — a predicate-only statement scopes subgraph_get/context_retrieve's neighbor traversal to a named relation, while a statement also naming source/target narrows which nodes are returned. node_match also accepts a filter.statements argument, but — unlike the other three — it is required: node_match lists every distinct fact ({id, property, value}) that justified each match, never a node's full content.`
+// sessionInstructionsPurpose is the fixed opening sentence of
+// sessionInstructions() (research.md D5) — the server's overall purpose and
+// its recommended first call, independent of any one tool's own
+// mcp.Tool.Description.
+const sessionInstructionsPurpose = "This server exposes a knowledge graph, over six tools: node_get, node_grep, subgraph_get, context_retrieve, schema, node_match. Call schema first, before any other tool."
+
+// sessionInstructions composes the server's InitializeResult.Instructions
+// string (research.md D5, spec FR-007/FR-008/FR-009) from the fixed purpose
+// sentence plus every tool's own WorkflowNote constant, in tool-
+// registration order — replacing the single hand-authored
+// schemaAdvertisement paragraph so workflow/tool-preference guidance stays
+// colocated with the tool file it describes.
+func sessionInstructions() string {
+	return strings.Join([]string{
+		sessionInstructionsPurpose,
+		schemaWorkflowNote,
+		nodeGetWorkflowNote,
+		nodeGrepWorkflowNote,
+		subgraphGetWorkflowNote,
+		contextRetrieveWorkflowNote,
+		nodeMatchWorkflowNote,
+	}, " ")
+}
 
 // stringOrArray decodes a JSON value that may be either a single string or
 // an array of strings into a []string (research.md D7) — used by every
@@ -81,12 +94,12 @@ func (s *stringOrArray) UnmarshalJSON(data []byte) error {
 // an optional sibling *Pattern field for the regexp case, mirroring
 // core.Matcher's Values/Patterns split.
 type mcpStatement struct {
-	Source           stringOrArray `json:"source,omitempty"`
-	SourcePattern    stringOrArray `json:"sourcePattern,omitempty"`
-	Predicate        stringOrArray `json:"predicate,omitempty"`
-	PredicatePattern stringOrArray `json:"predicatePattern,omitempty"`
-	Target           stringOrArray `json:"target,omitempty"`
-	TargetPattern    stringOrArray `json:"targetPattern,omitempty"`
+	Source           stringOrArray `json:"source,omitempty" jsonschema:"exact source node id(s) the triple must have — single string or array of strings (OR-of-values); omit for any source"`
+	SourcePattern    stringOrArray `json:"sourcePattern,omitempty" jsonschema:"regexp(s) the triple's source node id must match — single string or array of strings (OR-of-patterns); omit for any source"`
+	Predicate        stringOrArray `json:"predicate,omitempty" jsonschema:"exact predicate name(s) the triple must have — single string or array of strings; omit for any predicate"`
+	PredicatePattern stringOrArray `json:"predicatePattern,omitempty" jsonschema:"regexp(s) the triple's predicate name must match"`
+	Target           stringOrArray `json:"target,omitempty" jsonschema:"exact target value(s)/node id(s) the triple must have — single string or array of strings"`
+	TargetPattern    stringOrArray `json:"targetPattern,omitempty" jsonschema:"regexp(s) the triple's target value must match"`
 }
 
 // mcpFilter is node_grep's/subgraph_get's/context_retrieve's optional
@@ -95,7 +108,7 @@ type mcpStatement struct {
 // since the two drivers' native input shapes (CLI flags vs. MCP JSON) do
 // not share a common decoding path.
 type mcpFilter struct {
-	Statements []mcpStatement `json:"statements,omitempty"`
+	Statements []mcpStatement `json:"statements,omitempty" jsonschema:"list of triple constraints, ANDed together; an absent or empty list matches every node. A statement naming only predicate scopes neighbor traversal to that relation instead of narrowing results (subgraph_get/context_retrieve only) — see each tool's description"`
 }
 
 // toMatcher compiles values/patterns into a core.Matcher, returning
@@ -166,6 +179,32 @@ func inputSchemaFor[T any]() (*jsonschema.Schema, error) {
 	})
 }
 
+// must panics on a non-nil error — used at package-load time to build each
+// tool's InputSchema from a static struct tag, where an error can only be a
+// programming mistake caught on the first `go build`/test run, never a
+// runtime condition (research.md D2).
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
+
+// withExamples attaches example values to field's generated schema property
+// (research.md D3) — the `jsonschema` struct tag has no syntax for
+// `examples`, so this mutates the reflected *jsonschema.Schema's per-property
+// Examples slice, the same post-processing pattern stringOrArraySchema()
+// already uses for type substitution. Panics if field is not a property of
+// s (a maintainer-visible programming error, never a runtime condition).
+func withExamples(s *jsonschema.Schema, field string, examples ...any) *jsonschema.Schema {
+	prop, ok := s.Properties[field]
+	if !ok {
+		panic(fmt.Sprintf("withExamples: no property %q on schema", field))
+	}
+	prop.Examples = append(prop.Examples, examples...)
+	return s
+}
+
 // resolveHTTPAddr resolves --http's address argument (research.md D5, spec
 // FR-003): a bare port or ":port" (no host) resolves to loopback-only
 // "127.0.0.1:<port>"; an explicit host is used exactly as given; a
@@ -185,257 +224,55 @@ func resolveHTTPAddr(addr string) (string, error) {
 	return net.JoinHostPort(host, port), nil
 }
 
-// logCall writes one stderr line per MCP tool call, recording the tool name,
-// its key arguments, and its outcome (research.md D9, spec FR-019).
-func logCall(tool, args string, err error) {
+// callLogWriter re-reads the os.Stderr variable on every Write, rather than
+// capturing its value once, so a test that temporarily swaps os.Stderr
+// (e.g. sutCaptureStderr) is observed even though callLogger below is a
+// package-level var constructed once at package load (BUG-001).
+type callLogWriter struct{}
+
+func (callLogWriter) Write(p []byte) (int, error) { return os.Stderr.Write(p) }
+
+// callLogger emits one colored line to stderr per MCP tool call (BUG-001,
+// spec FR-019 revised/FR-021), via github.com/fogfish/logger's console
+// handler over log/slog. Two explicit overrides of logger.New's own
+// defaults (both confirmed by reading options.go/handler.go directly):
+// logger.Console's default minimum level is NOTICE, stricter than
+// slog.LevelInfo, which would silently drop every success-path Info call;
+// and source-location is on by default, which — like any other attr —
+// gets pretty-printed across multiple lines by the console handler
+// (json.MarshalIndent in handler.go), violating FR-021's single-line rule.
+var callLogger = logger.New(logger.WithWriter(callLogWriter{}), logger.WithLogLevel(logger.INFO), logger.WithoutSource())
+
+// filterSummary renders f as a short, log-friendly summary — its statement
+// count plus compact (non-pretty-printed) JSON — or "none" for a nil or
+// empty filter (BUG-001, spec FR-019 revised). Not a guarantee of exact
+// reproducibility of the original call (spec Assumptions) — diagnostic only.
+func filterSummary(f *mcpFilter) string {
+	if f == nil || len(f.Statements) == 0 {
+		return "none"
+	}
+	b, err := json.Marshal(f)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "serve: %s %s error: %s\n", tool, args, err.Error())
+		return fmt.Sprintf("%d statements", len(f.Statements))
+	}
+	return fmt.Sprintf("%d statements %s", len(f.Statements), string(b))
+}
+
+// logCall writes one colored log line per MCP tool call, recording the tool
+// name, its key arguments (including a compact filter summary where
+// applicable, via filterSummary), and the outcome; count is the number of
+// elements a successful call returned (BUG-001, spec FR-019 revised/
+// FR-020). Deliberately a single formatted message with no extra slog
+// attributes: github.com/fogfish/logger's console handler pretty-prints any
+// attrs across multiple lines (json.MarshalIndent, confirmed by reading
+// handler.go directly), which would violate FR-021's single-line-per-call
+// requirement.
+func logCall(tool, args string, count int, err error) {
+	if err != nil {
+		callLogger.Error(fmt.Sprintf("%s %s error: %s", tool, args, err.Error()))
 		return
 	}
-	fmt.Fprintf(os.Stderr, "serve: %s %s ok\n", tool, args)
-}
-
-// renderMatchTable renders matches as node_grep's markdown reply (research.md
-// D2, contracts/mcp-contract.md): a fixed header, one row per match, header
-// only when matches is empty (spec FR-009).
-func renderMatchTable(matches []kernel.Match) string {
-	var b strings.Builder
-	b.WriteString("| id | type | line | snippet |\n|---|---|---|---|\n")
-	for _, m := range matches {
-		fmt.Fprintf(&b, "| %s | %s | %d | %s |\n", m.ID, m.Type, m.Line, m.Text)
-	}
-	return b.String()
-}
-
-// renderFactTable renders node_match's markdown reply (specs/028-node-
-// match-filter contracts/mcp-contract.md): a fixed header, one row per
-// matching fact, header only when matches is empty (spec FR-007).
-func renderFactTable(matches []kernel.MatchEntry) string {
-	var b strings.Builder
-	b.WriteString("| id | property | value |\n|---|---|---|\n")
-	for _, m := range matches {
-		fmt.Fprintf(&b, "| %s | %s | %s |\n", m.ID, m.Property, m.Value)
-	}
-	return b.String()
-}
-
-// nodeGetArgs is node_get's input schema.
-type nodeGetArgs struct {
-	ID string `json:"id" jsonschema:"the node's basename"`
-}
-
-// nodeGetHandler fetches one node by id and renders it exactly as
-// core.RenderNode already serializes it on disk (research.md D2).
-func nodeGetHandler(dir string, index core.Index) func(context.Context, *mcp.CallToolRequest, nodeGetArgs) (*mcp.CallToolResult, any, error) {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, args nodeGetArgs) (*mcp.CallToolResult, any, error) {
-		node, err := appgraph.NodeGet(ctx, fsys.Local{}, dir, args.ID)
-		logCall("node_get", fmt.Sprintf("id=%q", args.ID), err)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		text, err := core.RenderNode(node, index)
-		if err != nil {
-			return nil, nil, err
-		}
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(text)}}}, nil, nil
-	}
-}
-
-// nodeGrepArgs is node_grep's input schema.
-type nodeGrepArgs struct {
-	Pattern string     `json:"pattern" jsonschema:"regexp pattern to search node content for"`
-	Filter  *mcpFilter `json:"filter,omitempty" jsonschema:"optional filter narrowing which nodes are scanned"`
-}
-
-// nodeGrepHandler searches node content for pattern, narrowed by an optional
-// filter, and renders one markdown table row per matching line.
-func nodeGrepHandler(dir string, cfg configkernel.GrepConfig) func(context.Context, *mcp.CallToolRequest, nodeGrepArgs) (*mcp.CallToolResult, any, error) {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, args nodeGrepArgs) (*mcp.CallToolResult, any, error) {
-		filter, err := args.Filter.toCoreFilter()
-		if err != nil {
-			logCall("node_grep", fmt.Sprintf("pattern=%q", args.Pattern), err)
-			return nil, nil, err
-		}
-
-		result, err := appgraph.Grep(ctx, fsys.Local{}, filter, args.Pattern, cfg, dir)
-		logCall("node_grep", fmt.Sprintf("pattern=%q", args.Pattern), err)
-		if err != nil {
-			return nil, nil, err
-		}
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: renderMatchTable(result.Matches)}}}, nil, nil
-	}
-}
-
-// subgraphGetArgs is subgraph_get's input schema. Filter is new
-// (research.md D8) — subgraph_get had no filter argument before this
-// feature, so both flat-inclusion narrowing and predicate-scoped traversal
-// were unreachable from it.
-type subgraphGetArgs struct {
-	ID     string     `json:"id" jsonschema:"seed node basename"`
-	Depth  *int       `json:"depth,omitempty" jsonschema:"number of hops to traverse from the seed, default 1"`
-	Filter *mcpFilter `json:"filter,omitempty" jsonschema:"optional filter; a predicate-only statement scopes traversal, a source/target-naming statement narrows the result"`
-}
-
-// subgraphGetHandler extracts the seed plus every node reachable within
-// depth hops and renders the result as one patch-exchange document, byte-
-// identical to arc subgraph's own stdout for the same seed/depth.
-func subgraphGetHandler(dir string, cfg configkernel.SubgraphConfig, index core.Index) func(context.Context, *mcp.CallToolRequest, subgraphGetArgs) (*mcp.CallToolResult, any, error) {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, args subgraphGetArgs) (*mcp.CallToolResult, any, error) {
-		depth := 1
-		if args.Depth != nil {
-			depth = *args.Depth
-		}
-
-		logArgs := fmt.Sprintf("id=%q depth=%d", args.ID, depth)
-		if depth < 0 {
-			err := service.ErrInvalidDepth.With(errNoCause, strconv.Itoa(depth))
-			logCall("subgraph_get", logArgs, err)
-			return nil, nil, err
-		}
-
-		filter, err := args.Filter.toCoreFilter()
-		if err != nil {
-			logCall("subgraph_get", logArgs, err)
-			return nil, nil, err
-		}
-
-		result, err := appgraph.Subgraph(ctx, fsys.Local{}, filter, args.ID, depth, cfg, dir, false)
-		logCall("subgraph_get", logArgs, err)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		text, err := core.RenderPatch(result.Patch, index)
-		if err != nil {
-			return nil, nil, err
-		}
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(text)}}}, nil, nil
-	}
-}
-
-// contextRetrieveArgs is context_retrieve's input schema.
-type contextRetrieveArgs struct {
-	Query  string     `json:"query" jsonschema:"free text, matched literally and case-insensitively"`
-	Filter *mcpFilter `json:"filter,omitempty" jsonschema:"optional filter narrowing every retrieval pass"`
-	Limit  *int       `json:"limit,omitempty" jsonschema:"maximum number of node objects to return, default 10"`
-}
-
-// contextRetrieveHandler runs the three-pass retrieval (content match,
-// attribute match, neighbor expansion) and renders the ranked, truncated
-// result as one patch-exchange document, byte-shape-identical to
-// subgraph_get's own reply construction (contracts/mcp-contract.md).
-// contextRetrieveArgs.Limit's nil-resolution mirrors subgraphGetArgs.Depth's
-// existing pattern.
-func contextRetrieveHandler(dir string, cfgGrep configkernel.GrepConfig, cfgSubgraph configkernel.SubgraphConfig, index core.Index) func(context.Context, *mcp.CallToolRequest, contextRetrieveArgs) (*mcp.CallToolResult, any, error) {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, args contextRetrieveArgs) (*mcp.CallToolResult, any, error) {
-		limit := 10
-		if args.Limit != nil {
-			limit = *args.Limit
-		}
-		logArgs := fmt.Sprintf("query=%q filter=%t limit=%d", args.Query, args.Filter != nil, limit)
-
-		filter, err := args.Filter.toCoreFilter()
-		if err != nil {
-			logCall("context_retrieve", logArgs, err)
-			return nil, nil, err
-		}
-
-		result, err := appgraph.ContextRetrieve(ctx, fsys.Local{}, filter, args.Query, limit, cfgGrep, cfgSubgraph, dir)
-		logCall("context_retrieve", logArgs, err)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		text, err := core.RenderPatch(result.Patch, index)
-		if err != nil {
-			return nil, nil, err
-		}
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(text)}}}, nil, nil
-	}
-}
-
-// nodeMatchArgs is node_match's input schema. Unlike node_grep/
-// subgraph_get/context_retrieve, Filter is REQUIRED (non-pointer, no
-// "omitempty") — spec FR-001/FR-005.
-type nodeMatchArgs struct {
-	Filter mcpFilter `json:"filter" jsonschema:"required filter; at least one statement"`
-}
-
-// nodeMatchHandler evaluates filter against every node's own facts and
-// renders one markdown table row per distinct fact that satisfied at
-// least one statement (contracts/mcp-contract.md). args.Filter is a
-// concrete, always-non-nil value here, unlike the other tools' *mcpFilter
-// — toCoreFilter is called on &args.Filter; the empty-statements check
-// itself happens in service.Match, not here, so the validation lives in
-// one place regardless of transport.
-func nodeMatchHandler(dir string) func(context.Context, *mcp.CallToolRequest, nodeMatchArgs) (*mcp.CallToolResult, any, error) {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, args nodeMatchArgs) (*mcp.CallToolResult, any, error) {
-		filter, err := args.Filter.toCoreFilter()
-		if err != nil {
-			logCall("node_match", "", err)
-			return nil, nil, err
-		}
-
-		result, err := appgraph.Match(ctx, fsys.Local{}, filter, dir)
-		logCall("node_match", "", err)
-		if err != nil {
-			return nil, nil, err
-		}
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: renderFactTable(result.Matches)}}}, nil, nil
-	}
-}
-
-// schemaArgs is schema's input schema — empty, since schema takes no
-// arguments (spec FR-006).
-type schemaArgs struct{}
-
-// renderSchema renders index as schema's markdown reply (research.md D2,
-// contracts/mcp-contract.md, data-model.md): a sorted-by-name Predicates
-// bullet list (name + description only), followed by a sorted-by-name
-// Classes section, one subsection per class with its description and its
-// required/optional predicate names ("(none)" for an empty list). Pure
-// function, no I/O — mirrors renderMatchTable's existing shape.
-func renderSchema(index core.Index) string {
-	var b strings.Builder
-
-	b.WriteString("## Predicates\n\n")
-	for _, name := range slices.Sorted(maps.Keys(index.Predicates)) {
-		fmt.Fprintf(&b, "- **%s**: %s\n", name, index.Predicates[name].Description)
-	}
-
-	b.WriteString("\n## Classes\n\n")
-	for _, name := range slices.Sorted(maps.Keys(index.Types)) {
-		def := index.Types[name]
-		fmt.Fprintf(&b, "### %s\n\n%s\n\n", name, def.Description)
-		fmt.Fprintf(&b, "Required: %s\n", joinOrNone(def.Required))
-		fmt.Fprintf(&b, "Optional: %s\n\n", joinOrNone(def.Optional))
-	}
-
-	return b.String()
-}
-
-// joinOrNone joins names with ", ", or renders "(none)" for an empty list
-// (research.md D2).
-func joinOrNone(names []string) string {
-	if len(names) == 0 {
-		return "(none)"
-	}
-	return strings.Join(names, ", ")
-}
-
-// schemaHandler renders the already-resolved index as schema's reply — the
-// operation cannot fail once index is already in hand, so the returned
-// error is always nil (kept only because mcp.AddTool's handler signature
-// requires an error return). dir mirrors nodeGetHandler/subgraphGetHandler's
-// existing factory shape (data-model.md) though schema makes no domain call
-// of its own and never reads it.
-func schemaHandler(dir string, index core.Index) func(context.Context, *mcp.CallToolRequest, schemaArgs) (*mcp.CallToolResult, any, error) {
-	return func(context.Context, *mcp.CallToolRequest, schemaArgs) (*mcp.CallToolResult, any, error) {
-		text := renderSchema(index)
-		logCall("schema", "", nil)
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, nil, nil
-	}
+	callLogger.Info(fmt.Sprintf("%s %s ok count=%d", tool, args, count))
 }
 
 // buildServer mounts dir, preflights EnsureGraph (spec FR-004), loads
@@ -468,63 +305,14 @@ func buildServer(ctx context.Context, dir string) (*mcp.Server, error) {
 		subgraphCfg.BacklinkCap = defaultSubgraphBacklinkCap
 	}
 
-	server := mcp.NewServer(&mcp.Implementation{Name: serveImplName, Version: serveImplVersion}, &mcp.ServerOptions{Instructions: schemaAdvertisement})
+	server := mcp.NewServer(&mcp.Implementation{Name: serveImplName, Version: serveImplVersion}, &mcp.ServerOptions{Instructions: sessionInstructions()})
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "node_get",
-		Description: "Fetch a node's full content by id.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
-	}, nodeGetHandler(dir, index))
-
-	nodeGrepSchema, err := inputSchemaFor[nodeGrepArgs]()
-	if err != nil {
-		return nil, err
-	}
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "node_grep",
-		Description: "Search node content for lines matching a regexp pattern, optionally narrowed by a filter.statements triple filter (see schema).",
-		InputSchema: nodeGrepSchema,
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
-	}, nodeGrepHandler(dir, cfgFile.Grep))
-
-	subgraphGetSchema, err := inputSchemaFor[subgraphGetArgs]()
-	if err != nil {
-		return nil, err
-	}
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "subgraph_get",
-		Description: "Return the fully-resolved subgraph rooted at a node, to a given hop depth, optionally scoped/narrowed by a filter.statements triple filter (see schema) — a predicate-only statement restricts which relations traversal follows.",
-		InputSchema: subgraphGetSchema,
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
-	}, subgraphGetHandler(dir, subgraphCfg, index))
-
-	contextRetrieveSchema, err := inputSchemaFor[contextRetrieveArgs]()
-	if err != nil {
-		return nil, err
-	}
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "context_retrieve",
-		Description: "Assemble the full content of every node relevant to a free-text query in one call — content match, attribute match, and neighbor expansion combined, ranked, deduplicated, and truncated to limit; optionally scoped/narrowed by a filter.statements triple filter (see schema).",
-		InputSchema: contextRetrieveSchema,
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
-	}, contextRetrieveHandler(dir, cfgFile.Grep, subgraphCfg, index))
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "schema",
-		Description: "Return the graph's full ontology — every currently defined class and predicate, with descriptions — so a client knows what vocabulary is available before reading or writing the graph. Recommended as the first tool call of a session.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
-	}, schemaHandler(dir, index))
-
-	nodeMatchSchema, err := inputSchemaFor[nodeMatchArgs]()
-	if err != nil {
-		return nil, err
-	}
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "node_match",
-		Description: "List every distinct fact ({id, property, value}) on nodes that fully satisfy a required filter.statements triple filter (see schema) — evidence of why each node matched, not the node's full content.",
-		InputSchema: nodeMatchSchema,
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
-	}, nodeMatchHandler(dir))
+	mcp.AddTool(server, nodeGetTool, nodeGetHandler(dir, index))
+	mcp.AddTool(server, nodeGrepTool, nodeGrepHandler(dir, cfgFile.Grep))
+	mcp.AddTool(server, subgraphGetTool, subgraphGetHandler(dir, subgraphCfg, index))
+	mcp.AddTool(server, contextRetrieveTool, contextRetrieveHandler(dir, cfgFile.Grep, subgraphCfg, index))
+	mcp.AddTool(server, schemaTool, schemaHandler(dir, index))
+	mcp.AddTool(server, nodeMatchTool, nodeMatchHandler(dir))
 
 	return server, nil
 }

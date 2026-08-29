@@ -37,18 +37,26 @@ cmd/arc/                    # sole primary (driving) adapter: Cobra command tree
 │   │                         #   research.md D10), calls internal/app/graph.Subgraph, writes
 │   │                         #   core.RenderPatch's bytes verbatim to stdout — no bios.SCHEMA
 │   │                         #   styling (specs/007-arc-subgraph, research.md D10)
-│   └── serve.go             # `arc serve [--http <addr>]` command: the codebase's second
-│                             #   primary-adapter family (ADR 003) — registers node_get/
-│                             #   node_grep/subgraph_get/context_retrieve/schema as MCP Tools
-│                             #   on an mcp.Server, calling internal/app/graph.NodeGet/Grep/
-│                             #   Subgraph/ContextRetrieve exactly like every Cobra command
-│                             #   does, over stdio by default or Streamable HTTP/SSE when
-│                             #   --http names a Bind Address (specs/008-arc-serve-mcp,
-│                             #   specs/025-context-retrieve-tool, specs/026-mcp-schema-tool);
-│                             #   schema alone renders the already-resolved core.Index
-│                             #   directly with no domain call of its own, and the server's
-│                             #   mcp.ServerOptions.Instructions advertises it as the
-│                             #   recommended first call of every session
+│   ├── serve.go             # `arc serve [--http <addr>]` command: the codebase's second
+│   │                         #   primary-adapter family (ADR 003) — builds the mcp.Server
+│   │                         #   (mounting the six tools below), the shared filter
+│   │                         #   wire-shape (mcpStatement/mcpFilter), and
+│   │                         #   sessionInstructions(), the composed
+│   │                         #   mcp.ServerOptions.Instructions text recommending schema as
+│   │                         #   the first call of every session (specs/008-arc-serve-mcp,
+│   │                         #   specs/029-mcp-tool-metadata)
+│   └── serve_tool_*.go      # one file per MCP tool — node_get, node_grep, subgraph_get,
+│                             #   context_retrieve, schema, node_match — each colocating that
+│                             #   tool's args struct, mcp.Tool var (name/description/input
+│                             #   schema with per-parameter examples), handler calling
+│                             #   internal/app/graph.NodeGet/Grep/Subgraph/ContextRetrieve/
+│                             #   Match exactly like every Cobra command does, and a
+│                             #   WorkflowNote constant stating when to prefer it over
+│                             #   overlapping tools (specs/025-context-retrieve-tool,
+│                             #   specs/026-mcp-schema-tool, specs/028-node-match-filter,
+│                             #   specs/029-mcp-tool-metadata); schema alone renders the
+│                             #   already-resolved core.Index directly with no domain call of
+│                             #   its own
 └── lint/                   # Cobra wiring for the lint (graph conformance validation) domain
     └── lint.go               # `arc lint` command: flag/arg parsing, calls
                               #   internal/app/schema.Resolve then internal/app/lint.Lint

@@ -24,6 +24,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
+	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
+	configkernel "github.com/fogfish/arcnet-cli/internal/app/config/kernel"
+	appgraph "github.com/fogfish/arcnet-cli/internal/app/graph"
 	"github.com/fogfish/arcnet-cli/internal/app/graph/kernel"
 	"github.com/fogfish/arcnet-cli/internal/app/graph/service"
 	"github.com/fogfish/arcnet-cli/internal/core"
@@ -919,20 +922,82 @@ func TestNodeGetHandlerErrorMapping(t *testing.T) {
 	it.Then(t).Should(it.String(textOf(t, result)).Contain("TLS is the successor to SSL."))
 }
 
-// T031: logCall writes exactly one line per call, ok/error(message).
+// T031/BUG-001: logCall writes exactly one line per call, ok/error(message),
+// now including a result-size count on success (spec FR-019 revised/FR-020).
 func TestLogCallOutputShape(t *testing.T) {
 	_, stderr, err := sutCaptureStderr(t, &cobra.Command{
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logCall("node_get", `id="Transport Layer Security"`, nil)
-			logCall("node_get", `id="No Such Node"`, errors.New("no node found with basename No Such Node"))
+			logCall("node_get", `id="Transport Layer Security"`, 1, nil)
+			logCall("node_get", `id="No Such Node"`, 0, errors.New("no node found with basename No Such Node"))
 			return nil
 		},
 	}, nil)
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).
-		Should(it.String(stderr).Contain(`serve: node_get id="Transport Layer Security" ok`)).
-		Should(it.String(stderr).Contain(`serve: node_get id="No Such Node" error: no node found with basename No Such Node`))
+		Should(it.String(stderr).Contain(`node_get id="Transport Layer Security" ok count=1`)).
+		Should(it.String(stderr).Contain(`node_get id="No Such Node" error: no node found with basename No Such Node`))
+}
+
+// BUG-001: node_grep's logCall call site must log the filter's actual
+// content (not merely that scanning happened) and the number of matching
+// lines returned — today the filter was silently dropped. Handler is
+// called directly, bypassing the MCP transport (mirrors
+// TestNodeGetHandlerErrorMapping's pattern).
+func TestLogCallNodeGrepIncludesFilterAndMatchCount(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeFixture(t, dir)
+
+	filter := &mcpFilter{Statements: []mcpStatement{{Predicate: stringOrArray{"type"}, Target: stringOrArray{"Source"}}}}
+	coreFilter, err := filter.toCoreFilter()
+	it.Then(t).Should(it.Nil(err))
+	want, err := appgraph.Grep(context.Background(), fsys.Local{}, coreFilter, "TLS", configkernel.GrepConfig{}, dir)
+	it.Then(t).Should(it.Nil(err))
+
+	handler := nodeGrepHandler(dir, configkernel.GrepConfig{})
+	_, stderr, cmdErr := sutCaptureStderr(t, &cobra.Command{
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, _, herr := handler(context.Background(), nil, nodeGrepArgs{Pattern: "TLS", Filter: filter})
+			return herr
+		},
+	}, nil)
+
+	it.Then(t).Should(it.Nil(cmdErr))
+	it.Then(t).
+		Should(it.String(stderr).Contain(`"predicate":["type"]`)).
+		Should(it.String(stderr).Contain(`"target":["Source"]`)).
+		Should(it.String(stderr).Contain(fmt.Sprintf("count=%d", len(want.Matches))))
+}
+
+// BUG-001: node_match's logCall call sites logged an empty args string on
+// both paths despite filter being required — every call was logged with
+// zero information. Confirms the filter's actual content and the matched-
+// fact count now both appear.
+func TestLogCallNodeMatchIncludesFilterAndFactCount(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeFixture(t, dir)
+
+	filter := mcpFilter{Statements: []mcpStatement{{Predicate: stringOrArray{"type"}, Target: stringOrArray{"Source"}}}}
+	coreFilter, err := filter.toCoreFilter()
+	it.Then(t).Should(it.Nil(err))
+	want, err := appgraph.Match(context.Background(), fsys.Local{}, coreFilter, dir)
+	it.Then(t).Should(it.Nil(err))
+
+	handler := nodeMatchHandler(dir)
+	_, stderr, cmdErr := sutCaptureStderr(t, &cobra.Command{
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, _, herr := handler(context.Background(), nil, nodeMatchArgs{Filter: filter})
+			return herr
+		},
+	}, nil)
+
+	it.Then(t).Should(it.Nil(cmdErr))
+	it.Then(t).
+		Should(it.String(stderr).Contain(`"predicate":["type"]`)).
+		Should(it.String(stderr).Contain(`"target":["Source"]`)).
+		Should(it.String(stderr).Contain(fmt.Sprintf("count=%d", len(want.Matches))))
 }
 
 // T035: renderMatchTable renders a header-only table for zero matches, and

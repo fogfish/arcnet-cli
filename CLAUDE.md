@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/028-node-match-filter/plan.md`
+`specs/029-mcp-tool-metadata/plan.md`
 <!-- SPECKIT END -->
 
 ## Go file license header

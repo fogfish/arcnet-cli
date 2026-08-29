@@ -2,6 +2,18 @@
 
 ## 2026-08-28
 
+/speckit-specify Improve metadata management for MCP Server by coallocating the each tool and its params specification in single block at the code base. Improve the specification of arguments with possibility to add descriptions and examples. As part of this feature, the tool maintainer gets possibilities to
+1. Specify the server and main workflows;
+2. Specify tool/function description, input and output;
+3. Specify the complex syntax of filters with examples;
+4. Guidance on which tool to prefer when they overlap
+  
+
+/speckit-plan Split `serve.go` into one file per tool (`serve_tool_node_get.go`, etc.) plus a `serve.go` left with buildServer/NewServeCmd/shared filter-conversion code. use mcp.Tool as constant within each tool file and declare all parameters/types next to it. Create nessesary `jsonschema` tags to MCP types. Draft all nessesary description so that LLM user of that server understand how to carry on task.
+
+
+## 2026-08-28
+
 /speckit-specify Add `node_match(filter)` function to MCP server. It list of `{id, property, value}` for nodes matching the filter object (see Filtering — MCP filter object). Apparently the result is list of "statements" matching the filter pattern.
 
 /speckit-plan Add `node_match(filter)` function to existing server using existing primitive, implement the matching service within `internal/app/graph` in future release the match feature to be exposed as command.

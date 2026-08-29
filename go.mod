@@ -6,6 +6,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/fogfish/faults v0.3.2
 	github.com/fogfish/it/v2 v2.2.4
+	github.com/fogfish/logger/v3 v3.2.1
 	github.com/google/jsonschema-go v0.4.3
 	github.com/mattn/go-isatty v0.0.22
 	github.com/modelcontextprotocol/go-sdk v1.6.1
