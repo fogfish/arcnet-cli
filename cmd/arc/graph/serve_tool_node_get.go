@@ -54,7 +54,7 @@ const nodeGetWorkflowNote = "Use node_get once you already have a specific node 
 func nodeGetHandler(dir string, index core.Index) func(context.Context, *mcp.CallToolRequest, nodeGetArgs) (*mcp.CallToolResult, any, error) {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, args nodeGetArgs) (*mcp.CallToolResult, any, error) {
 		node, err := appgraph.NodeGet(ctx, fsys.Local{}, dir, args.ID)
-		logCall("node_get", fmt.Sprintf("id=%q", args.ID), err)
+		logCall("node_get", fmt.Sprintf("id=%q", args.ID), 1, err)
 		if err != nil {
 			return nil, nil, err
 		}

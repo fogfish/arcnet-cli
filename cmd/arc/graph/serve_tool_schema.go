@@ -23,7 +23,7 @@ import (
 // schemaTool is schema's colocated mcp.Tool definition (research.md D2).
 var schemaTool = &mcp.Tool{
 	Name:        "schema",
-	Description: "Return the graph's semantic layer and vocabulary. It returns defined classes (rdfs:Class) and properties (rdfs:Property) with descriptions. Use this to discover what vocabulary is available before reading or writing the graph. It is recommended as the first tool call of a session.",
+	Description: "Return the knowledge graph's semantic layer and vocabulary. It returns defined classes (rdfs:Class) and properties (rdfs:Property) with descriptions. Use this to discover what vocabulary is available before reading or writing the graph. It is recommended as the first tool call of a session.",
 	Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 }
 
@@ -45,6 +45,19 @@ const schemaWorkflowNote = "Always call schema first in a new session. Usage of 
 func renderSchema(index core.Index) string {
 	var b strings.Builder
 
+	// TODO: Explain the filters
+	b.WriteString("# Graph Schema\n\n")
+	b.WriteString(`A knowledge graph here is a set of linked Markdown files: each file is a node, 
+and [[wiki-links]] between files are edges. A bare [[Link]] embedded inside
+the text is an untyped association; and a property:: [[Target]] bullet is
+an explicit, typed edge. Both links file's @id. Underneath that surface,
+every node is really a bag of RDF triples about one subject — (@id, predicate, value).
+The service offers a tools to query the graph and discover either individual
+statements, nodes or interconnected subgraphs. Use the schema below to discover
+the graph's vocabulary and the predicates available for each class.
+	`)
+
+	b.WriteString("\n\n")
 	b.WriteString("## Predicates\n\n")
 	for _, name := range slices.Sorted(maps.Keys(index.Predicates)) {
 		fmt.Fprintf(&b, "### %s\n\n%s\n\n", name, index.Predicates[name].Description)
@@ -79,7 +92,7 @@ func joinOrNone(names []string) string {
 func schemaHandler(dir string, index core.Index) func(context.Context, *mcp.CallToolRequest, schemaArgs) (*mcp.CallToolResult, any, error) {
 	return func(context.Context, *mcp.CallToolRequest, schemaArgs) (*mcp.CallToolResult, any, error) {
 		text := renderSchema(index)
-		logCall("schema", "", nil)
+		logCall("schema", "", len(index.Predicates)+len(index.Types), nil)
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, nil, nil
 	}
 }

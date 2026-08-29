@@ -74,21 +74,21 @@ func subgraphGetHandler(dir string, cfg configkernel.SubgraphConfig, index core.
 			depth = *args.Depth
 		}
 
-		logArgs := fmt.Sprintf("id=%q depth=%d", args.ID, depth)
+		logArgs := fmt.Sprintf("id=%q depth=%d filter=%s", args.ID, depth, filterSummary(args.Filter))
 		if depth < 0 {
 			err := service.ErrInvalidDepth.With(errNoCause, strconv.Itoa(depth))
-			logCall("subgraph_get", logArgs, err)
+			logCall("subgraph_get", logArgs, 0, err)
 			return nil, nil, err
 		}
 
 		filter, err := args.Filter.toCoreFilter()
 		if err != nil {
-			logCall("subgraph_get", logArgs, err)
+			logCall("subgraph_get", logArgs, 0, err)
 			return nil, nil, err
 		}
 
 		result, err := appgraph.Subgraph(ctx, fsys.Local{}, filter, args.ID, depth, cfg, dir, false)
-		logCall("subgraph_get", logArgs, err)
+		logCall("subgraph_get", logArgs, len(result.Patch.Nodes), err)
 		if err != nil {
 			return nil, nil, err
 		}

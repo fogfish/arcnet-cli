@@ -25,7 +25,7 @@ import (
 // D2).
 var nodeMatchTool = &mcp.Tool{
 	Name:        "node_match",
-	Description: "List every distinct fact ({id, property, value}) on nodes that fully satisfy a required filter.statements triple filter (see schema) — evidence of why each node matched, not the node's full content. Returns a markdown table, one row per distinct fact: id, property, value.",
+	Description: "List every distinct fact (node_id, property, value) from the graph that fully satisfy a required filter argument. It returns a markdown table, one row per distinct fact: id, property, value. Use filters to express the intent behind the search criteria and scope facts.",
 	InputSchema: must(nodeMatchInputSchema()),
 	Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 }
@@ -67,14 +67,16 @@ const nodeMatchWorkflowNote = "Use node_match instead of node_grep/context_retri
 // one place regardless of transport.
 func nodeMatchHandler(dir string) func(context.Context, *mcp.CallToolRequest, nodeMatchArgs) (*mcp.CallToolResult, any, error) {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, args nodeMatchArgs) (*mcp.CallToolResult, any, error) {
+		logArgs := fmt.Sprintf("filter=%s", filterSummary(&args.Filter))
+
 		filter, err := args.Filter.toCoreFilter()
 		if err != nil {
-			logCall("node_match", "", err)
+			logCall("node_match", logArgs, 0, err)
 			return nil, nil, err
 		}
 
 		result, err := appgraph.Match(ctx, fsys.Local{}, filter, dir)
-		logCall("node_match", "", err)
+		logCall("node_match", logArgs, len(result.Matches), err)
 		if err != nil {
 			return nil, nil, err
 		}

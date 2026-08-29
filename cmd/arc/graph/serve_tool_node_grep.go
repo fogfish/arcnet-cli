@@ -61,14 +61,16 @@ const nodeGrepWorkflowNote = "Prefer node_grep when you need the exact matching 
 // filter, and renders one markdown table row per matching line.
 func nodeGrepHandler(dir string, cfg configkernel.GrepConfig) func(context.Context, *mcp.CallToolRequest, nodeGrepArgs) (*mcp.CallToolResult, any, error) {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, args nodeGrepArgs) (*mcp.CallToolResult, any, error) {
+		logArgs := fmt.Sprintf("pattern=%q filter=%s", args.Pattern, filterSummary(args.Filter))
+
 		filter, err := args.Filter.toCoreFilter()
 		if err != nil {
-			logCall("node_grep", fmt.Sprintf("pattern=%q", args.Pattern), err)
+			logCall("node_grep", logArgs, 0, err)
 			return nil, nil, err
 		}
 
 		result, err := appgraph.Grep(ctx, fsys.Local{}, filter, args.Pattern, cfg, dir)
-		logCall("node_grep", fmt.Sprintf("pattern=%q", args.Pattern), err)
+		logCall("node_grep", logArgs, len(result.Matches), err)
 		if err != nil {
 			return nil, nil, err
 		}

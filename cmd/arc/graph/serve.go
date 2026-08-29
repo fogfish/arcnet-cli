@@ -24,6 +24,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/fogfish/logger/v3"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
@@ -223,14 +224,55 @@ func resolveHTTPAddr(addr string) (string, error) {
 	return net.JoinHostPort(host, port), nil
 }
 
-// logCall writes one stderr line per MCP tool call, recording the tool name,
-// its key arguments, and its outcome (research.md D9, spec FR-019).
-func logCall(tool, args string, err error) {
+// callLogWriter re-reads the os.Stderr variable on every Write, rather than
+// capturing its value once, so a test that temporarily swaps os.Stderr
+// (e.g. sutCaptureStderr) is observed even though callLogger below is a
+// package-level var constructed once at package load (BUG-001).
+type callLogWriter struct{}
+
+func (callLogWriter) Write(p []byte) (int, error) { return os.Stderr.Write(p) }
+
+// callLogger emits one colored line to stderr per MCP tool call (BUG-001,
+// spec FR-019 revised/FR-021), via github.com/fogfish/logger's console
+// handler over log/slog. Two explicit overrides of logger.New's own
+// defaults (both confirmed by reading options.go/handler.go directly):
+// logger.Console's default minimum level is NOTICE, stricter than
+// slog.LevelInfo, which would silently drop every success-path Info call;
+// and source-location is on by default, which — like any other attr —
+// gets pretty-printed across multiple lines by the console handler
+// (json.MarshalIndent in handler.go), violating FR-021's single-line rule.
+var callLogger = logger.New(logger.WithWriter(callLogWriter{}), logger.WithLogLevel(logger.INFO), logger.WithoutSource())
+
+// filterSummary renders f as a short, log-friendly summary — its statement
+// count plus compact (non-pretty-printed) JSON — or "none" for a nil or
+// empty filter (BUG-001, spec FR-019 revised). Not a guarantee of exact
+// reproducibility of the original call (spec Assumptions) — diagnostic only.
+func filterSummary(f *mcpFilter) string {
+	if f == nil || len(f.Statements) == 0 {
+		return "none"
+	}
+	b, err := json.Marshal(f)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "serve: %s %s error: %s\n", tool, args, err.Error())
+		return fmt.Sprintf("%d statements", len(f.Statements))
+	}
+	return fmt.Sprintf("%d statements %s", len(f.Statements), string(b))
+}
+
+// logCall writes one colored log line per MCP tool call, recording the tool
+// name, its key arguments (including a compact filter summary where
+// applicable, via filterSummary), and the outcome; count is the number of
+// elements a successful call returned (BUG-001, spec FR-019 revised/
+// FR-020). Deliberately a single formatted message with no extra slog
+// attributes: github.com/fogfish/logger's console handler pretty-prints any
+// attrs across multiple lines (json.MarshalIndent, confirmed by reading
+// handler.go directly), which would violate FR-021's single-line-per-call
+// requirement.
+func logCall(tool, args string, count int, err error) {
+	if err != nil {
+		callLogger.Error(fmt.Sprintf("%s %s error: %s", tool, args, err.Error()))
 		return
 	}
-	fmt.Fprintf(os.Stderr, "serve: %s %s ok\n", tool, args)
+	callLogger.Info(fmt.Sprintf("%s %s ok count=%d", tool, args, count))
 }
 
 // buildServer mounts dir, preflights EnsureGraph (spec FR-004), loads

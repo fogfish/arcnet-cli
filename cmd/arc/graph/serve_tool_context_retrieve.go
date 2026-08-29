@@ -72,16 +72,16 @@ func contextRetrieveHandler(dir string, cfgGrep configkernel.GrepConfig, cfgSubg
 		if args.Limit != nil {
 			limit = *args.Limit
 		}
-		logArgs := fmt.Sprintf("query=%q filter=%t limit=%d", args.Query, args.Filter != nil, limit)
+		logArgs := fmt.Sprintf("query=%q filter=%s limit=%d", args.Query, filterSummary(args.Filter), limit)
 
 		filter, err := args.Filter.toCoreFilter()
 		if err != nil {
-			logCall("context_retrieve", logArgs, err)
+			logCall("context_retrieve", logArgs, 0, err)
 			return nil, nil, err
 		}
 
 		result, err := appgraph.ContextRetrieve(ctx, fsys.Local{}, filter, args.Query, limit, cfgGrep, cfgSubgraph, dir)
-		logCall("context_retrieve", logArgs, err)
+		logCall("context_retrieve", logArgs, len(result.Patch.Nodes), err)
 		if err != nil {
 			return nil, nil, err
 		}
