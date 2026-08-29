@@ -49,7 +49,7 @@ const (
 // sessionInstructions() (research.md D5) — the server's overall purpose and
 // its recommended first call, independent of any one tool's own
 // mcp.Tool.Description.
-const sessionInstructionsPurpose = "This server exposes a knowledge graph, over six tools: node_get, node_grep, subgraph_get, context_retrieve, schema, node_match. Call schema first, before any other tool."
+const sessionInstructionsPurpose = "This server exposes a knowledge graph, over eight tools: node_get, node_grep, subgraph_get, context_retrieve, schema, node_match, node_links, node_backlinks. Call schema first, before any other tool."
 
 // sessionInstructions composes the server's InitializeResult.Instructions
 // string (research.md D5, spec FR-007/FR-008/FR-009) from the fixed purpose
@@ -66,6 +66,8 @@ func sessionInstructions() string {
 		subgraphGetWorkflowNote,
 		contextRetrieveWorkflowNote,
 		nodeMatchWorkflowNote,
+		nodeLinksWorkflowNote,
+		nodeBacklinksWorkflowNote,
 	}, " ")
 }
 
@@ -277,10 +279,10 @@ func logCall(tool, args string, count int, err error) {
 
 // buildServer mounts dir, preflights EnsureGraph (spec FR-004), loads
 // .arc/config.yml once, and registers node_get/node_grep/subgraph_get/
-// context_retrieve/node_match on a new mcp.Server — the same construction
-// RunE runs before selecting a transport, factored out so tests can
-// exercise the real, registered tool handlers directly over
-// mcp.NewInMemoryTransports() (research.md D7).
+// context_retrieve/node_match/node_links/node_backlinks on a new
+// mcp.Server — the same construction RunE runs before selecting a
+// transport, factored out so tests can exercise the real, registered tool
+// handlers directly over mcp.NewInMemoryTransports() (research.md D7).
 func buildServer(ctx context.Context, dir string) (*mcp.Server, error) {
 	if err := appgraph.EnsureGraph(ctx, fsys.Local{}, dir); err != nil {
 		return nil, err
@@ -313,6 +315,8 @@ func buildServer(ctx context.Context, dir string) (*mcp.Server, error) {
 	mcp.AddTool(server, contextRetrieveTool, contextRetrieveHandler(dir, cfgFile.Grep, subgraphCfg, index))
 	mcp.AddTool(server, schemaTool, schemaHandler(dir, index))
 	mcp.AddTool(server, nodeMatchTool, nodeMatchHandler(dir))
+	mcp.AddTool(server, nodeLinksTool, nodeLinksHandler(dir))
+	mcp.AddTool(server, nodeBacklinksTool, nodeBacklinksHandler(dir))
 
 	return server, nil
 }
@@ -325,18 +329,22 @@ func NewServeCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "Run an MCP server exposing the graph to LLM clients.",
 		Long: `
-arc serve starts a Model Context Protocol (MCP) server exposing six
+arc serve starts a Model Context Protocol (MCP) server exposing eight
 read-only tools — node_get, node_grep, subgraph_get, context_retrieve,
-schema, node_match — the first three backed by the same use-case functions
-arc grep/arc subgraph already call; context_retrieve (query + attribute
-match plus one-hop neighbor expansion, ranked and truncated to a limit),
-schema (the graph's full ontology: every class and predicate, with
-descriptions), and node_match (every distinct {id, property, value} fact
-justifying a match against a required filter.statements filter) are
-MCP-only, with no Cobra command of their own. schema is the recommended
-first call of a session — every connecting client is told so via the
-server's own session-start guidance. It serves over stdio by default, or
-over Streamable HTTP/SSE when --http <addr> is given.
+schema, node_match, node_links, node_backlinks — the first three backed by
+the same use-case functions arc grep/arc subgraph already call;
+context_retrieve (query + attribute match plus one-hop neighbor expansion,
+ranked and truncated to a limit), schema (the graph's full ontology: every
+class and predicate, with descriptions), node_match (every distinct {id,
+property, value} fact justifying a match against a required
+filter.statements filter), node_links (a node's own outgoing relations —
+structural edges and inline prose references alike — as {predicate,
+target} rows), and node_backlinks (every relation elsewhere in the graph
+targeting a node, as {source, predicate} rows) are MCP-only, with no
+Cobra command of their own. schema is the recommended first call of a
+session — every connecting client is told so via the server's own
+session-start guidance. It serves over stdio by default, or over
+Streamable HTTP/SSE when --http <addr> is given.
 A bare port or :port binds 127.0.0.1 only; an explicit host binds exactly
 that host. serve is strictly read-only and never modifies the graph or its
 git history.

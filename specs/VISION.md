@@ -145,8 +145,8 @@ Expose the full graph navigation surface as a [Model Context Protocol](https://m
   - [x] `node_get(id)` → full node object (ARCNET-AST §4): attrs, text, edges, links
   - [x] `node_match(filter)` → list of `{id, property, value}` for nodes matching the filter object (see Filtering — MCP filter object)
   - [x] `node_grep(pattern, filter?)` → list of `{id, kind, line, snippet}` for nodes whose content matches a regexp pattern, optionally pre-filtered by the filter object
-  - [ ] `node_edges(id)` → outgoing edges: `[{predicate, target}]` from `edges` + `links`
-  - [ ] `node_backlinks(id)` → incoming edges: `[{source, predicate}]` from the backlink index
+  - [x] `node_links(id)` → outgoing edges: `[{predicate, target}]` from `edges` + `links`
+  - [x] `node_backlinks(id)` → incoming edges: `[{source, predicate}]` from the backlink index
   - [ ] `graph_path(from, to)` → shortest directed edge path between two ids, or empty if none
   - [ ] `graph_stats()` → the same summary as `arc stats`
   - [ ] `timeline_get(period?)` → timeline entries for a year/month period

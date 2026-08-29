@@ -1529,6 +1529,326 @@ func TestServeNodeMatchEmptyFilterReturnsValidationError(t *testing.T) {
 	it.Then(t).ShouldNot(it.True(result2.IsError))
 }
 
+const serveLinksA = `---
+"@id": link-a
+"@type": Entity
+---
+# link-a
+
+See [[link-c]] for details.
+
+- cites:: [[link-b]]
+`
+const serveLinksB = `---
+"@id": link-b
+"@type": Entity
+---
+# link-b
+`
+const serveLinksC = `---
+"@id": link-c
+"@type": Entity
+---
+# link-c
+`
+
+func seedServeLinksFixture(t *testing.T, dir string) {
+	t.Helper()
+	writeGrepNode(t, dir, "Entity/link-a.md", serveLinksA)
+	writeGrepNode(t, dir, "Entity/link-b.md", serveLinksB)
+	writeGrepNode(t, dir, "Entity/link-c.md", serveLinksC)
+}
+
+// { "name": "node_links", "arguments": { "id": "link-a" } }
+// Scenario 1 from spec.md US1: node_links on a node with several outgoing
+// relations (structural edges and/or inline hrefs) returns one row per
+// relation, matching the node's own relations exactly.
+func TestServeNodeLinksReturnsOneRowPerRelation(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeLinksFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_links",
+		Arguments: map[string]any{"id": "link-a"},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("| predicate | target |")).
+		Should(it.String(text).Contain("| cites | link-b |")).
+		Should(it.String(text).Contain("|  | link-c |"))
+}
+
+// Scenario 2 from spec.md US1: node_links on a node with zero outgoing
+// relations returns a header-only table, not an error.
+func TestServeNodeLinksEmptyResultForNoOutgoingRelations(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeLinksFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_links",
+		Arguments: map[string]any{"id": "link-b"},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("| predicate | target |")).
+		ShouldNot(it.String(text).Contain("\n| "))
+}
+
+// { "name": "node_backlinks", "arguments": { "id": "link-b" } }
+// Scenario 1 from spec.md US2: node_backlinks on a node referenced by
+// several other nodes returns one row per incoming relation.
+func TestServeNodeBacklinksReturnsOneRowPerReferencingRelation(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeLinksFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_backlinks",
+		Arguments: map[string]any{"id": "link-b"},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("| source | predicate |")).
+		Should(it.String(text).Contain("| link-a | cites |"))
+}
+
+// Scenario 2 from spec.md US2: node_backlinks on a node no other node
+// references returns a header-only table, not an error.
+func TestServeNodeBacklinksEmptyResultForNoIncomingRelations(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeLinksFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_backlinks",
+		Arguments: map[string]any{"id": "link-a"},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	text := textOf(t, result)
+	it.Then(t).
+		Should(it.String(text).Contain("| source | predicate |")).
+		ShouldNot(it.String(text).Contain("\n| "))
+}
+
+// Scenario 1 from spec.md US3: for a node with both outgoing and incoming
+// relations, every relation where it is the source appears only in its
+// node_links result and every relation where it is the target appears
+// only in its node_backlinks result — no relation missing from either,
+// none duplicated across both.
+func TestServeNodeLinksAndBacklinksAccountForEveryRelation(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeLinksFixture(t, dir)
+	writeGrepNode(t, dir, "Entity/link-d.md", `---
+"@id": link-d
+"@type": Entity
+---
+# link-d
+
+- cites:: [[link-b]]
+`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	linksResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_links",
+		Arguments: map[string]any{"id": "link-b"},
+	})
+	it.Then(t).Should(it.Nil(err))
+	linksText := textOf(t, linksResult)
+	it.Then(t).
+		Should(it.String(linksText).Contain("| predicate | target |")).
+		ShouldNot(it.String(linksText).Contain("\n| "))
+
+	backlinksResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_backlinks",
+		Arguments: map[string]any{"id": "link-b"},
+	})
+	it.Then(t).Should(it.Nil(err))
+	backlinksText := textOf(t, backlinksResult)
+	it.Then(t).
+		Should(it.String(backlinksText).Contain("| link-a | cites |")).
+		Should(it.String(backlinksText).Contain("| link-d | cites |"))
+}
+
+// spec.md unknown-id Edge Case, node_links: an id matching no node returns a
+// tool error naming "no node found with basename <id>", never an empty
+// table.
+func TestServeNodeLinksUnknownIDReturnsNotFoundError(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeLinksFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_links",
+		Arguments: map[string]any{"id": "No Such Node"},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.True(result.IsError))
+	it.Then(t).Should(it.String(textOf(t, result)).Contain("no node found"))
+}
+
+// spec.md unknown-id Edge Case, node_backlinks: same error behavior as
+// node_links, reverse direction.
+func TestServeNodeBacklinksUnknownIDReturnsNotFoundError(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeLinksFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_backlinks",
+		Arguments: map[string]any{"id": "No Such Node"},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.True(result.IsError))
+	it.Then(t).Should(it.String(textOf(t, result)).Contain("no node found"))
+}
+
+// spec.md self-reference Edge Case: a node with a relation whose target is
+// itself produces one ordinary row in its own node_links result (target =
+// its own id) and one ordinary row in its own node_backlinks result
+// (source = its own id).
+func TestServeNodeLinksAndBacklinksSelfReference(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	writeGrepNode(t, dir, "Entity/link-self.md", `---
+"@id": link-self
+"@type": Entity
+---
+# link-self
+
+- cites:: [[link-self]]
+`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	linksResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_links",
+		Arguments: map[string]any{"id": "link-self"},
+	})
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.String(textOf(t, linksResult)).Contain("| cites | link-self |"))
+
+	backlinksResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_backlinks",
+		Arguments: map[string]any{"id": "link-self"},
+	})
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.String(textOf(t, backlinksResult)).Contain("| link-self | cites |"))
+}
+
+// spec.md duplicate-relations Edge Case: two relations between the same
+// pair of nodes (repeated predicate, or two different predicates) each
+// produce their own row in node_links/node_backlinks, never collapsed into
+// one.
+func TestServeNodeLinksAndBacklinksDuplicateRelationsNotCollapsed(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	writeGrepNode(t, dir, "Entity/dup-a.md", `---
+"@id": dup-a
+"@type": Entity
+---
+# dup-a
+
+- cites:: [[dup-b]]
+- cites:: [[dup-b]]
+- mentions:: [[dup-b]]
+`)
+	writeGrepNode(t, dir, "Entity/dup-b.md", `---
+"@id": dup-b
+"@type": Entity
+---
+# dup-b
+`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	linksResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_links",
+		Arguments: map[string]any{"id": "dup-a"},
+	})
+	it.Then(t).Should(it.Nil(err))
+	linksText := textOf(t, linksResult)
+	it.Then(t).Should(it.Equal(2, strings.Count(linksText, "| cites | dup-b |")))
+	it.Then(t).Should(it.Equal(1, strings.Count(linksText, "| mentions | dup-b |")))
+
+	backlinksResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_backlinks",
+		Arguments: map[string]any{"id": "dup-b"},
+	})
+	it.Then(t).Should(it.Nil(err))
+	backlinksText := textOf(t, backlinksResult)
+	it.Then(t).Should(it.Equal(2, strings.Count(backlinksText, "| dup-a | cites |")))
+	it.Then(t).Should(it.Equal(1, strings.Count(backlinksText, "| dup-a | mentions |")))
+}
+
+// spec.md bare-href Edge Case: an inline prose reference with no explicit
+// predicate produces one node_links row with an empty predicate cell, not
+// a dropped entry.
+func TestServeNodeLinksIncludesInlineHRefWithEmptyPredicate(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	seedServeLinksFixture(t, dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := connectServeSession(t, ctx, dir)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_links",
+		Arguments: map[string]any{"id": "link-a"},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	it.Then(t).Should(it.String(textOf(t, result)).Contain("|  | link-c |"))
+}
+
 func TestServeContextRetrieveInvalidLimitReturnsToolError(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
