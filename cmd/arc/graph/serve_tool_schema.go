@@ -60,7 +60,7 @@ the graph's vocabulary and the predicates available for each class.
 	b.WriteString("\n\n")
 	b.WriteString("## Predicates\n\n")
 	for _, name := range slices.Sorted(maps.Keys(index.Predicates)) {
-		fmt.Fprintf(&b, "### %s\n\n%s\n\n", name, index.Predicates[name].Description)
+		fmt.Fprintf(&b, "- **%s**: %s\n", name, index.Predicates[name].Description)
 	}
 
 	b.WriteString("\n## Classes\n\n")

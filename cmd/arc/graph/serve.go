@@ -49,7 +49,7 @@ const (
 // sessionInstructions() (research.md D5) — the server's overall purpose and
 // its recommended first call, independent of any one tool's own
 // mcp.Tool.Description.
-const sessionInstructionsPurpose = "This server exposes a knowledge graph read-only, over six tools: node_get, node_grep, subgraph_get, context_retrieve, schema, node_match. Call schema first, before any other tool."
+const sessionInstructionsPurpose = "This server exposes a knowledge graph, over six tools: node_get, node_grep, subgraph_get, context_retrieve, schema, node_match. Call schema first, before any other tool."
 
 // sessionInstructions composes the server's InitializeResult.Instructions
 // string (research.md D5, spec FR-007/FR-008/FR-009) from the fixed purpose

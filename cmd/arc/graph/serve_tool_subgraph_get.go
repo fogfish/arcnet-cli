@@ -27,7 +27,7 @@ import (
 // (research.md D2).
 var subgraphGetTool = &mcp.Tool{
 	Name:        "subgraph_get",
-	Description: "Return the fully-resolved subgraph rooted at a node, to a given hop depth, optionally scoped/narrowed by a filter.statements triple filter (see schema) — a predicate-only statement restricts which relations traversal follows. Returns a patch-exchange document: the seed node plus every node reached within depth hops, each rendered with its own attributes and relations, in the same format arc subgraph produces on the command line.",
+	Description: "Return the fully-resolved subgraph rooted at a node, to a given hop depth, optionally scoped/narrowed by a filters (a predicate-only statement restricts which relations traversal follows). Returns a patch-exchange document: the seed node plus every node reached within depth hops, each rendered with its own attributes and relations, in the same format arc subgraph produces on the command line.",
 	InputSchema: must(subgraphGetInputSchema()),
 	Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 }

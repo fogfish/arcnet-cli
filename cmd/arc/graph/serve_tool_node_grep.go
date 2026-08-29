@@ -25,7 +25,7 @@ import (
 // nodeGrepTool is node_grep's colocated mcp.Tool definition (research.md D2).
 var nodeGrepTool = &mcp.Tool{
 	Name:        "node_grep",
-	Description: "Search every node's content for lines matching a regexp pattern, optionally narrowed to a subset of nodes by filter.statements. Returns a markdown table, one row per matching line: id, type, line (1-based line number), snippet (the matching line's text).",
+	Description: "Search every node's content for lines matching a regexp pattern, optionally narrowed to a subset of input nodes by filters. Returns a markdown table, one row per matching line: id, type, line (1-based line number), snippet (the matching line's text).",
 	InputSchema: must(nodeGrepInputSchema()),
 	Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 }

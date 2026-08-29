@@ -23,14 +23,14 @@ import (
 // nodeGetTool is node_get's colocated mcp.Tool definition (research.md D2).
 var nodeGetTool = &mcp.Tool{
 	Name:        "node_get",
-	Description: "Fetch one node's full stored content by its id. Returns the node exactly as stored: its front-matter attributes and body, including its outgoing relations, rendered as markdown.",
+	Description: "Fetch one node's full stored content by its @id. Returns the node exactly as stored in Markdown: its front-matter attributes and body, including its outgoing relations, rendered as markdown.",
 	InputSchema: must(nodeGetInputSchema()),
 	Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 }
 
 // nodeGetArgs is node_get's input schema.
 type nodeGetArgs struct {
-	ID string `json:"id" jsonschema:"the node's basename (filename without extension), e.g. the value returned as \"id\" by node_grep/node_match"`
+	ID string `json:"id" jsonschema:"the node's basename (filename without extension), e.g. the value returned as \"@id\" by node_grep/node_match"`
 }
 
 // nodeGetInputSchema derives nodeGetArgs's JSON Schema and attaches an

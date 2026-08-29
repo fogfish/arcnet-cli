@@ -25,7 +25,7 @@ import (
 // D2).
 var nodeMatchTool = &mcp.Tool{
 	Name:        "node_match",
-	Description: "List every distinct fact (node_id, property, value) from the graph that fully satisfy a required filter argument. It returns a markdown table, one row per distinct fact: id, property, value. Use filters to express the intent behind the search criteria and scope facts.",
+	Description: "List every distinct fact (@id, property, value) from the graph that fully satisfy a required filter argument. It returns a markdown table, one row per distinct fact: id, property, value. Use filters to express the intent behind the search criteria and scope facts.",
 	InputSchema: must(nodeMatchInputSchema()),
 	Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 }
@@ -46,6 +46,7 @@ func nodeMatchInputSchema() (*jsonschema.Schema, error) {
 		return nil, err
 	}
 	withExamples(s, "filter",
+		map[string]any{"statements": []any{map[string]any{"predicate": "cites"}}},
 		map[string]any{"statements": []any{map[string]any{"predicate": "type", "target": "Source"}}},
 		map[string]any{"statements": []any{map[string]any{"predicate": "title", "targetPattern": "^TLS"}}},
 	)
@@ -56,7 +57,7 @@ func nodeMatchInputSchema() (*jsonschema.Schema, error) {
 // context_retrieve (research.md D5, contracts/mcp-contract.md) — composed
 // into the server's session-start Instructions by serve.go's
 // sessionInstructions().
-const nodeMatchWorkflowNote = "Use node_match instead of node_grep/context_retrieve when you need to know which facts justified a match (for citation or explanation), not the node's content itself."
+const nodeMatchWorkflowNote = "Use node_match instead of node_grep or context_retrieve when you need to know which facts justified a match (for citation or explanation), not the node's content itself."
 
 // nodeMatchHandler evaluates filter against every node's own facts and
 // renders one markdown table row per distinct fact that satisfied at

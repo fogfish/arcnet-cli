@@ -25,7 +25,7 @@ import (
 // (research.md D2).
 var contextRetrieveTool = &mcp.Tool{
 	Name:        "context_retrieve",
-	Description: "Assemble the full content of every node relevant to a free-text query in one call — content match, attribute match, and neighbor expansion combined, ranked, deduplicated, and truncated to limit; optionally scoped/narrowed by a filter.statements triple filter (see schema). Returns a patch-exchange document (same shape as subgraph_get) containing the ranked, deduplicated, limit-truncated set of relevant nodes.",
+	Description: "Assemble the full content of every node relevant to a free-text query in one call — content match, attribute match, and neighbor expansion combined, ranked, deduplicated, and truncated to limit; optionally scoped/narrowed by a filters. Returns a patch-exchange document (same shape as subgraph_get) containing the ranked, deduplicated, limit-truncated set of relevant nodes.",
 	InputSchema: must(contextRetrieveInputSchema()),
 	Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 }
