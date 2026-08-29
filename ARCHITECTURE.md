@@ -39,22 +39,25 @@ cmd/arc/                    # sole primary (driving) adapter: Cobra command tree
 │   │                         #   styling (specs/007-arc-subgraph, research.md D10)
 │   ├── serve.go             # `arc serve [--http <addr>]` command: the codebase's second
 │   │                         #   primary-adapter family (ADR 003) — builds the mcp.Server
-│   │                         #   (mounting the six tools below), the shared filter
+│   │                         #   (mounting the eight tools below), the shared filter
 │   │                         #   wire-shape (mcpStatement/mcpFilter), and
 │   │                         #   sessionInstructions(), the composed
 │   │                         #   mcp.ServerOptions.Instructions text recommending schema as
 │   │                         #   the first call of every session (specs/008-arc-serve-mcp,
-│   │                         #   specs/029-mcp-tool-metadata)
+│   │                         #   specs/029-mcp-tool-metadata, specs/030-mcp-node-links-
+│   │                         #   backlinks)
 │   └── serve_tool_*.go      # one file per MCP tool — node_get, node_grep, subgraph_get,
-│                             #   context_retrieve, schema, node_match — each colocating that
-│                             #   tool's args struct, mcp.Tool var (name/description/input
-│                             #   schema with per-parameter examples), handler calling
+│                             #   context_retrieve, schema, node_match, node_links,
+│                             #   node_backlinks — each colocating that tool's args struct,
+│                             #   mcp.Tool var (name/description/input schema with
+│                             #   per-parameter examples), handler calling
 │                             #   internal/app/graph.NodeGet/Grep/Subgraph/ContextRetrieve/
-│                             #   Match exactly like every Cobra command does, and a
-│                             #   WorkflowNote constant stating when to prefer it over
-│                             #   overlapping tools (specs/025-context-retrieve-tool,
-│                             #   specs/026-mcp-schema-tool, specs/028-node-match-filter,
-│                             #   specs/029-mcp-tool-metadata); schema alone renders the
+│                             #   Match/NodeLinks/NodeBacklinks exactly like every Cobra
+│                             #   command does, and a WorkflowNote constant stating when to
+│                             #   prefer it over overlapping tools (specs/025-context-
+│                             #   retrieve-tool, specs/026-mcp-schema-tool, specs/028-node-
+│                             #   match-filter, specs/029-mcp-tool-metadata, specs/030-mcp-
+│                             #   node-links-backlinks); schema alone renders the
 │                             #   already-resolved core.Index directly with no domain call of
 │                             #   its own
 └── lint/                   # Cobra wiring for the lint (graph conformance validation) domain
@@ -192,7 +195,16 @@ internal/
     │   │                          #   two independent, capped BFS passes (direct/backlink) from a
     │   │                          #   seed node and serializes the result via core.RenderPatch
     │   │                          #   (specs/007-arc-subgraph, research.md D3/D4/D5) — no port of
-    │   │                          #   its own, strictly read-only like Grep; Revert locates a
+    │   │                          #   its own, strictly read-only like Grep; links.go adds
+    │   │                          #   NodeLinks/NodeBacklinks, each reusing enumerateNodes/
+    │   │                          #   guardIsGraph unchanged, plus their own small
+    │   │                          #   nodeRelations/buildRelationReverseIndex helpers — these
+    │   │                          #   deliberately report a node's HRefs alongside its Edges (spec
+    │   │                          #   030 Assumptions), unlike nodeTargets/buildReverseIndex above,
+    │   │                          #   which Subgraph's BFS traversal depends on staying Edges-only;
+    │   │                          #   node_links/node_backlinks do not modify or replace those
+    │   │                          #   Subgraph functions (specs/030-mcp-node-links-backlinks,
+    │   │                          #   research.md D3); Revert locates a
     │   │                          #   source-id's ingest commit and retracts its contribution via
     │   │                          #   a whole-commit git revert (nothing has touched its files
     │   │                          #   since) or a per-node reconciliation otherwise — removing an
@@ -219,7 +231,11 @@ internal/
     │                              #   (core.Node, error) and EnsureGraph(ctx, mounter, dir) error
     │                              #   (specs/008-arc-serve-mcp — arc serve's node_get tool and
     │                              #   startup preflight, backed by service/node.go reusing
-    │                              #   enumerateNodes/guardIsGraph)
+    │                              #   enumerateNodes/guardIsGraph); NodeLinks(ctx, mounter, dir,
+    │                              #   id) ([]core.Link, error) and NodeBacklinks(ctx, mounter,
+    │                              #   dir, id) ([]kernel.BacklinkEntry, error) (specs/030-mcp-
+    │                              #   node-links-backlinks — arc serve's node_links/
+    │                              #   node_backlinks tools, backed by service/links.go)
     │
     └── lint/                  # fifth domain use-case: graph conformance validation (CORE §14/§16)
         ├── kernel/              # domain value types (Rule, Violation, NodeStatus, LintResult, Sowa tables)
@@ -290,7 +306,7 @@ This project uses **bare top-level verbs** (`arc init`, `arc apply`, `arc list`,
 | **Reachable Node** | Any node other than the seed found within `arc subgraph`'s requested hop count by following structural `Edges`/`Links` in either direction; subject to the optional `Filter` and to its traversal direction's cap. `specs/007-arc-subgraph`. |
 | **Subgraph** | The seed node plus the set of reachable nodes selected for one `arc subgraph` extraction, serialized as one patch-exchange document grouped by type via `internal/core.RenderPatch`. `internal/app/graph/kernel.SubgraphResult`, `internal/app/graph/service.Subgraph` (`specs/007-arc-subgraph`). |
 | **Traversal Cap** | A configurable ceiling — `subgraph.directCap` (outgoing, default `4096`) and `subgraph.backlinkCap` (incoming, default `1024`), `internal/app/config/kernel.SubgraphConfig` — on how many nodes `arc subgraph` retains per traversal direction before filtering; when exceeded, the highest-degree candidates are kept and the run still succeeds (soft cap). `specs/007-arc-subgraph`, research.md D4/D5. |
-| **MCP Tool** | One callable capability `arc serve` registers on its `mcp.Server` via `mcp.AddTool` — `node_get`, `node_grep`, `subgraph_get`, `context_retrieve`, or `schema`. Each is a thin wrapper: decode MCP JSON arguments, call the identical `internal/app/graph` primary-port function every Cobra command already calls (except `context_retrieve`, which is MCP-only in this increment — no Cobra twin), render the result as markdown text (`core.RenderNode`/`RenderPatch`, or a new table for `node_grep`), never new business logic (ADR 003). `schema` takes no arguments and makes no domain call at all — it renders the already-resolved `core.Index` value `buildServer` computes once per server lifetime, listing every predicate/class with its description (plus a class's required/optional predicates), and the server advertises it as the session's recommended first call via `mcp.ServerOptions.Instructions`. `specs/008-arc-serve-mcp`, `specs/025-context-retrieve-tool`, `specs/026-mcp-schema-tool`. |
+| **MCP Tool** | One callable capability `arc serve` registers on its `mcp.Server` via `mcp.AddTool` — `node_get`, `node_grep`, `subgraph_get`, `context_retrieve`, `schema`, `node_match`, `node_links`, or `node_backlinks`. Each is a thin wrapper: decode MCP JSON arguments, call the identical `internal/app/graph` primary-port function every Cobra command already calls (except `context_retrieve`/`node_match`/`node_links`/`node_backlinks`, which are MCP-only — no Cobra twin), render the result as markdown text (`core.RenderNode`/`RenderPatch`, or a table for `node_grep`/`node_match`/`node_links`/`node_backlinks`), never new business logic (ADR 003). `schema` takes no arguments and makes no domain call at all — it renders the already-resolved `core.Index` value `buildServer` computes once per server lifetime, listing every predicate/class with its description (plus a class's required/optional predicates), and the server advertises it as the session's recommended first call via `mcp.ServerOptions.Instructions`. `specs/008-arc-serve-mcp`, `specs/025-context-retrieve-tool`, `specs/026-mcp-schema-tool`, `specs/028-node-match-filter`, `specs/030-mcp-node-links-backlinks`. |
 | **Retrieval Candidate** | A node surfaced by any of `context_retrieve`'s three passes — content match, attribute match, or one-hop neighbor expansion from a match — before dedup, ranking, and truncation to `limit`. Ranked direct matches (content/attribute) ahead of neighbor-only matches, then by `degree` descending, then id ascending; deduplicated by id so a node reachable by more than one pass appears once. `internal/app/graph/kernel.ContextRetrieveResult`, `internal/app/graph/service.ContextRetrieve` (`specs/025-context-retrieve-tool`). |
 | **Transport** | The wire framing `arc serve` runs its `mcp.Server` over: `mcp.StdioTransport` by default (newline-delimited JSON over stdin/stdout) or `mcp.NewStreamableHTTPHandler` (Streamable HTTP/SSE) when `--http <addr>` is given. Both front the identical registered tool set — only the framing differs (spec SC-007). ADR 003, `specs/008-arc-serve-mcp`. |
 | **Bind Address** | The `[host]:port` value `arc serve --http <addr>` parses via `resolveHTTPAddr`: a bare port or `:port` (no host) resolves to `127.0.0.1` (loopback-only); an explicit host binds exactly that host. A syntactically invalid address, or one already in use, refuses to start (spec FR-003/FR-005). `specs/008-arc-serve-mcp`, research.md D5. |

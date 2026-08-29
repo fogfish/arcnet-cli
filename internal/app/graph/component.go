@@ -86,3 +86,17 @@ func ContextRetrieve(ctx context.Context, mounter fsys.Mounter, filter core.Filt
 func Match(ctx context.Context, mounter fsys.Mounter, filter core.Filter, dir string) (kernel.MatchResult, error) {
 	return service.Match(ctx, mounter, filter, dir)
 }
+
+// NodeLinks fetches every outgoing relation — structural Edges and inline
+// prose HRefs alike — carried by the node identified by id, from the graph
+// rooted at dir. It is a thin delegator into service.NodeLinks.
+func NodeLinks(ctx context.Context, mounter fsys.Mounter, dir, id string) ([]core.Link, error) {
+	return service.NodeLinks(ctx, mounter, dir, id)
+}
+
+// NodeBacklinks fetches every relation elsewhere in the graph rooted at dir
+// whose target is the node identified by id. It is a thin delegator into
+// service.NodeBacklinks.
+func NodeBacklinks(ctx context.Context, mounter fsys.Mounter, dir, id string) ([]kernel.BacklinkEntry, error) {
+	return service.NodeBacklinks(ctx, mounter, dir, id)
+}

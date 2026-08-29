@@ -2,6 +2,14 @@
 
 ## 2026-08-28
 
+/speckit-specify Add two new tools to MCP server:
+* `node_links(id)` return outgoing hrefs/edges/links as `[{predicate, target}]` from the target node.
+* `node_backlinks(id)` return incoming  hrefs/edges/links as `[{source, predicate}]` from the backlink index.
+
+/speckit-plan Add `node_links(id)` and `node_backlinks(id)` functions to existing server using existing primitive, implement the link/backlink matching service within `internal/app/graph`. You might use existing grep feature to search links.
+
+---
+
 /speckit-specify Improve metadata management for MCP Server by coallocating the each tool and its params specification in single block at the code base. Improve the specification of arguments with possibility to add descriptions and examples. As part of this feature, the tool maintainer gets possibilities to
 1. Specify the server and main workflows;
 2. Specify tool/function description, input and output;
