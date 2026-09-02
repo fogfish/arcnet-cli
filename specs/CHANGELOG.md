@@ -6,7 +6,7 @@
 * `node_links(id)` return outgoing hrefs/edges/links as `[{predicate, target}]` from the target node.
 * `node_backlinks(id)` return incoming  hrefs/edges/links as `[{source, predicate}]` from the backlink index.
 
-/speckit-plan Add `node_links(id)` and `node_backlinks(id)` functions to existing server using existing primitive, implement the link/backlink matching service within `internal/app/graph`. You might use existing grep feature to search links.
+/speckit-plan Add `node_links(id)` and `node_backlinks(id)` functions to existing server using existing primitive, implement the link/backlink matching service within `internal/app/graph`. 
 
 ---
 
