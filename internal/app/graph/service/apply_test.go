@@ -13,6 +13,8 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -882,4 +884,266 @@ A test entity.
 		Should(it.Equal(mismatched, string(store.files["Entity/Widget.md"]))).
 		Should(it.Equal(0, len(store.files["Source/foo-2026-x.md"]))).
 		ShouldNot(it.Seq(vcs.Calls).Contain("StageAll:/graph"))
+}
+
+// --- BUG-008: case-variant node identities -------------------------------
+//
+// caseStore is a memStore that enumerates its contents and, when folds is
+// set, resolves names the way a case-insensitive volume does: Open reaches a
+// case-variant file, and Create truncates it IN PLACE under its existing
+// name rather than making a second file (which is exactly what os.Create
+// does on APFS, and the corruption the basename guard prevents).
+//
+// folds is INJECTED, never probed, so both branches are exercised
+// deterministically on any developer's disk and on CI (spec.md SC-012).
+type caseStore struct {
+	*memStore
+	folds bool
+}
+
+func (s caseStore) FoldsCase() bool { return s.folds }
+
+// resolve mimics the volume's own path resolution.
+func (s caseStore) resolve(name string) string {
+	if _, ok := s.files[name]; ok {
+		return name
+	}
+	if !s.folds {
+		return name
+	}
+	for have := range s.files {
+		if strings.EqualFold(have, name) {
+			return have
+		}
+	}
+	return name
+}
+
+func (s caseStore) Open(name string) (fs.File, error) { return s.memStore.Open(s.resolve(name)) }
+func (s caseStore) Stat(name string) (fs.FileInfo, error) {
+	return s.memStore.Stat(s.resolve(name))
+}
+func (s caseStore) Create(name string) (fsys.File, error) {
+	return s.memStore.Create(s.resolve(name))
+}
+
+func (s caseStore) ReadDir(name string) ([]fs.DirEntry, error) {
+	seen := map[string]fs.DirEntry{}
+	prefix := ""
+	if name != "." {
+		prefix = name + "/"
+	}
+	for path := range s.files {
+		if !strings.HasPrefix(path, prefix) {
+			continue
+		}
+		rest := strings.TrimPrefix(path, prefix)
+		if i := strings.Index(rest, "/"); i >= 0 {
+			seen[rest[:i]] = memDirEntry{name: rest[:i], dir: true}
+			continue
+		}
+		seen[rest] = memDirEntry{name: rest}
+	}
+	for dir := range s.dirs {
+		if strings.HasPrefix(dir, prefix) {
+			rest := strings.TrimPrefix(dir, prefix)
+			if rest != "" && !strings.Contains(rest, "/") {
+				seen[rest] = memDirEntry{name: rest, dir: true}
+			}
+		}
+	}
+
+	out := make([]fs.DirEntry, 0, len(seen))
+	for _, e := range seen {
+		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name() < out[j].Name() })
+	return out, nil
+}
+
+type memDirEntry struct {
+	name string
+	dir  bool
+}
+
+func (e memDirEntry) Name() string      { return e.name }
+func (e memDirEntry) IsDir() bool       { return e.dir }
+func (e memDirEntry) Type() fs.FileMode { return 0 }
+func (e memDirEntry) Info() (fs.FileInfo, error) {
+	return memFileInfo{name: e.name}, nil
+}
+
+type caseMounter struct{ store caseStore }
+
+func (m caseMounter) Mount(root string) (fsys.Store, error) { return m.store, nil }
+
+const lightstepVariantPatch = `---
+"@type": patch
+document: bar-2026-y
+published: 2026-05-13
+title: "A Second Document"
+---
+# Source
+
+## bar-2026-y
+` + "```yaml" + `
+"@id": "bar-2026-y"
+"@type": Source
+title: "A Second Document"
+authors: [Test Author]
+published: "2026-05-13"
+` + "```" + `
+
+A second document.
+
+# Entity
+
+## Lightstep
+` + "```yaml" + `
+"@id": "Lightstep"
+"@type": Entity
+category: [independent, abstract, occurrent, script]
+` + "```" + `
+
+Mentioned by the second document.
+- replaces:: [[Old Widget]]
+`
+
+const existingLightStepEntity = `---
+"@id": "LightStep"
+"@type": Entity
+title: LightStep
+category: [independent, abstract, occurrent, script]
+---
+# LightStep
+
+The originally ingested spelling.
+`
+
+func newCaseGraph(folds bool) caseStore {
+	inner := newGraphStore()
+	inner.files["patch.md"] = []byte(lightstepVariantPatch)
+	inner.files["Entity/LightStep.md"] = []byte(existingLightStepEntity)
+	return caseStore{memStore: inner, folds: folds}
+}
+
+// FR-027, case-insensitive branch: one node, merged under the identity the
+// graph already recorded, with a warning naming both spellings.
+func TestApplyFoldsCaseVariantIdentityOnCaseInsensitiveStore(t *testing.T) {
+	store := newCaseGraph(true)
+	vcs := &graphmock.VCS{CommitHash: "abc123"}
+
+	result, err := service.Apply(context.Background(), caseMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(1, result.Merged["Entity"])).
+		Should(it.Equal(0, result.Created["Entity"]))
+
+	// exactly one file for the subject, still under its recorded spelling
+	_, forked := store.files["Entity/Lightstep.md"]
+	it.Then(t).Should(it.Equal(forked, false))
+	content := string(store.files["Entity/LightStep.md"])
+	it.Then(t).Should(
+		it.String(content).Contain(`"@id": LightStep`),
+		it.String(content).Contain("replaces:: [[Old Widget]]"),
+	)
+
+	// the fold is visible (FR-027)
+	var folded string
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "folded") {
+			folded = w
+		}
+	}
+	it.Then(t).Should(
+		it.String(folded).Contain("Lightstep"),
+		it.String(folded).Contain("LightStep"),
+	)
+}
+
+// FR-005/FR-027, case-sensitive branch: two genuinely distinct nodes,
+// compared exactly. This is today's behavior and it stays.
+func TestApplyKeepsCaseVariantIdentitiesDistinctOnCaseSensitiveStore(t *testing.T) {
+	store := newCaseGraph(false)
+	vcs := &graphmock.VCS{CommitHash: "abc123"}
+
+	result, err := service.Apply(context.Background(), caseMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.Equal(1, result.Created["Entity"])).
+		Should(it.Equal(0, result.Merged["Entity"]))
+
+	_, created := store.files["Entity/Lightstep.md"]
+	it.Then(t).Should(it.Equal(created, true))
+	it.Then(t).Should(
+		it.String(string(store.files["Entity/LightStep.md"])).Contain("The originally ingested spelling."),
+	)
+
+	for _, w := range result.Warnings {
+		it.Then(t).Should(it.Equal(strings.Contains(w, "folded"), false))
+	}
+}
+
+// FR-029: the guard still catches a genuinely drifted "@id", and does so
+// against the file's own real name — its true purpose, preserved.
+func TestApplyStillRejectsNodeFileWhoseIdentityDriftedFromItsFilename(t *testing.T) {
+	store := newCaseGraph(false)
+	store.files["Entity/Lightstep.md"] = []byte(`---
+"@id": "SomethingElse"
+"@type": Entity
+---
+# SomethingElse
+
+Hand-edited so its identity no longer matches its filename.
+`)
+	vcs := &graphmock.VCS{CommitHash: "abc123"}
+
+	_, err := service.Apply(context.Background(), caseMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
+
+	it.Then(t).ShouldNot(it.Nil(err))
+	it.Then(t).Should(
+		it.String(err.Error()).Contain("SomethingElse"),
+		it.String(err.Error()).Contain("Lightstep"),
+	)
+}
+
+// T117 / FR-028 scope guard: the fold is scoped to the ONE case a storage
+// location forces, and no further. Identities are never normalized
+// graph-wide — not lowercased, not case-folded on read, and an existing
+// node file is never rewritten to a different spelling of its own identity.
+// This matters beyond tidiness: identities double as wikilink targets
+// ([[LightStep]]) resolved by third-party readers (Obsidian above all)
+// whose rules this project does not control, so a graph-wide canonical form
+// would silently change what every existing link resolves to.
+func TestApplyNeverNormalizesIdentitiesGraphWide(t *testing.T) {
+	// A case-sensitive location keeps both spellings verbatim: no
+	// normalization is applied on either the read or the write path.
+	sensitive := newCaseGraph(false)
+	_, err := service.Apply(context.Background(), caseMounter{store: sensitive}, &graphmock.VCS{CommitHash: "abc123"}, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(
+		// untouched — still byte-for-byte the seeded fixture, quotes and all
+		it.String(string(sensitive.files["Entity/LightStep.md"])).Contain(`"@id": "LightStep"`),
+		it.String(string(sensitive.files["Entity/Lightstep.md"])).Contain(`"@id": Lightstep`),
+	)
+	for path := range sensitive.files {
+		it.Then(t).Should(it.Equal(strings.Contains(path, "lightstep.md"), false))
+	}
+
+	// A case-insensitive location folds onto the recorded identity and
+	// leaves that file's own "@id" and filename exactly as they were — the
+	// incoming spelling never rewrites either.
+	insensitive := newCaseGraph(true)
+	_, err = service.Apply(context.Background(), caseMounter{store: insensitive}, &graphmock.VCS{CommitHash: "abc123"}, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
+	it.Then(t).Should(it.Nil(err))
+
+	content := string(insensitive.files["Entity/LightStep.md"])
+	it.Then(t).Should(it.String(content).Contain(`"@id": LightStep`))
+	it.Then(t).ShouldNot(it.String(content).Contain(`"@id": Lightstep`))
+
+	for path := range insensitive.files {
+		it.Then(t).Should(it.Equal(strings.Contains(path, "Entity/Lightstep.md"), false))
+	}
 }

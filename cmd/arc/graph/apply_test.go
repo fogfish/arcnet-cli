@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/fogfish/arcnet-cli/cmd/arc/lint"
+	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
 	appschema "github.com/fogfish/arcnet-cli/internal/app/schema"
 	schemakernel "github.com/fogfish/arcnet-cli/internal/app/schema/kernel"
 	"github.com/fogfish/arcnet-cli/internal/bios"
@@ -3861,4 +3862,129 @@ func TestApplySchemaNodeImpliedUnsafeTypeIdentityRejected(t *testing.T) {
 
 	_, schemaErr := os.Stat(filepath.Join(dir, "_schema", "Class", "Bad"))
 	it.Then(t).Should(it.True(os.IsNotExist(schemaErr)))
+}
+
+// BUG-008 regression, this bug's own reported reproduction: an extraction
+// pipeline emits one entity under two spellings across two documents. On a
+// case-insensitive volume (APFS, NTFS) the second apply used to abort the
+// WHOLE application with a basename-mismatch error that named a file which
+// does not exist; on a case-sensitive one it silently forked the subject
+// into two node files. Both outcomes are now specified (spec.md
+// FR-026/FR-027) and this test asserts whichever one the volume the test is
+// running on actually calls for — so it is meaningful on a developer's
+// APFS disk and on a case-sensitive CI volume, without skipping on either.
+const lightstepPatchA = `---
+"@type": patch
+document: alpha-2026-lightstep
+published: 2026-04-12
+title: "First Document"
+---
+# Source
+
+## alpha-2026-lightstep
+` + "```yaml" + `
+"@id": "alpha-2026-lightstep"
+"@type": Source
+title: "First Document"
+author: [Test Author]
+published: "2026-04-12"
+` + "```" + `
+
+The first document.
+
+## Mentions
+- mentions:: [[LightStep]]
+
+# Entity
+
+## LightStep
+` + "```yaml" + `
+"@id": "LightStep"
+"@type": Entity
+category: [independent, abstract, occurrent, script]
+` + "```" + `
+
+A distributed tracing system.
+`
+
+const lightstepPatchB = `---
+"@type": patch
+document: beta-2026-lightstep
+published: 2026-05-13
+title: "Second Document"
+---
+# Source
+
+## beta-2026-lightstep
+` + "```yaml" + `
+"@id": "beta-2026-lightstep"
+"@type": Source
+title: "Second Document"
+author: [Test Author]
+published: "2026-05-13"
+` + "```" + `
+
+The second document, whose producer spelled the entity differently.
+
+## Mentions
+- mentions:: [[Lightstep]]
+
+# Entity
+
+## Lightstep
+` + "```yaml" + `
+"@id": "Lightstep"
+"@type": Entity
+category: [independent, abstract, occurrent, script]
+` + "```" + `
+
+Also observed in the second document.
+`
+
+func TestApplyCaseVariantIdentityAcrossTwoPatches(t *testing.T) {
+	dir := t.TempDir()
+	initGraph(t, dir)
+	chdir(t, dir)
+
+	patchA := writePatchFile(t, dir, "alpha.patch.md", lightstepPatchA)
+	patchB := writePatchFile(t, dir, "beta.patch.md", lightstepPatchB)
+
+	_, err := sut(NewApplyCmd(), []string{patchA})
+	it.Then(t).Should(it.Nil(err))
+
+	// The reported failure: this second apply aborted outright.
+	stdout, stderr, err := sutCaptureStderr(t, NewApplyCmd(), []string{patchB})
+	it.Then(t).Should(it.Nil(err))
+	out := stdout + stderr
+
+	// No diagnostic may name a file that does not exist (spec.md FR-029).
+	it.Then(t).ShouldNot(it.String(out).Contain("does not match this file's basename"))
+
+	store, err := fsys.Local{}.Mount(dir)
+	it.Then(t).Should(it.Nil(err))
+
+	original := readFile(t, filepath.Join(dir, "Entity", "LightStep.md"))
+	_, variantErr := os.Stat(filepath.Join(dir, "Entity", "Lightstep.md"))
+
+	if fsys.FoldsCase(store) {
+		// FR-027: one node, still under the identity the graph recorded.
+		it.Then(t).Should(
+			it.String(original).Contain(`"@id": LightStep`),
+			it.String(out).Contain("folded"),
+		)
+		it.Then(t).ShouldNot(it.String(original).Contain(`"@id": Lightstep`))
+
+		entries, err := os.ReadDir(filepath.Join(dir, "Entity"))
+		it.Then(t).Should(it.Nil(err))
+		for _, entry := range entries {
+			it.Then(t).Should(it.Equal(entry.Name() == "LightStep.md", true))
+		}
+	} else {
+		// FR-005: two genuinely distinct nodes, compared exactly.
+		it.Then(t).Should(
+			it.Nil(variantErr),
+			it.String(original).Contain(`"@id": LightStep`),
+			it.String(readFile(t, filepath.Join(dir, "Entity", "Lightstep.md"))).Contain(`"@id": Lightstep`),
+		)
+	}
 }

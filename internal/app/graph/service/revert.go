@@ -189,7 +189,7 @@ func revertPerNode(ctx context.Context, store fsys.Store, vcs port.VCS, reporter
 	removedIDs := map[string]bool{}
 	removedByPath := map[string]core.Node{}
 	for _, p := range exclusivePaths {
-		node, ok, err := readExistingNode(store, p, index)
+		node, _, ok, err := readExistingNode(store, p, index)
 		if err != nil {
 			return kernel.RevertResult{}, err
 		}
@@ -225,7 +225,7 @@ func revertPerNode(ctx context.Context, store fsys.Store, vcs port.VCS, reporter
 	}
 
 	for _, p := range sharedPaths {
-		node, ok, err := readExistingNode(store, p, index)
+		node, _, ok, err := readExistingNode(store, p, index)
 		if err != nil {
 			return kernel.RevertResult{}, err
 		}
