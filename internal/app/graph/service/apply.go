@@ -242,6 +242,15 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 
 	start = time.Now()
 	sourcePath := nodeFolder("Source") + "/" + patch.Document + ".md"
+	// "git ls-files --error-unmatch" matches the index's exact byte paths,
+	// and core.ignorecase does not change that (research.md D11, T109). So
+	// on a graph location that folds letter case this check must be handed
+	// the spelling the source file actually carries, or a second patch whose
+	// document id differs only by case reads as "not tracked", skips FR-003's
+	// no-op, and is ingested a second time on top of the first.
+	if actual, found, err := fsys.ResolveName(store, sourcePath); err == nil && found {
+		sourcePath = actual
+	}
 	tracked, err := vcs.IsTracked(ctx, dir, sourcePath)
 	if err != nil {
 		reporter.Error(labelIdempotency, err)
@@ -303,11 +312,25 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 
 		path := nodePath(node)
 
-		existing, existed, err := readExistingNode(store, path, index)
+		existing, actualPath, existed, err := readExistingNode(store, path, index)
 		if err != nil {
 			reporter.Error(labelApplyingNodes, err)
 			rollback(store, createdPaths)
 			return kernel.ApplyResult{}, err
+		}
+
+		// The graph's storage folds letter case and this contribution's
+		// identity differs from the stored one only by case: they are one
+		// subject, and the identity already recorded on disk is the
+		// canonical one (spec FR-027). Merge into that file, under that
+		// identity — core.Merge starts from the existing node, so its "@id"
+		// already wins — and say so, since a silent fold would leave the
+		// operator with no way to notice their producer emits two spellings.
+		if existed && actualPath != path {
+			result.Warnings = append(result.Warnings, fmt.Sprintf(
+				"%s %q was folded into the existing node %q — this graph's storage does not distinguish letter case, so both spellings name one node",
+				node.Type, node.ID, existing.ID))
+			path = actualPath
 		}
 
 		merged := node
@@ -424,6 +447,16 @@ func guardIsGraph(store fsys.Store, dir string) error {
 // validateNodeBasename enforces spec FR-002/US3 Acceptance Scenario 3:
 // core.ParseNode has no filename parameter (contracts/ast-contract.md), so
 // the "@id" == basename rule is checked here, by callers that know path.
+//
+// path MUST be a real directory entry — one walked by walkNodeFiles, or one
+// resolved through fsys.ResolveName — never a path the caller built from an
+// incoming contribution's identity (spec FR-029). Comparing against a
+// constructed string made this report a MALFORMED FILE whenever a graph
+// location folded letter case and the two spellings differed: the file it
+// named did not exist, and the file it had actually read was well-formed
+// (BUG-008). Its real purpose — catching a hand-edited node file whose
+// "@id" drifted from its own filename — needs a real name to be meaningful
+// at all.
 func validateNodeBasename(node core.Node, path string) error {
 	basename := strings.TrimSuffix(filepath.Base(path), ".md")
 	if node.ID != basename {
@@ -529,25 +562,41 @@ func readPatch(mounter fsys.Mounter, patchPath string, index core.Index) (core.P
 	return patch, nil
 }
 
-func readExistingNode(store fsys.Store, path string, index core.Index) (core.Node, bool, error) {
-	f, err := store.Open(path)
+// readExistingNode reads the node stored at path, if one is there, and
+// reports the path it ACTUALLY read — which is not always the one asked
+// for. On a graph location that folds letter case (spec FR-026), asking for
+// "Entity/Lightstep.md" reaches an on-disk "Entity/LightStep.md"; the
+// returned path is that real spelling, so the caller merges into and writes
+// back to the file that genuinely exists rather than a name it invented
+// (spec FR-027), and so validateNodeBasename below compares against a real
+// directory entry rather than a caller-constructed string (spec FR-029).
+func readExistingNode(store fsys.Store, path string, index core.Index) (core.Node, string, bool, error) {
+	actual, found, err := fsys.ResolveName(store, path)
+	if err != nil {
+		return core.Node{}, path, false, ErrNodeWrite.With(err, path)
+	}
+	if !found {
+		return core.Node{}, path, false, nil
+	}
+
+	f, err := store.Open(actual)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return core.Node{}, false, nil
+			return core.Node{}, path, false, nil
 		}
-		return core.Node{}, false, ErrNodeWrite.With(err, path)
+		return core.Node{}, actual, false, ErrNodeWrite.With(err, actual)
 	}
 	defer f.Close()
 
 	node, err := core.ParseNode(f, index)
 	if err != nil {
-		return core.Node{}, false, ErrNodeWrite.With(err, path)
+		return core.Node{}, actual, false, ErrNodeWrite.With(err, actual)
 	}
-	if err := validateNodeBasename(node, path); err != nil {
-		return core.Node{}, false, ErrNodeWrite.With(err, path)
+	if err := validateNodeBasename(node, actual); err != nil {
+		return core.Node{}, actual, false, ErrNodeWrite.With(err, actual)
 	}
 
-	return node, true, nil
+	return node, actual, true, nil
 }
 
 func writeNode(store fsys.Store, path string, node core.Node, index core.Index) error {

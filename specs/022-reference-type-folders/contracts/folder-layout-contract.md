@@ -72,6 +72,22 @@ asked for. It MUST NOT rely on a filesystem stat. macOS/APFS is case-insensitive
 report `Source/`, `source/`, and `SOURCE/` as the same path; a case defect would pass locally
 and fail on a case-sensitive CI filesystem.
 
+**Extended to node identities — `specs/003-apply-patch` BUG-008.** The same hazard applies one
+level down, to the identity a node file is *named by*, and was reasoned about here for folder
+names only. Two consequences, both now specified by `003-apply-patch` FR-026/FR-027/FR-029:
+
+- A node identity's existence MUST NOT be decided by handing a constructed path to the
+  filesystem and seeing whether it opens — on a case-insensitive volume
+  `Open("Entity/Lightstep.md")` returns the bytes of `Entity/LightStep.md`, so the filesystem,
+  not the tool, silently decides whether two spellings are one node. The volume's case behavior
+  is probed at run time (`internal/adapter/fsys`'s `CaseFolder`) and the identity resolved
+  against it.
+- Retrieving a file's **real name** MUST go through `ReadDir`, never `Stat`: `os`'s
+  `fs.FileInfo.Name()` is derived from the path string handed in, so `Stat` echoes the caller's
+  own spelling back and hides the disagreement. (Asking whether a location *folds* case is a
+  different question — an existence question, which `Stat` answers correctly. C7's rule is about
+  names, not about existence.)
+
 ## C8. Compatibility
 
 Breaking. A graph created before this feature has `_schema/predicates/` and `_schema/types/`,
