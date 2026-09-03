@@ -462,7 +462,7 @@ const rfcResourceSeedSetStatus = `---
 "@type": Resource
 title: RFC 8446
 scoreZ: read
-category: normative
+heading: normative
 ---
 # RFC 8446
 
@@ -495,7 +495,7 @@ Surveys post-quantum key exchange deployment.
 "@id": "RFC 8446"
 "@type": Resource
 scoreZ: backlog
-category: informative
+heading: informative
 ` + "```" + `
 
 A survey of TLS 1.3 adoption patterns.
@@ -596,13 +596,18 @@ func TestApplyEntityReContributionFlagsProseAndAccumulatesUnregisteredScalars(t 
 
 // arc apply pqkex.patch.md
 // Scenario 3 from spec.md US2 / spec.md US2 Acceptance Scenario 1: a
-// resource's firstWriteWin-declared "category" is preserved and flagged
+// resource's firstWriteWin-declared "heading" is preserved and flagged
 // on genuine divergence (FR-013 conflict marker); its lastWriteWin-declared
 // "scoreZ" (BUG-001/FR-034 replaces the retired "status" fixture predicate,
 // same LastWriteWin semantics) diverges too but is never flagged (FR-012)
 // — takes the newest applied value instead; its append-declared leading
 // prose ("text", FR-018/BUG-001) diverges too but is appended, never
 // flagged; commit still completes.
+//
+// "heading" replaces "category" as this fixture's firstWriteWin exemplar:
+// category now declares immutable (schema.go), which freezes the
+// established value SILENTLY — the freeze class never flags — so it can no
+// longer stand for a divergence that reaches human review.
 func TestApplyMergePreservesSetFieldOnDivergence(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
@@ -2016,11 +2021,12 @@ func TestApplyHeadingOnlyCanonicalPatchAcceptedEndToEnd(t *testing.T) {
 // The fixtures below use arc init's own real seeded schema
 // (appschema.Seed(), via initGraph) so every predicate's declared merge
 // behavior is exactly what a real graph would use: created/immutable,
-// scoreZ/lastWriteWin, tags/union, category/firstWriteWin, url/
-// fillIfEmpty (internal/app/schema/kernel/schema.go). "category" (role:
+// scoreZ/lastWriteWin, tags/union, heading/firstWriteWin, url/
+// fillIfEmpty (internal/app/schema/kernel/schema.go). "heading" (role:
 // meta) stands in for a firstWriteWin exemplar here rather than
 // "abstract" (role: text), since BUG-001/FR-018 repoints every role:text
-// predicate — abstract included — to append. "created"/"scoreZ" replace
+// predicate — abstract included — to append, and rather than "category",
+// which now declares immutable and so freezes without ever flagging. "created"/"scoreZ" replace
 // this block's original "ref"/"status" exemplars, both retired outright
 // under CORE 0.12 (BUG-001/FR-034) — same immutable/lastWriteWin
 // semantics, real registered predicates instead of retired ones.
@@ -2052,7 +2058,7 @@ A source document.
 created: book
 scoreZ: backlog
 tags: [ai]
-category: "First summary."
+heading: "First summary."
 ` + "```" + `
 
 A tracked reading item.
@@ -2085,7 +2091,7 @@ Another source document.
 created: article
 scoreZ: read
 tags: [ml]
-category: "A different summary."
+heading: "A different summary."
 ` + "```" + `
 
 A tracked reading item.
@@ -2144,7 +2150,7 @@ func TestApply012BUG001VerboseReportsPerPredicateOutcomes(t *testing.T) {
 }
 
 // spec 012 User Story 2, Acceptance Scenario 1/3: within the same
-// combined application, category (firstWriteWin) is flagged for human
+// combined application, heading (firstWriteWin) is flagged for human
 // review on genuine divergence, but tags (union) and scoreZ
 // (lastWriteWin) — which diverge too — are never flagged.
 func TestApply012US2ConflictFlaggingScopedToFirstWriteWin(t *testing.T) {
@@ -3261,9 +3267,13 @@ func TestApplyKeepsTimelineNodesBucketedAndCreatesNoFlatFolder(t *testing.T) {
 // -----------------------------------------------------------------------
 // specs/023-core-vocabulary-conformance — User Story 1
 //
-// Type-specific prose predicates (abstract, definition, relevance) declare
-// firstWriteWin, not append: an established value is preserved and a
-// divergent contribution is flagged, never absorbed.
+// "relevance" is the last type-specific prose predicate still declaring
+// firstWriteWin: its established value is preserved and a divergent
+// contribution is flagged, never absorbed. "abstract" has since joined
+// "text" (Entity's leading prose, BUG-001/FR-030) in declaring append,
+// and "definition" is retired outright — so a reworded Source abstract or
+// Entity body now accumulates as a second paragraph rather than flagging,
+// exactly like any other append-declared prose key (schema.go).
 //
 // Two facts about arc apply shape every fixture below.
 //
@@ -3421,10 +3431,13 @@ func applyProseFixture(t *testing.T, dir, abstract, definition, relevance, extra
 }
 
 // arc apply tls13.patch.md, then pqkex.patch.md
-// Scenario 1 from spec.md US1 (023): a substantially reworded summary
-// leaves the established value in place and is flagged for review, rather
-// than being appended as a second paragraph.
-func TestApplyRewordedAbstractPreservesFirstValueAndFlags(t *testing.T) {
+// Scenario 1 from spec.md US1 (023), amended: "abstract" declares append,
+// not firstWriteWin (schema.go), so a substantially reworded summary — one
+// that falls under mergeText's near-duplicate threshold — accumulates
+// alongside the established wording instead of preserving it and flagging.
+// The established value still survives verbatim; what changed is that the
+// divergence is absorbed silently, because append never flags.
+func TestApplyRewordedAbstractAppendsAlongsideFirstValue(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	chdir(t, dir)
@@ -3435,8 +3448,9 @@ func TestApplyRewordedAbstractPreservesFirstValueAndFlags(t *testing.T) {
 
 	it.Then(t).
 		Should(it.String(content).Contain("the reasoning behind its single round trip")).
-		Should(it.String(content).Contain(conflictMarkerToken)).
-		Should(it.String(stderr).Contain("merge conflict was flagged"))
+		Should(it.String(content).Contain("Why one round trip was chosen")).
+		ShouldNot(it.String(content).Contain(conflictMarkerToken)).
+		ShouldNot(it.String(stderr).Contain("merge conflict was flagged"))
 }
 
 // arc apply tls13.patch.md, then pqkex.patch.md carrying identical prose

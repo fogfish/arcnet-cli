@@ -1,7 +1,7 @@
 ---
 "@id": category
 "@type": Property
-merge: firstWriteWin
+merge: immutable
 role: meta
 ---
 # category

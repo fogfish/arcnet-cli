@@ -1,7 +1,7 @@
 ---
 "@id": description
 "@type": Property
-merge: firstWriteWin
+merge: append
 role: text
 ---
 # description

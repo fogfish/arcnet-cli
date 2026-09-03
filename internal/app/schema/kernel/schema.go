@@ -81,10 +81,10 @@ var CorePredicateDefs = map[string]core.PredicateDef{
 	"genre":  {Role: "meta", Merge: core.MergeUnion, Description: "The genre of the content: one of paper, standard, tool, dataset, or post."},
 
 	"title":    {Role: "meta", Merge: core.MergeImmutable, Aligned: "schema:title", Description: "The document title as published — distinct from @id when @id is a derived citekey."},
-	"abstract": {Role: "text", Merge: core.MergeFirstWriteWin, Aligned: "schema:abstract", Description: "A short prose summary of the document."},
+	"abstract": {Role: "text", Merge: core.MergeAppend, Aligned: "schema:abstract", Description: "A short prose summary of the document."},
 	"url":      {Role: "meta", Merge: core.MergeFillIfEmpty, Aligned: "schema:url", Description: "Canonical location of the document or work."},
 	"doi":      {Role: "meta", Merge: core.MergeFillIfEmpty, Aligned: "schema:doi", Description: "Digital object identifier."},
-	"category": {Role: "meta", Merge: core.MergeFirstWriteWin, Description: "John F. Sowa's top-level category, decoded into a bag of words (e.g. independent/physical/continuant/object)."},
+	"category": {Role: "meta", Merge: core.MergeImmutable, Description: "John F. Sowa's top-level category, decoded into a bag of words (e.g. independent/physical/continuant/object)."},
 	"aliases":  {Role: "meta", Merge: core.MergeUnion, Aligned: "skos:altLabel", Description: "Alternative names for the entity."},
 	// "notes" is retired (BUG-001/FR-033) as an Entity/Resource predicate —
 	// it stays registered because Reference still declares it (§11.6's own
@@ -99,7 +99,7 @@ var CorePredicateDefs = map[string]core.PredicateDef{
 	"merge":       {Role: "meta", Merge: core.MergeImmutable, Description: "One of the merge behaviors (CORE §9.3): how contributions to this predicate combine."},
 	"label":       {Role: "meta", Merge: core.MergeFirstWriteWin, Description: "Human-readable title shown as a link-role predicate's heading; defaults to the predicate name, capitalized."},
 	"aligned":     {Role: "meta", Merge: core.MergeFirstWriteWin, Description: "The standard-vocabulary term this predicate maps to, or arc:<name> if graph-native."},
-	"description": {Role: "text", Merge: core.MergeFirstWriteWin, Description: "Prose describing the predicate's or type's meaning — the body text of a Property/Class node."},
+	"description": {Role: "text", Merge: core.MergeAppend, Description: "Prose describing the predicate's or type's meaning — the body text of a Property/Class node."},
 	"required":    {Role: "link", Merge: core.MergeUnion, Label: "Requires", Description: "Asserts that the class requires the target predicate on every conforming instance."},
 	"optional":    {Role: "link", Merge: core.MergeUnion, Description: "Asserts that the class permits the target predicate."},
 
