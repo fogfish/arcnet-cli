@@ -169,11 +169,12 @@ const paragraphShingleSize = 3
 // firstWriteWin, was never true of the seeded vocabulary. "notes" is no
 // longer declared by Entity/Resource at all (BUG-001/FR-033), but stays
 // registered — Reference still uses it. The type-specific prose keys that
-// must NOT accumulate — abstract, description, relevance — express that
-// through their own firstWriteWin declaration rather than through a name
-// check here (specs/023-core-vocabulary-conformance FR-013). "text" (the
-// key Entity's own leading prose now shares with Resource's, BUG-001/
-// FR-030) is deliberately NOT in that list — it stays append. A key
+// must NOT accumulate — "relevance" alone, since "abstract" and
+// "description" have since joined "text" in declaring append — express
+// that through their own firstWriteWin declaration rather than through a
+// name check here (specs/023-core-vocabulary-conformance FR-013). "text"
+// (the key Entity's own leading prose now shares with Resource's,
+// BUG-001/FR-030) is likewise append, never first-fixed. A key
 // present on only one side behaves like a scalar/paragraph merge against
 // "" on the other.
 func mergeTexts(existing, incoming map[string]string, index Index, sourceID string) (map[string]string, []string, []PredicateOutcome) {

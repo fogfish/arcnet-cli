@@ -227,11 +227,21 @@ func TestSeedFirstFixedProsePredicatesDeclareFirstWriteWin(t *testing.T) {
 
 	// "definition" is retired under CORE 0.12 (BUG-001/FR-030); Entity's
 	// leading prose is now "text", which is deliberately MergeAppend, not
-	// firstWriteWin (see schema.go's CorePredicateDefs comment).
-	for _, name := range []string{"abstract", "description", "relevance"} {
+	// firstWriteWin (see schema.go's CorePredicateDefs comment). "abstract"
+	// and "description" now declare append for the same reason, leaving
+	// "relevance" as the sole first-fixed prose predicate — the two are
+	// asserted here too, so the seeded documents pin which side of that
+	// split each one lands on.
+	for _, name := range []string{"relevance"} {
 		raw, ok := seed[kernel.PredicatesDir+"/"+name+".md"]
 		it.Then(t).Should(it.True(ok))
 		it.Then(t).Should(it.String(string(raw)).Contain("merge: firstWriteWin"))
+	}
+
+	for _, name := range []string{"abstract", "description"} {
+		raw, ok := seed[kernel.PredicatesDir+"/"+name+".md"]
+		it.Then(t).Should(it.True(ok))
+		it.Then(t).Should(it.String(string(raw)).Contain("merge: append"))
 	}
 }
 

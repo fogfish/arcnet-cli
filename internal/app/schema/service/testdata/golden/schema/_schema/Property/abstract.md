@@ -2,7 +2,7 @@
 "@id": abstract
 "@type": Property
 aligned: schema:abstract
-merge: firstWriteWin
+merge: append
 role: text
 ---
 # abstract
