@@ -1116,11 +1116,21 @@ Just prose, no H1/H2 structure.
 }
 
 // arc apply tls13.patch.md
-// spec.md US3 Acceptance Scenario 4 / quickstart.md Scenario 3: an
-// unrelated pre-0.5 node file sitting anywhere in the graph — not one the
-// incoming patch even references — aborts the whole apply, with zero
-// writes and zero commits, rather than being silently skipped.
-func TestApplyUnrelatedOldFormatNodeAbortsWithZeroWrites(t *testing.T) {
+// RE-SCOPED — spec 031 BUG-001 (T068). This test asserted spec 010 US3
+// Acceptance Scenario 4: an unrelated pre-0.5 node anywhere in the graph
+// aborted the whole apply, via guardNoOldFormatNodes' whole-graph walk.
+// That walk is gone (spec 031 FR-033) — it could not tell a legacy node from
+// a host project's README once a graph root could be shared (FR-010,
+// FR-032), and apply now reads only what its patch targets.
+//
+// What remains true, and is asserted here, is the part that was always the
+// point: apply does not silently reinterpret a file it does not understand.
+// An unrelated file is not misread — it is not read at all. Detection of a
+// malformed node still happens on every path apply genuinely touches, which
+// is what spec 010 FR-012's own read-triggered wording asks for; see
+// TestRootModeApplyTargetedForeignFileFailsAsRead in nested_repo_test.go for
+// the targeted case.
+func TestApplyUnrelatedOldFormatNodeIsLeftUntouched(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	legacyNode := "---\nkind: entity\nid: old-node\ncategory: [independent]\n---\n# old-node\n\nAn entity written before this feature shipped.\n"
@@ -1128,61 +1138,76 @@ func TestApplyUnrelatedOldFormatNodeAbortsWithZeroWrites(t *testing.T) {
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
 
-	before := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
-
 	out, err := sut(NewApplyCmd(), []string{patch})
-	it.Then(t).Should(it.Error(out, err).Contain("old-node"))
+	it.Then(t).ShouldNot(it.Error(out, err))
 
-	after := strings.TrimSpace(runGit(t, dir, "log", "--oneline"))
-	it.Then(t).Should(it.Equal(before, after))
-
-	_, statErr := os.Stat(filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
-	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+	// the patch applied, and the file the patch never named is byte-for-byte
+	// as it was — neither rewritten nor reinterpreted (spec 010 FR-013)
+	assertIsFile(t, filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
+	it.Then(t).Should(it.Equal(legacyNode, readFile(t, filepath.Join(dir, "Entity", "old-node.md"))))
 }
 
+// The three tests below cover spec 010 US3 Acceptance Scenarios 1-3: the
+// legacy "kind" field, a missing "@id", and an "@id" that disagrees with its
+// own basename. RE-SCOPED — spec 031 BUG-001 (T068): each used to seed its
+// malformed file at a path the patch never named and assert the whole apply
+// aborted, which only held because guardNoOldFormatNodes walked the entire
+// graph. Each now seeds the SAME malformation at a path the patch DOES
+// target, which is where spec 010 FR-012's read-triggered detection still
+// applies and still must fire. The scenarios are unchanged; only the file
+// arc has to actually read to meet them has moved.
+//
+// "Entity/Transport Layer Security.md" is one of tls13Patch's own two nodes.
+// The source path would not do: it is committed by seedNode, so apply's
+// idempotency check (FR-003) would report "already tracked" and return
+// before reading anything.
+
 // arc apply tls13.patch.md
-// spec.md US3 Acceptance Scenario 1: a node file using the legacy "kind"
+// spec 010 US3 Acceptance Scenario 1: a node file using the legacy "kind"
 // field with no "@id"/"@type" is rejected.
 func TestApplyOldFormatKindFieldRefuses(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	legacyNode := "---\nkind: entity\nid: old-node\n---\n# old-node\n\nLegacy shaped.\n"
-	seedNode(t, dir, "Entity/old-node.md", legacyNode)
+	seedNode(t, dir, "Entity/Transport Layer Security.md", legacyNode)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
 
 	out, err := sut(NewApplyCmd(), []string{patch})
-	it.Then(t).Should(it.Error(out, err).Contain("old-node"))
+	it.Then(t).Should(it.Error(out, err).Contain("Transport Layer Security"))
+	it.Then(t).Should(it.String(err.Error()).Contain(`legacy "kind" field present`))
 }
 
 // arc apply tls13.patch.md
-// spec.md US3 Acceptance Scenario 2: a node file with "@type" but missing
+// spec 010 US3 Acceptance Scenario 2: a node file with "@type" but missing
 // "@id" is rejected, with no fallback to any other field.
 func TestApplyMissingIdRefuses(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	legacyNode := "---\n\"@type\": Entity\ntitle: No Id\n---\n# No Id\n\nMissing @id.\n"
-	seedNode(t, dir, "Entity/No Id.md", legacyNode)
+	seedNode(t, dir, "Entity/Transport Layer Security.md", legacyNode)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
 
 	out, err := sut(NewApplyCmd(), []string{patch})
-	it.Then(t).Should(it.Error(out, err).Contain("No Id"))
+	it.Then(t).Should(it.Error(out, err).Contain("Transport Layer Security"))
+	it.Then(t).Should(it.String(err.Error()).Contain(`missing mandatory "@id" field`))
 }
 
 // arc apply tls13.patch.md
-// spec.md US3 Acceptance Scenario 3: a node file whose "@id" does not
+// spec 010 US3 Acceptance Scenario 3: a node file whose "@id" does not
 // equal its own file's basename is rejected rather than accepted.
 func TestApplyIdMismatchedBasenameRefuses(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	mismatched := "---\n\"@id\": Something Else\n\"@type\": Entity\n---\n# Mismatched\n\nWrong id.\n"
-	seedNode(t, dir, "Entity/Mismatched.md", mismatched)
+	seedNode(t, dir, "Entity/Transport Layer Security.md", mismatched)
 	chdir(t, dir)
 	patch := writePatchFile(t, dir, "tls13.patch.md", tls13Patch)
 
 	out, err := sut(NewApplyCmd(), []string{patch})
-	it.Then(t).Should(it.Error(out, err).Contain("Mismatched"))
+	it.Then(t).Should(it.Error(out, err).Contain("Transport Layer Security"))
+	it.Then(t).Should(it.String(err.Error()).Contain("does not match this file's basename"))
 }
 
 const patchWithExplicitTimelineSection = `---
@@ -2740,9 +2765,10 @@ func TestApplyTypeKeyPatchReapplyRecordsNoSecondCommit(t *testing.T) {
 // arc apply legacy.patch.md
 // Every rejection fixture below is written *outside* the graph tree, matching
 // this file's own TestApplyMultiH1OneNonCompliantRejectsWholeDocument
-// precedent: a patch left sitting inside the graph is a separate concern with
-// its own test (guardNoOldFormatNodes, see the in-tree retired-key case in
-// internal/app/graph/service/apply_test.go).
+// precedent: a patch left sitting inside the graph is a separate concern —
+// and since spec 031 BUG-001 removed apply's whole-graph walk, no concern of
+// apply's at all unless the patch names it (see
+// TestApplyRetiredKeyPatchInGraphTreeIsLeftUntouched).
 //
 // spec 021 US3 Acceptance Scenario 1: the retired key is refused, naming the
 // file, the offending key and its replacement, leaving git untouched
@@ -2864,35 +2890,32 @@ func TestApplyBareIdentityKeyReportsQuoting(t *testing.T) {
 }
 
 // arc apply tls13.patch.md, with a retired-key patch sitting in the graph
-// spec 021 T048 / data-model.md §3: guardNoOldFormatNodes' whole-graph walk
-// sees a patch file left inside the graph tree. Because core.LooksLikePatch
-// now recognizes the retired key, the guard surfaces the actionable
-// ErrManifestLegacyKind — traceable to the offending file — instead of
-// shadowing it with core.ParseNode's generic "legacy kind field" old-format
-// heuristic, which describes the wrong defect.
+// RE-SCOPED — spec 031 BUG-001 (T068). This asserted spec 021 T048: a
+// retired-key patch left inside the graph tree made apply abort with
+// ErrManifestLegacyKind, because guardNoOldFormatNodes walked the whole
+// graph and met it. The walk is gone (spec 031 FR-033) — it could not tell a
+// stray exchange file from a host project's own markdown, and apply now
+// reads only what its patch targets.
 //
-// This lives here rather than in internal/app/graph/service/apply_test.go
-// (where the task placed it) because that package's memStore fixture has no
-// ReadDir, so the guard's whole-graph walk finds nothing there; the guard is
-// only observable against a real filesystem, which is also where every other
-// guardNoOldFormatNodes test in this repository already lives.
-func TestApplyRetiredKeyPatchInGraphTreeSurfacesLegacyKindError(t *testing.T) {
+// The retired key is still refused wherever it is actually read: as the
+// applied patch itself (TestApplyLegacyKindPatchRefusedNamingReplacement,
+// which is spec 021 US3 Acceptance Scenario 1 and the case users hit), and
+// by arc lint's own walk. What is asserted here is that a file the patch
+// never names is simply not apply's business: the apply succeeds and the
+// stray file is left exactly as it was.
+func TestApplyRetiredKeyPatchInGraphTreeIsLeftUntouched(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
-	seedNode(t, dir, "Entity/stale.patch.md", withIdentity("kind: patch"))
+	stale := withIdentity("kind: patch")
+	seedNode(t, dir, "Entity/stale.patch.md", stale)
 	chdir(t, dir)
 	patch := writePatchFile(t, t.TempDir(), "tls13.patch.md", tls13Patch)
 
-	before := gitLog(t, dir)
+	out, err := sut(NewApplyCmd(), []string{patch})
 
-	_, err := sut(NewApplyCmd(), []string{patch})
-
-	it.Then(t).Must(it.True(errors.Is(err, core.ErrManifestLegacyKind)))
-	it.Then(t).
-		Should(it.String(err.Error()).Contain("stale.patch.md")).
-		Should(it.String(err.Error()).Contain(`"@type": patch`)).
-		Should(it.Equal(before, gitLog(t, dir)))
-	it.Then(t).ShouldNot(it.String(err.Error()).Contain(`legacy "kind" field present`))
+	it.Then(t).ShouldNot(it.Error(out, err))
+	assertIsFile(t, filepath.Join(dir, "Source", "rescorla-2026-tls13.md"))
+	it.Then(t).Should(it.Equal(stale, readFile(t, filepath.Join(dir, "Entity", "stale.patch.md"))))
 }
 
 // arc apply tls13.patch.md, with a conformant patch sitting in the graph

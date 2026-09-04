@@ -6,6 +6,10 @@
 
 **Status**: Draft
 
+**Bugfix**: 2026-09-04 — [BUG-001](bugs/BUG-001.md) FR-010 made the graph root a directory `arc` shares with a host project, but no requirement said what that means for commands that walk the tree. `arc apply`'s whole-graph scan parsed the host's own `README.md` as a graph node and refused to run. FR-032–FR-035, SC-009/SC-010 and three edge cases are added to state the sharing contract: `apply` reads only what its patch targets, and `lint`/`grep` carry an internal index of foreign files instead of failing on them.
+
+**Bugfix (round 2)**: 2026-09-04 — [BUG-001](bugs/BUG-001.md) verification found FR-034 had no plan.md counterpart and no quickstart scenario exercised a shared graph root. No requirement changed: [plan.md](plan.md)'s Constraints now carry FR-034's read-path sentinel rule, and [quickstart.md](quickstart.md) gains S10 — the shape S3 and S9 never built, where the graph root *is* the project root.
+
 **Input**: User description: "`arc init` fails to create an empty graph in the root of existing git repository. Also it creates a graph in the subfolder of existing git repository but it initializes a repository within the repository. It does not suites use-cases where you'd like to add a graph into existing project. The `arc init` MUST fail if it is executing in the context of git project also blocking the possibility to create a repository within repository. However, `arc init` should support the advanced usage flag `--skip-git-init`. It allows to create a graph within existing repository. All commands that requires and uses git must use existing \"parent\" repo fo all commands."
 
 ## Clarifications
@@ -106,6 +110,12 @@ A user who added a graph to an existing project now runs the graph's other comma
 - **Project root already occupies a canonical layout name**: a project whose root already contains, say, `Source/` or `timeline/` cannot host a graph at its root. The command fails and directs the user to a subfolder, which is the supported way to add a graph to such a project.
 - **Repeated runs**: running the command twice in the same location fails the second time with the existing "already initialized" error, in both modes.
 
+*(Edge cases below added by Bugfix BUG-001, 2026-09-04.)*
+
+- **Host project markdown under the graph root**: the graph shares its root with a project carrying `README.md`, `CONTRIBUTING.md`, `docs/**.md` and similar. These are foreign files, not graph nodes. No command may parse them as nodes, fail because of them, or count them as graph content.
+- **A large foreign tree under the graph root**: the host project contains far more markdown than the graph does. A command's read cost must be governed by what the command actually needs — for `arc apply`, the patch's own node set — not by the size of the host project's tree.
+- **A patch targeting a path occupied by a foreign file**: the patch names a node whose canonical path already holds a markdown file lacking `"@id"`/`"@type"`. The command fails, naming that path and the missing mandatory field, and writes nothing — this is the one case where a foreign file is legitimately fatal, because the patch demanded it.
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
@@ -127,7 +137,7 @@ A user who added a graph to an existing project now runs the graph's other comma
 
 - **FR-008**: `arc init` MUST accept an opt-in flag, `--skip-git-init`, documented as advanced usage, that permits creating a graph inside an existing version-controlled project.
 - **FR-009**: With the flag set, the system MUST NOT create a new repository at the target, and MUST use the enclosing parent repository for all version-control operations.
-- **FR-010**: With the flag set, the system MUST allow the target directory to already contain unrelated files, replacing the current "target must be empty" restriction for this mode only.
+- **FR-010**: With the flag set, the system MUST allow the target directory to already contain unrelated files, replacing the current "target must be empty" restriction for this mode only. *(Bugfix BUG-001, 2026-09-04: "unrelated files" includes unrelated **markdown** files, which every tree-walking command previously assumed could not exist under a graph root — see FR-032.)*
 - **FR-011**: With the flag set, the system MUST still fail when the target already contains an initialized graph, with the existing "already initialized" error, and MUST change nothing.
 - **FR-012**: With the flag set and no enclosing version-controlled project found, the system MUST fail with a message explaining there is no parent project to add the graph to, and MUST create nothing.
 - **FR-013**: With the flag set, the system MUST record exactly one commit in the parent repository, containing only the files the initialization itself created or modified.
@@ -148,7 +158,7 @@ A user who added a graph to an existing project now runs the graph's other comma
 - **FR-022**: Every command that stages changes MUST confine staging to the graph's own subtree, so unrelated changes elsewhere in the parent repository are never swept into a graph commit.
 - **FR-023**: Every command that queries history MUST confine that query to commits touching the graph's own subtree, so commits belonging to the rest of the parent project are never mistaken for graph history.
 - **FR-024**: Every command that resolves a file path against history MUST interpret that path relative to the graph root, never relative to the parent repository's root.
-- **FR-025**: For any given operation, a graph located inside a larger project MUST produce the same observable outcome as an equivalent standalone graph.
+- **FR-025**: For any given operation, a graph located inside a larger project MUST produce the same observable outcome as an equivalent standalone graph. *(Bugfix BUG-001, 2026-09-04: "inside a larger project" has two independent axes — the graph root nested **below** the repository root, and the graph root **shared** with host-project files. Only the first was verified; the second is FR-032–FR-035.)*
 
 #### Reporting and documentation
 
@@ -158,6 +168,13 @@ A user who added a graph to an existing project now runs the graph's other comma
 - **FR-029**: All failures introduced by this feature MUST exit with a non-zero status and MUST print an actionable message, never a raw internal error value or stack trace.
 - **FR-030**: The command's built-in help and the project's user documentation MUST describe the advanced flag, when to use it, and the default refusal it overrides.
 - **FR-031**: The layout-collision failure of FR-015 MUST name the conflicting path and MUST state the recovery path: initializing the graph into a subfolder of the project instead of at the colliding location.
+
+#### Sharing the graph root with the host project *(Bugfix BUG-001, 2026-09-04)*
+
+- **FR-032**: A markdown file under the graph root that does not declare both `"@id"` and `"@type"` in its yaml front matter is a **foreign file** — content belonging to the host project, not to the graph. No command MAY interpret a foreign file as a graph node, and no command MAY fail merely because one exists under the graph root.
+- **FR-033**: `arc apply` MUST NOT walk or parse the graph tree. It MUST read and parse only the node files its patch actually targets, so the number of files it opens is proportional to the patch's own node count and independent of how many files the graph root contains. This is required for correctness under FR-032 and for the read cost the command's latency budget assumes.
+- **FR-034**: When a path an applied patch targets already exists but is not a graph node, `arc apply` MUST fail, naming that path and the mandatory field it lacks, and MUST write nothing. The message MUST describe the operation that actually failed — reading the file — and MUST NOT report it as a failed write.
+- **FR-035**: `arc lint` and `arc grep` walk the graph tree by design and MUST therefore each maintain an internal index of the foreign files that walk encounters. Indexed files MUST be excluded from node processing, MUST NOT be counted among the nodes checked or matched, and MUST NOT be reported as failing or invalid nodes. The index is the command's own record of what it skipped and why, not a defect list.
 
 ### Key Entities
 
@@ -180,6 +197,11 @@ A user who added a graph to an existing project now runs the graph's other comma
 - **SC-007**: A script consuming machine-readable initialization output can determine which repository absorbed the commit, in both modes, from a single field that is always present — with no branching on output shape.
 - **SC-008**: Existing standalone initialization behavior is preserved: every outcome the command currently guarantees outside a versioned project — layout, seeded content, single initial commit, clean working tree, and each existing failure condition — still holds. The one intended difference is where the local-state exclusion is written; the observable result (local state excluded from tracking, working tree clean after init) is unchanged.
 
+*(Success criteria below added by Bugfix BUG-001, 2026-09-04.)*
+
+- **SC-009**: Applying a patch to a graph that shares its root with a host project succeeds regardless of how many foreign markdown files that project contains, and the number of graph files `arc apply` opens is proportional to the patch's node count — unchanged whether the host project contributes zero foreign markdown files or thousands.
+- **SC-010**: On a graph sharing its root with a host project, `arc lint` reports zero violations attributable to foreign files and its "nodes checked" count equals the graph's own node count, and `arc grep` returns zero matches drawn from foreign files.
+
 ## Assumptions
 
 - **Advanced flag name**: the flag is `--skip-git-init`, exactly as named in the request. It has a long form only, with no single-letter shorthand, since it is advanced and infrequently used.
@@ -191,5 +213,6 @@ A user who added a graph to an existing project now runs the graph's other comma
 - **Existing failure conditions are retained**: "target is not a directory," "version control unavailable," and "already an initialized graph" all continue to apply in both modes and are unchanged by this feature.
 - **Layout collisions are refused, not merged** (resolved in Clarifications): an existing folder sharing a canonical layout name is refused regardless of whether it is empty, rather than being adopted. Adopting a non-empty one would silently turn the user's unrelated files into graph content; refusing an empty one too keeps the rule simple to state, simple to test, and free of per-folder rollback bookkeeping. Initializing into a subfolder is the supported alternative, so the refusal never leaves the user stuck.
 - **Machine-readable contract grows, never breaks** (resolved in Clarifications): the new repository-root field is additive and unconditional. Existing fields keep their names and meanings, so `--json` remains the stable scriptable contract Constitution X requires.
+- **Foreign files are the host project's, and stay that way** (Bugfix BUG-001, 2026-09-04): a graph root shared with a host project contains markdown `arc` neither wrote nor understands. The distinguishing test is the one the node format already mandates — `"@id"` and `"@type"` in the yaml front matter — so no new marker file, manifest or allow-list is introduced. Commands differ only in how they meet a foreign file: `apply` never opens one, because it reads only what its patch names; `lint` and `grep` must walk, so they index and skip.
 - **No migration path**: graphs that were already created as nested repositories by the current behavior are out of scope. This feature prevents new occurrences; it does not detect or repair existing ones.
 - **Scope of the cross-command requirement**: FR-021 through FR-025 describe correctness properties every git-backed command must satisfy. Some are already met by existing behavior; this feature's obligation is to establish them as verified properties across the whole command set, not to assume they hold.

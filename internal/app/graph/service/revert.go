@@ -174,8 +174,10 @@ func revertPerNode(ctx context.Context, store fsys.Store, vcs port.VCS, reporter
 		// A patch/exchange document left sitting inside the graph tree
 		// (e.g. still touched by its own ingest commit's `git add -A`) is
 		// a distinct, valid concept, never itself a graph node — skipped
-		// here exactly as apply.go's own guardNoOldFormatNodes already
-		// tolerates it.
+		// here so revert never treats one as a node to remove or
+		// reconcile. (This used to cite apply.go's guardNoOldFormatNodes
+		// as precedent; that guard was removed with spec 031 BUG-001, but
+		// the reason to skip a patch here is revert's own and unchanged.)
 		if isPatchDocument(store, p) {
 			continue
 		}
@@ -279,13 +281,20 @@ func revertPerNode(ctx context.Context, store fsys.Store, vcs port.VCS, reporter
 }
 
 // isPatchDocument reports whether path declares itself a patch exchange
-// document rather than a graph node — mirroring apply.go's own
-// guardNoOldFormatNodes tolerance (a patch/exchange file left sitting
-// inside the graph tree, e.g. still touched by its own ingest commit, is
+// document rather than a graph node. A patch/exchange file left sitting
+// inside the graph tree — e.g. still touched by its own ingest commit — is
 // a distinct, valid concept, never itself a node revert should try to
-// remove or reconcile). A path that no longer exists or fails to read is
+// remove or reconcile. A path that no longer exists or fails to read is
 // treated as false (not a patch), letting the caller's own existing
 // not-found handling apply.
+//
+// This once cited apply.go's guardNoOldFormatNodes as the precedent for
+// that tolerance. The guard is gone (spec 031 BUG-001): it walked the whole
+// graph, which stopped being safe once a graph root could be shared with a
+// host project. The nearest live analogue is now internal/app/lint's own
+// foreign-file index — same principle, that a walking command must
+// recognize what is not a node rather than fail on it — but revert's reason
+// to skip a patch predates both and stands on its own.
 //
 // It asks core.LooksLikePatch — the single recognition rule spec 021 FR-009
 // requires every patch-reading command to share — rather than "ParsePatch

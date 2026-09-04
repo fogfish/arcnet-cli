@@ -222,10 +222,6 @@ func Apply(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bio
 		return kernel.ApplyResult{}, err
 	}
 
-	if err := guardNoOldFormatNodes(store, index); err != nil {
-		return kernel.ApplyResult{}, err
-	}
-
 	start := time.Now()
 	appliedAt := time.Now().UTC()
 	stamp := appliedAt.Format(time.RFC3339)
@@ -448,8 +444,8 @@ func guardIsGraph(store fsys.Store, dir string) error {
 // core.ParseNode has no filename parameter (contracts/ast-contract.md), so
 // the "@id" == basename rule is checked here, by callers that know path.
 //
-// path MUST be a real directory entry — one walked by walkNodeFiles, or one
-// resolved through fsys.ResolveName — never a path the caller built from an
+// path MUST be a real directory entry — one resolved through
+// fsys.ResolveName — never a path the caller built from an
 // incoming contribution's identity (spec FR-029). Comparing against a
 // constructed string made this report a MALFORMED FILE whenever a graph
 // location folded letter case and the two spellings differed: the file it
@@ -465,59 +461,9 @@ func validateNodeBasename(node core.Node, path string) error {
 	return nil
 }
 
-// guardNoOldFormatNodes scans every existing node file in the graph before
-// any write begins (spec FR-012/FR-013, US3 Acceptance Scenario 4,
-// quickstart.md Scenario 3): a single pre-0.5 file anywhere in the graph —
-// not just one the incoming patch happens to target — aborts the whole
-// apply with no partial write, mirroring arc lint's own whole-graph walk
-// (internal/app/lint/service.Lint). A well-formed patch/exchange document
-// (e.g. one written into the graph root before being applied, this
-// package's own writePatchFile-style convention) is not a graph node and
-// is skipped — its own '"@type": patch' manifest is a distinct, still-valid
-// concept unaffected by this feature (data-model.md's Patch section).
-func guardNoOldFormatNodes(store fsys.Store, index core.Index) error {
-	paths, err := walkNodeFiles(store)
-	if err != nil {
-		return err
-	}
-	for _, path := range paths {
-		f, err := store.Open(path)
-		if err != nil {
-			continue
-		}
-		raw, err := io.ReadAll(f)
-		f.Close()
-		if err != nil {
-			continue
-		}
-
-		if _, perr := core.ParsePatch(bytes.NewReader(raw), index); perr == nil {
-			continue
-		} else if core.LooksLikePatch(raw) {
-			// A patch document (either identity key — see core.LooksLikePatch)
-			// that fails to parse is a broken
-			// patch-in-progress, not an old-format node — surfacing perr
-			// here (e.g. spec 019's ErrTypeCasing) instead of misreporting
-			// it via ParseNode's own "legacy kind field" heuristic below,
-			// which would otherwise shadow the real rejection reason
-			// (quickstart.md Scenario 2, SC-004).
-			return ErrNodeWrite.With(perr, path)
-		}
-
-		node, parseErr := core.ParseNode(bytes.NewReader(raw), index)
-		if parseErr != nil {
-			return ErrNodeWrite.With(parseErr, path)
-		}
-		if err := validateNodeBasename(node, path); err != nil {
-			return ErrNodeWrite.With(err, path)
-		}
-	}
-	return nil
-}
-
 // guardIdentityCharset pre-scans every patch-carried node's own identity
-// before any write begins (spec FR-001/FR-003, research.md D7, mirrors
-// guardNoOldFormatNodes's scan-before-write shape, contract C2.3): the first
+// before any write begins (spec FR-001/FR-003, research.md D7, contract
+// C2.3): the first
 // node whose "@id" contains an ARCNET-CORE §7.1 forbidden character aborts
 // the whole apply, before the main per-node loop writes anything. It does
 // not reach identities implied by a node's Type or its observed predicate
@@ -564,7 +510,15 @@ func readPatch(mounter fsys.Mounter, patchPath string, index core.Index) (core.P
 
 // readExistingNode reads the node stored at path, if one is there, and
 // reports the path it ACTUALLY read — which is not always the one asked
-// for. On a graph location that folds letter case (spec FR-026), asking for
+// for.
+//
+// Since BUG-001 removed the whole-graph pre-scan, this is the ONLY place
+// apply opens an existing graph file, and it is reached exactly once per
+// node the patch targets — which is what makes apply's read cost
+// proportional to the patch rather than to the graph root's size (spec 031
+// FR-033). A targeted path holding something that is not a node fails here,
+// naming the path and the missing field, through ErrNodeRead: no write is
+// attempted, so none is reported (spec 031 FR-034). On a graph location that folds letter case (spec FR-026), asking for
 // "Entity/Lightstep.md" reaches an on-disk "Entity/LightStep.md"; the
 // returned path is that real spelling, so the caller merges into and writes
 // back to the file that genuinely exists rather than a name it invented
@@ -573,7 +527,7 @@ func readPatch(mounter fsys.Mounter, patchPath string, index core.Index) (core.P
 func readExistingNode(store fsys.Store, path string, index core.Index) (core.Node, string, bool, error) {
 	actual, found, err := fsys.ResolveName(store, path)
 	if err != nil {
-		return core.Node{}, path, false, ErrNodeWrite.With(err, path)
+		return core.Node{}, path, false, ErrNodeRead.With(err, path)
 	}
 	if !found {
 		return core.Node{}, path, false, nil
@@ -584,16 +538,16 @@ func readExistingNode(store fsys.Store, path string, index core.Index) (core.Nod
 		if errors.Is(err, fs.ErrNotExist) {
 			return core.Node{}, path, false, nil
 		}
-		return core.Node{}, actual, false, ErrNodeWrite.With(err, actual)
+		return core.Node{}, actual, false, ErrNodeRead.With(err, actual)
 	}
 	defer f.Close()
 
 	node, err := core.ParseNode(f, index)
 	if err != nil {
-		return core.Node{}, actual, false, ErrNodeWrite.With(err, actual)
+		return core.Node{}, actual, false, ErrNodeRead.With(err, actual)
 	}
 	if err := validateNodeBasename(node, actual); err != nil {
-		return core.Node{}, actual, false, ErrNodeWrite.With(err, actual)
+		return core.Node{}, actual, false, ErrNodeRead.With(err, actual)
 	}
 
 	return node, actual, true, nil
