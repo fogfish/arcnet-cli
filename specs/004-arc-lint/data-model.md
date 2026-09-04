@@ -74,6 +74,8 @@ type VCS interface {
 
 Satisfied structurally by the same shared `internal/adapter/git.Git` concrete type `ctrl.port.VCS`/`graph.port.VCS` already use (research.md D12, ADR 001 port isolation rule 1) — `git.Git` gains one new method, no new adapter package.
 
+*(Corrected — 016-arc-revert BUG-002, 2026-09-03)* `CommitsMatching` wraps `git log --all --fixed-strings --grep=<needle> --format=%H -- .`; the trailing `-- .` pathspec is **required** and was missing from the original implementation. Without it, `--all` searches the entire enclosing repository's history rather than `dir`'s, so FR-010's one-`graph(ingest):`-commit-per-document check counts commits belonging to other graphs sharing the repository. The corrected adapter argv is delivered by `specs/016-arc-revert/tasks.md` T047, with lint-side coverage by T051.
+
 ## Filesystem I/O
 
 All reads go through `fsys.Store` (`internal/adapter/fsys`, already shared — no changes to that package). `arc lint` mounts the graph root the same way `arc apply` does and calls `fsys.Store.Stat(".arc")` for the same "is this an initialized graph" guard `graph.service.guardIsGraph` already implements (research.md/plan.md Constraints) — **lint never calls `Store.Create`, `Store.Remove`, or any `File` write method anywhere in its execution path** (spec FR-014); this is verified by SC-006 (byte-for-byte identical graph state before/after any run).

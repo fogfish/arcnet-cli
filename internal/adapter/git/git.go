@@ -103,8 +103,14 @@ func (v VCS) Init(ctx context.Context, dir string) error {
 	return nil
 }
 
+// StageAll stages every change under dir (`git add -A -- .`). The `-- .`
+// pathspec is required, not decorative: since git 2.0 a bare `git add -A`
+// updates the whole worktree regardless of the subprocess's working
+// directory, so without it a graph nested inside a larger repository stages
+// unrelated changes from elsewhere in that repository into its own commit
+// (BUG-002 BUG 1, spec 016 FR-021).
 func (v VCS) StageAll(ctx context.Context, dir string) error {
-	if _, err := run(ctx, dir, "add", "-A"); err != nil {
+	if _, err := run(ctx, dir, "add", "-A", "--", "."); err != nil {
 		return ErrGitStage.With(err)
 	}
 	return nil
@@ -157,8 +163,13 @@ func (v VCS) IsTracked(ctx context.Context, dir, path string) (bool, error) {
 // strings`, so a citekey containing regex metacharacters is never
 // misinterpreted as a pattern) — internal/app/lint's CORE §11.1 "one
 // ingest commit per document" check (research.md D12).
+//
+// The trailing `-- .` pathspec confines the search to commits touching dir's
+// own subtree. Without it `--all` spans the entire enclosing repository, so a
+// graph nested in a larger repository matches ingest commits belonging to
+// other graphs sharing that repository (BUG-002 BUG 4, spec 016 FR-021).
 func (v VCS) CommitsMatching(ctx context.Context, dir, needle string) ([]string, error) {
-	out, err := run(ctx, dir, "log", "--all", "--fixed-strings", "--grep="+needle, "--format=%H")
+	out, err := run(ctx, dir, "log", "--all", "--fixed-strings", "--grep="+needle, "--format=%H", "--", ".")
 	if err != nil {
 		return nil, ErrGitLog.With(err)
 	}
@@ -176,8 +187,14 @@ func (v VCS) CommitsMatching(ctx context.Context, dir, needle string) ([]string,
 // behavior for a root commit is to show nothing at all) while remaining a
 // no-op for any non-root commit, so one invocation is correct either way
 // unlike a plain two-dot `git diff` (research.md D3).
+//
+// `--relative` rebases the output onto dir and drops every path above it.
+// Without it git reports repository-root-relative paths for everything the
+// commit touched, which a caller treating them as graph-relative either
+// fails to resolve or wrongly admits from outside the graph (BUG-002 BUG 3,
+// spec 016 FR-021).
 func (v VCS) ChangedPaths(ctx context.Context, dir, hash string) ([]string, error) {
-	out, err := run(ctx, dir, "diff-tree", "--no-commit-id", "--name-only", "-r", "--root", hash)
+	out, err := run(ctx, dir, "diff-tree", "--no-commit-id", "--name-only", "-r", "--root", "--relative", hash)
 	if err != nil {
 		return nil, ErrGitDiffTree.With(err)
 	}
@@ -258,11 +275,20 @@ func (v VCS) Blame(ctx context.Context, dir, path string) ([]port.BlameLine, err
 var showFileMissingMarkers = []string{"does not exist in", "exists on disk, but not in"}
 
 // ShowFile returns path's raw bytes as they existed at hash (`git show
-// <hash>:<path>`). A path absent from the tree at hash is not an error —
+// <hash>:./<path>`). A path absent from the tree at hash is not an error —
 // it returns (nil, nil), the same shape IsTracked already uses to
 // distinguish an expected "not tracked" exit from a genuine failure.
+//
+// The `./` prefix makes git resolve path relative to dir instead of the
+// repository root. Without it every read in a graph nested inside a larger
+// repository fails with `fatal: path '<dir>/<path>' exists, but not
+// '<path>'`, which revert.go's resolveConflictMarker/reconcileShared
+// propagate — aborting the whole merge-aware reconciliation path (BUG-002
+// BUG 2, spec 016 FR-021). That fatal matches neither showFileMissingMarkers
+// entry, so it surfaces as ErrGitShow rather than being mistaken for
+// absence; the markers below cover only the two genuine absence conditions.
 func (v VCS) ShowFile(ctx context.Context, dir, hash, path string) ([]byte, error) {
-	out, err := run(ctx, dir, "show", hash+":"+path)
+	out, err := run(ctx, dir, "show", hash+":./"+path)
 	if err == nil {
 		return out, nil
 	}

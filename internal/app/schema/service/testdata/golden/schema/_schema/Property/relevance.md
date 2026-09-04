@@ -1,7 +1,7 @@
 ---
 "@id": relevance
 "@type": Property
-merge: firstWriteWin
+merge: append
 role: text
 ---
 # relevance

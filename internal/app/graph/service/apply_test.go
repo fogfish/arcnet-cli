@@ -266,10 +266,13 @@ A test entity.
 // The node was typed "Resource" until ARCNET-CORE v0.11
 // (specs/022-reference-type-folders). It is a "Reference" now for the same
 // reason the predicates it carries are: ref/status/relevance describe an
-// external work the graph has not ingested, and that whole semantic — the
-// firstWriteWin leading prose included — moved to Reference. Under v0.11 a
-// Resource's leading prose keys to "text", which merges by append and so
-// could never produce the conflict this scenario exists to exercise.
+// external work the graph has not ingested, and that whole semantic moved
+// to Reference. Note that coreIndexFixture's firstWriteWin declaration for
+// "relevance" is this test's own, chosen to exercise the flagged-divergence
+// branch of the merge algebra over a text-role key; the SEEDED vocabulary
+// declares "relevance" as append (CorePredicateDefs), as it does every
+// other prose key. The fixture is deliberately not read from the seed, so
+// this scenario keeps exercising that branch regardless.
 const sourceReferencePatch = `---
 "@type": patch
 document: foo-2026-x

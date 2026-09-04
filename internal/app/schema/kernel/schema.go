@@ -90,8 +90,16 @@ var CorePredicateDefs = map[string]core.PredicateDef{
 	// it stays registered because Reference still declares it (§11.6's own
 	// worked example), and it remains the generic non-leading-prose key
 	// every other type's trailing body section renders under.
-	"notes":     {Role: "text", Merge: core.MergeAppend, Description: "Additional prose."},
-	"relevance": {Role: "text", Merge: core.MergeFirstWriteWin, Description: "A one-to-two sentence note on why the reference matters."},
+	"notes": {Role: "text", Merge: core.MergeAppend, Description: "Additional prose."},
+	// "relevance" declares append, not firstWriteWin: it is a Reference's
+	// leading prose (textPredicateFor), and several documents may each have
+	// their own reason for pointing at the same external work. Those reasons
+	// accumulate as separate paragraphs rather than the first one fixing the
+	// slot and every later contribution being reported as a conflict. This
+	// aligns it with every other prose predicate in the seeded vocabulary —
+	// "text", "abstract", "notes", and "description" all declare append —
+	// leaving no type-specific prose key first-fixed.
+	"relevance": {Role: "text", Merge: core.MergeAppend, Description: "A one-to-two sentence note on why the reference matters."},
 	"heading":   {Role: "meta", Merge: core.MergeFirstWriteWin, Description: "A human-readable title for the period, shown in place of the bare @id (period code)."},
 	"period":    {Role: "meta", Merge: core.MergeImmutable, Aligned: "arc:period", Description: "A timeline node's own period code (YYYY or YYYY-MM), duplicated from its @id so a bare 4-digit yearly value always decodes as a YAML string rather than an integer."},
 

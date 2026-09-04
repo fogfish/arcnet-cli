@@ -111,6 +111,18 @@ func runGit(t *testing.T, dir string, args ...string) string {
 // behavior — so Resolve's fail-fast validation never rejects this fixture.
 func initGraph(t *testing.T, dir string) {
 	t.Helper()
+	writeGraphLayout(t, dir)
+
+	runGit(t, dir, "init")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "graph(init): empty knowledge graph")
+}
+
+// writeGraphLayout writes the canonical folder layout and seeded _schema/
+// into dir without touching git — the part initGraph and initNestedGraph
+// (revert_test.go, BUG-002) share.
+func writeGraphLayout(t *testing.T, dir string) {
+	t.Helper()
 	for _, folder := range []string{"Source", "Entity", "Resource", "timeline/yearly", "timeline/monthly", "_schema/Class", "_schema/Property"} {
 		it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, folder), 0o755)))
 	}
@@ -123,10 +135,6 @@ func initGraph(t *testing.T, dir string) {
 		it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Dir(full), 0o755)))
 		it.Then(t).Should(it.Nil(os.WriteFile(full, raw, 0o644)))
 	}
-
-	runGit(t, dir, "init")
-	runGit(t, dir, "add", "-A")
-	runGit(t, dir, "commit", "-m", "graph(init): empty knowledge graph")
 }
 
 // seedNode writes and commits a node file directly, for merge-scenario
@@ -3267,13 +3275,13 @@ func TestApplyKeepsTimelineNodesBucketedAndCreatesNoFlatFolder(t *testing.T) {
 // -----------------------------------------------------------------------
 // specs/023-core-vocabulary-conformance — User Story 1
 //
-// "relevance" is the last type-specific prose predicate still declaring
-// firstWriteWin: its established value is preserved and a divergent
-// contribution is flagged, never absorbed. "abstract" has since joined
-// "text" (Entity's leading prose, BUG-001/FR-030) in declaring append,
-// and "definition" is retired outright — so a reworded Source abstract or
-// Entity body now accumulates as a second paragraph rather than flagging,
-// exactly like any other append-declared prose key (schema.go).
+// No type-specific prose predicate declares firstWriteWin any longer.
+// "abstract" joined "text" (Entity's leading prose, BUG-001/FR-030) in
+// declaring append, "definition" is retired outright, and "relevance"
+// (Reference's leading prose) has since followed them — so a reworded
+// Source abstract, Entity body, or Reference relevance note now
+// accumulates as a second paragraph rather than flagging, exactly like
+// any other append-declared prose key (schema.go).
 //
 // Two facts about arc apply shape every fixture below.
 //
@@ -3522,22 +3530,22 @@ func TestApplyThirdApplyReportsNothingToCommit(t *testing.T) {
 }
 
 // arc apply tls13.patch.md, then pqkex.patch.md
-// Scenario 4 from spec.md US1 (023), amended (BUG-001 round 2, FR-030): a
-// Reference's relevance still behaves exactly like a Source's abstract —
-// the established value survives verbatim and the reworded contribution is
-// flagged for review. An Entity's leading prose no longer does: CORE 0.12
-// retires "definition" outright, and its replacement ("text") is
-// deliberately MergeAppend, not firstWriteWin, to avoid the merge-scoping
-// mechanism a per-type override would require (plan.md F7/Complexity
-// Tracking) — so a reworded Entity contribution is appended alongside the
-// original, never flagged, the same as any other append-declared prose key.
+// Scenario 4 from spec.md US1 (023), amended twice. An Entity's leading
+// prose stopped being first-fixed under CORE 0.12 (BUG-001/FR-030):
+// "definition" is retired outright and its replacement ("text") is
+// deliberately MergeAppend, to avoid the merge-scoping mechanism a
+// per-type override would require (plan.md F7/Complexity Tracking). A
+// Reference's "relevance" now declares append for a reason of its own:
+// several documents may each have their own reason for pointing at the
+// same external work, and those reasons are contributions to accumulate,
+// not a slot the first writer fixes. Both therefore append alongside the
+// established wording, and neither is flagged.
 //
 // research.md D8 / plan.md F4 defects 2-3: these two used to be the
 // leading-prose predicates for Entity and Reference (spec 022 keying), so
-// omitting them would fix prose drift for Source alone and leave the
-// identical defect in Reference (Entity's own protection is now
-// deliberately not preserved).
-func TestApplyRewordedDefinitionAndRelevancePreserveFirstValue(t *testing.T) {
+// this test still pins the key each one lands under — what changed is that
+// both now accumulate rather than preserve-and-flag.
+func TestApplyRewordedDefinitionAndRelevanceAppendAlongsideFirstValue(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
 	chdir(t, dir)
@@ -3551,8 +3559,9 @@ func TestApplyRewordedDefinitionAndRelevancePreserveFirstValue(t *testing.T) {
 		ShouldNot(it.String(entity).Contain(conflictMarkerToken)).
 		Should(it.String(entity).Contain("authenticated and confidential channel between two peers")).
 		Should(it.String(entity).Contain("An authenticated, private transport negotiated")).
+		ShouldNot(it.String(reference).Contain(conflictMarkerToken)).
 		Should(it.String(reference).Contain("normative text every implementation claim")).
-		Should(it.String(reference).Contain(conflictMarkerToken))
+		Should(it.String(reference).Contain("Kept as the authoritative wording"))
 }
 
 // arc apply tls13.patch.md, then pqkex.patch.md with overlapping citations
