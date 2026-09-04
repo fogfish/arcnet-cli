@@ -676,15 +676,14 @@ ref: RFC 8446
 // write-side (core.TextPredicateFor) must agree, or A's paragraph survives
 // the revert under a key revert never looked at.
 //
-// The two halves are deliberately asymmetric. "text" (Resource's leading
-// key) declares append, so both documents' accounts accumulate and revert
-// must strip exactly A's. "relevance" (Reference's leading key) declares
-// firstWriteWin since specs/023-core-vocabulary-conformance FR-013, so two
-// documents contributing DIFFERENT relevance notes is a flagged conflict
-// for the author to resolve rather than an accumulation revert could
-// unpick — docA is therefore its sole contributor, and the assertion is
-// that reverting docA removes its note entirely instead of leaving it
-// behind under a key revert never read.
+// The two halves are deliberately asymmetric in what each document
+// contributes, not in how the keys merge — "text" (Resource's leading key)
+// and "relevance" (Reference's leading key) both declare append. Both
+// documents contribute an account of the Resource, so those accumulate and
+// revert must strip exactly A's; docA is the sole contributor of the
+// Reference's relevance note, so the assertion there is that reverting
+// docA removes the note entirely instead of leaving it behind under a key
+// revert never read.
 func TestRevertReconstructsResourceAndReferenceProseFromTheirOwnKeys(t *testing.T) {
 	dir := t.TempDir()
 	initGraph(t, dir)
@@ -784,13 +783,12 @@ func initNestedGraph(t *testing.T, repo string) (graph, other string) {
 
 // spec.md SC-010 / FR-021: the per-node reconciliation path (FR-012/FR-013)
 // must behave identically for a graph nested inside a larger repository, and
-// the revert's own commit must contain no file from outside the graph. This
-// fixture is deliberately the flagged-conflict one (Reference.relevance is
-// firstWriteWin, so two documents contributing different notes leave a
-// conflict record): unpicking that record is the D8(b) historical walk, the
-// only path that calls ShowFile. Before BUG-002's fix every read there
-// failed with "fatal: path 'graph/...' exists, but not '...'", which
-// resolveConflictMarker propagates — aborting the revert outright.
+// the revert's own commit must contain no file from outside the graph. The
+// fixture shares two nodes across two documents, so unpicking docA's
+// contribution runs the D8(b) historical walk — the only path that calls
+// ShowFile. Before BUG-002's fix every read there failed with "fatal: path
+// 'graph/...' exists, but not '...'", which resolveConflictMarker
+// propagates — aborting the revert outright.
 func TestRevertReconcilesSharedNodeInNestedRepository(t *testing.T) {
 	repo := t.TempDir()
 	graph, other := initNestedGraph(t, repo)

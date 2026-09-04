@@ -168,13 +168,13 @@ const paragraphShingleSize = 3
 // used to hard-code — the earlier claim here, that "notes" declares
 // firstWriteWin, was never true of the seeded vocabulary. "notes" is no
 // longer declared by Entity/Resource at all (BUG-001/FR-033), but stays
-// registered — Reference still uses it. The type-specific prose keys that
-// must NOT accumulate — "relevance" alone, since "abstract" and
-// "description" have since joined "text" in declaring append — express
-// that through their own firstWriteWin declaration rather than through a
-// name check here (specs/023-core-vocabulary-conformance FR-013). "text"
-// (the key Entity's own leading prose now shares with Resource's,
-// BUG-001/FR-030) is likewise append, never first-fixed. A key
+// registered — Reference still uses it. No prose key is first-fixed any
+// more: "abstract", "description" and "relevance" have all joined "text"
+// in declaring append, so every text-role predicate takes the paragraph
+// path. A prose key that must NOT accumulate would express that through
+// its own firstWriteWin declaration rather than through a name check here
+// (specs/023-core-vocabulary-conformance FR-013), which is why removing
+// the last such declaration needed no change to this function. A key
 // present on only one side behaves like a scalar/paragraph merge against
 // "" on the other.
 func mergeTexts(existing, incoming map[string]string, index Index, sourceID string) (map[string]string, []string, []PredicateOutcome) {

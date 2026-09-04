@@ -219,29 +219,25 @@ func TestSeedDeclaresEveryAssignedAlignment(t *testing.T) {
 	}
 }
 
-// TestSeedFirstFixedProsePredicatesDeclareFirstWriteWin is contract C2.2e,
-// and TestSeedCitationPredicateDeclaresUnion is C2.2f — both asserted over
-// the rendered documents, which is what a graph actually receives.
-func TestSeedFirstFixedProsePredicatesDeclareFirstWriteWin(t *testing.T) {
+// TestSeedProsePredicatesDeclareAppend is contract C2.2e, and
+// TestSeedCitationPredicateDeclaresUnion is C2.2f — both asserted over the
+// rendered documents, which is what a graph actually receives.
+func TestSeedProsePredicatesDeclareAppend(t *testing.T) {
 	seed := service.Seed()
 
 	// "definition" is retired under CORE 0.12 (BUG-001/FR-030); Entity's
 	// leading prose is now "text", which is deliberately MergeAppend, not
-	// firstWriteWin (see schema.go's CorePredicateDefs comment). "abstract"
-	// and "description" now declare append for the same reason, leaving
-	// "relevance" as the sole first-fixed prose predicate — the two are
-	// asserted here too, so the seeded documents pin which side of that
-	// split each one lands on.
-	for _, name := range []string{"relevance"} {
+	// firstWriteWin (see schema.go's CorePredicateDefs comment). "abstract",
+	// "description" and "relevance" declare append for the same reason, so
+	// no prose predicate is first-fixed any longer — the seeded documents
+	// are asserted here so that stays true of what a graph receives, not
+	// only of the in-memory table.
+	for _, name := range []string{"relevance", "abstract", "description", "text", "notes"} {
 		raw, ok := seed[kernel.PredicatesDir+"/"+name+".md"]
 		it.Then(t).Should(it.True(ok))
-		it.Then(t).Should(it.String(string(raw)).Contain("merge: firstWriteWin"))
-	}
-
-	for _, name := range []string{"abstract", "description"} {
-		raw, ok := seed[kernel.PredicatesDir+"/"+name+".md"]
-		it.Then(t).Should(it.True(ok))
-		it.Then(t).Should(it.String(string(raw)).Contain("merge: append"))
+		it.Then(t).
+			Should(it.String(string(raw)).Contain("merge: append")).
+			ShouldNot(it.String(string(raw)).Contain("merge: firstWriteWin"))
 	}
 }
 

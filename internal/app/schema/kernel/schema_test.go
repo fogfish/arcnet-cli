@@ -229,12 +229,14 @@ func TestCorePredicateDefsTextRoleSeedsProseMerge(t *testing.T) {
 	// deliberate, accepted regression of the first-fixed protection
 	// "definition" used to carry (plan.md F7/Complexity Tracking).
 	//
-	// "abstract" and "description" have since taken the same route for the
-	// same reason: both declare MergeAppend in schema.go, so a second
-	// contribution accumulates as another paragraph. "relevance" is the
-	// only text-role predicate left whose established value is first-fixed
-	// and whose divergence is flagged for review.
-	firstFixed := map[string]bool{"relevance": true}
+	// "abstract", "description" and "relevance" have since taken the same
+	// route: all three declare MergeAppend in schema.go, so a second
+	// contribution accumulates as another paragraph. No text-role predicate
+	// is first-fixed any longer — every one of them reconciles by append,
+	// and none of them flags a divergence for review. The map is kept
+	// (empty) so re-introducing a first-fixed prose predicate is a one-line
+	// change here rather than a rewrite of the assertion below.
+	firstFixed := map[string]bool{}
 
 	for name, def := range kernel.CorePredicateDefs {
 		if def.Role != "text" {

@@ -807,11 +807,14 @@ func TestMergeOutcomeTrailSortedByName(t *testing.T) {
 // ---------------------------------------------------------------------------
 // specs/023-core-vocabulary-conformance — FR-013 / FR-015 / FR-015a
 //
-// The four type-specific prose predicates the seeded vocabulary moved from
-// append to firstWriteWin. These assert the merge algebra directly, with an
-// explicitly declared index rather than the seeded one, so a later change
-// to CorePredicateDefs cannot make them agree by construction — the seeded
-// declarations themselves are asserted by contract C2.2e's golden test.
+// The four type-specific prose predicates spec 023 originally moved from
+// append to firstWriteWin. The seeded vocabulary has since moved every one
+// of them back (see CorePredicateDefs), so these names now serve purely as
+// fixtures: each test declares its own index rather than reading the seeded
+// one, so what is asserted here is the firstWriteWin ALGEBRA over a
+// text-role key, not any predicate's current seeded declaration. Which op
+// each seeded predicate actually declares is asserted by contract C2.2e's
+// golden test instead.
 //
 // plan.md F2 / research.md D4: the reworded case is the one that matters.
 // mergeText's near-duplicate guard already suppressed a byte-identical
