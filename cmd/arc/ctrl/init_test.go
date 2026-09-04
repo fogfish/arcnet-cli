@@ -148,10 +148,17 @@ func TestInitCurrentDirectoryCreatesLayout(t *testing.T) {
 	it.Then(t).Should(it.True(os.IsNotExist(metaErr)))
 	assertIsDir(t, filepath.Join(dir, ".arc"))
 
-	gitignore, rerr := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	// specs/031 research.md D4: the exclusion rule moved inside .arc/, and
+	// no .gitignore is written at the graph root any more — in either mode.
+	// SC-008's observable outcomes (local state untracked, clean working
+	// tree, one commit) are asserted by the tests below and are unchanged.
+	gitignore, rerr := os.ReadFile(filepath.Join(dir, ".arc", ".gitignore"))
 	it.Then(t).
 		Should(it.Nil(rerr)).
-		Should(it.String(string(gitignore)).Contain(".arc/"))
+		Should(it.Equal("*\n", string(gitignore)))
+
+	_, rootIgnoreErr := os.Stat(filepath.Join(dir, ".gitignore"))
+	it.Then(t).Should(it.True(os.IsNotExist(rootIgnoreErr)))
 }
 
 // arc init
@@ -906,4 +913,453 @@ func TestInitConformantGraphLintsClean(t *testing.T) {
 	it.Then(t).
 		Should(it.Nil(lintErr)).
 		Should(it.String(out).Contain("0 failing"))
+}
+
+// ---------------------------------------------------------------------------
+// specs/031-init-existing-git-repo — graph initialization inside an existing
+// git repository.
+//
+// User Story 1 (refuse to nest a repository inside a repository), User Story 2
+// (add a graph to an existing project) and User Story 3 (preserve the host
+// project's existing files). quickstart.md S2-S8.
+// ---------------------------------------------------------------------------
+
+// newHostRepo creates a temp git repository with one commit — the "existing
+// project" every scenario below starts from. Identity comes from TestMain's
+// GIT_AUTHOR_*/GIT_COMMITTER_* environment, so the fixture needs no git
+// config of its own.
+func newHostRepo(t *testing.T) string {
+	t.Helper()
+	repo := t.TempDir()
+	gitOutput(t, repo, "init", "-q")
+	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(repo, "README.md"), []byte("hi\n"), 0o644)))
+	gitOutput(t, repo, "add", "-A")
+	gitOutput(t, repo, "commit", "-qm", "host: initial")
+	return repo
+}
+
+// initCmdSkipGit builds the init command with --skip-git-init already set.
+// sut invokes RunE directly rather than going through Cobra's argument
+// parsing, so a command-local flag has to be set on the command itself.
+func initCmdSkipGit(t *testing.T) *cobra.Command {
+	t.Helper()
+	cmd := NewInitCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("skip-git-init", "true")))
+	return cmd
+}
+
+// errorMessage asserts the command failed and returns the message, so a
+// message assertion never dereferences a nil error when the guard under
+// test is not yet in place.
+func errorMessage(t *testing.T, out string, err error) string {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("expected a failure, got success: %s", out)
+	}
+	return err.Error()
+}
+
+// commitPaths returns every path the repository's HEAD commit touched,
+// repository-relative.
+func commitPaths(t *testing.T, repo string) []string {
+	t.Helper()
+	out := strings.TrimSpace(gitOutput(t, repo, "show", "--name-only", "--format=", "HEAD"))
+	if out == "" {
+		return nil
+	}
+	return strings.Split(out, "\n")
+}
+
+// arc init <repo-root>
+// spec.md US1 Acceptance Scenario 1 (FR-001, FR-004): initialization at the
+// root of an existing repository is refused.
+func TestInitRefusesAtRepositoryRoot(t *testing.T) {
+	repo := newHostRepo(t)
+
+	out, err := sut(NewInitCmd(), []string{repo})
+
+	it.Then(t).Should(it.Error(out, err))
+	_, statErr := os.Stat(filepath.Join(repo, "Source"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+	it.Then(t).Should(it.Equal("", strings.TrimSpace(gitOutput(t, repo, "status", "--porcelain"))))
+}
+
+// arc init <repo>/<existing-subfolder>
+// spec.md US1 Acceptance Scenario 2 (FR-002, FR-003): initialization in a
+// subfolder of an existing repository is refused just as at its root — the
+// enclosing repository is found by upward search.
+func TestInitRefusesInsideRepositorySubfolder(t *testing.T) {
+	repo := newHostRepo(t)
+	sub := filepath.Join(repo, "sub")
+	it.Then(t).Should(it.Nil(os.MkdirAll(sub, 0o755)))
+
+	out, err := sut(NewInitCmd(), []string{sub})
+
+	it.Then(t).Should(it.Error(out, err))
+	_, statErr := os.Stat(filepath.Join(sub, ".git"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+	entries, rerr := os.ReadDir(sub)
+	it.Then(t).
+		Should(it.Nil(rerr)).
+		Should(it.Equal(0, len(entries)))
+}
+
+// arc init <repo>/<non-existent-subfolder>
+// spec.md US1 Acceptance Scenario 3 (FR-005): the refusal happens before the
+// target directory is created, so nothing is left on disk to clean up.
+func TestInitRefusesWithoutCreatingTargetDirectory(t *testing.T) {
+	repo := newHostRepo(t)
+	target := filepath.Join(repo, "not-yet")
+
+	out, err := sut(NewInitCmd(), []string{target})
+
+	it.Then(t).Should(it.Error(out, err))
+	_, statErr := os.Stat(target)
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+}
+
+// arc init <repo>
+// spec.md US1 Acceptance Scenario 4 (FR-006): the refusal names the enclosing
+// repository root and the flag that overrides it.
+func TestInitRefusalNamesRepositoryAndFlag(t *testing.T) {
+	repo := newHostRepo(t)
+
+	out, err := sut(NewInitCmd(), []string{filepath.Join(repo, "sub")})
+
+	message := errorMessage(t, out, err)
+	it.Then(t).
+		Should(it.String(message).Contain(repo)).
+		Should(it.String(message).Contain("--skip-git-init"))
+}
+
+// arc init <dir>
+// spec.md US1 Acceptance Scenario 5 (FR-007): outside any repository the
+// default path is untouched — a repository is created and the graph committed.
+func TestInitOutsideRepositoryStillCreatesRepository(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "graph")
+
+	out, err := sut(NewInitCmd(), []string{dir})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	assertIsDir(t, filepath.Join(dir, ".git"))
+}
+
+// arc init --skip-git-init <repo-root>
+// spec.md US2 Acceptance Scenario 1 (FR-009): the graph is created in place at
+// a populated repository root, with no repository of its own.
+func TestInitSkipGitCreatesGraphAtRepositoryRoot(t *testing.T) {
+	repo := newHostRepo(t)
+
+	out, err := sut(initCmdSkipGit(t), []string{repo})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	assertIsDir(t, filepath.Join(repo, "Source"))
+	assertIsDir(t, filepath.Join(repo, ".arc"))
+	it.Then(t).Should(it.Equal("hi\n", readGraphFile(t, filepath.Join(repo, "README.md"))))
+}
+
+// arc init --skip-git-init <repo>/notes
+// spec.md US2 Acceptance Scenario 2 (FR-013): exactly one new commit lands in
+// the host repository, and it contains only what initialization itself wrote.
+func TestInitSkipGitAddsExactlyOneScopedCommit(t *testing.T) {
+	repo := newHostRepo(t)
+	before := len(strings.Split(strings.TrimSpace(gitOutput(t, repo, "log", "--oneline")), "\n"))
+
+	_, err := sut(initCmdSkipGit(t), []string{filepath.Join(repo, "notes")})
+	it.Then(t).Should(it.Nil(err))
+
+	after := len(strings.Split(strings.TrimSpace(gitOutput(t, repo, "log", "--oneline")), "\n"))
+	it.Then(t).Should(it.Equal(before+1, after))
+
+	paths := commitPaths(t, repo)
+	it.Then(t).Should(it.True(len(paths) > 0))
+	for _, path := range paths {
+		it.Then(t).Should(it.String(path).HavePrefix("notes/"))
+	}
+}
+
+// arc init --skip-git-init <repo>/notes
+// spec.md US2 Acceptance Scenario 3 (FR-014): unrelated modified, staged and
+// untracked files the user had in flight are all exactly as they were — the
+// case a plain `git commit -m` would sweep in.
+func TestInitSkipGitLeavesUnrelatedChangesUntouched(t *testing.T) {
+	repo := newHostRepo(t)
+	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(repo, "README.md"), []byte("hi\ndirty\n"), 0o644)))
+	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(repo, "staged.txt"), []byte("staged\n"), 0o644)))
+	gitOutput(t, repo, "add", "staged.txt")
+	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(repo, "loose.txt"), []byte("loose\n"), 0o644)))
+
+	_, err := sut(initCmdSkipGit(t), []string{filepath.Join(repo, "notes")})
+	it.Then(t).Should(it.Nil(err))
+
+	status := gitOutput(t, repo, "status", "--porcelain")
+	it.Then(t).
+		Should(it.String(status).Contain(" M README.md")).
+		Should(it.String(status).Contain("A  staged.txt")).
+		Should(it.String(status).Contain("?? loose.txt"))
+
+	for _, path := range commitPaths(t, repo) {
+		it.Then(t).
+			Should(it.True(path != "README.md")).
+			Should(it.True(path != "staged.txt")).
+			Should(it.True(path != "loose.txt"))
+	}
+}
+
+// arc init --skip-git-init <repo>/a/b/notes
+// spec.md US2 Acceptance Scenario 4 (FR-002): a nested, not-yet-existing
+// subfolder is initialized into the same enclosing repository.
+func TestInitSkipGitIntoNestedSubfolder(t *testing.T) {
+	repo := newHostRepo(t)
+	target := filepath.Join(repo, "a", "b", "notes")
+
+	out, err := sut(initCmdSkipGit(t), []string{target})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	assertIsDir(t, filepath.Join(target, "Source"))
+	_, statErr := os.Stat(filepath.Join(target, ".git"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+	for _, path := range commitPaths(t, repo) {
+		it.Then(t).Should(it.String(path).HavePrefix("a/b/notes/"))
+	}
+}
+
+// arc init --skip-git-init <already-a-graph>
+// spec.md US2 Acceptance Scenario 5 (FR-011): re-initialization is refused in
+// this mode too, with today's message.
+func TestInitSkipGitRefusesAlreadyInitialized(t *testing.T) {
+	repo := newHostRepo(t)
+	target := filepath.Join(repo, "notes")
+	_, err := sut(initCmdSkipGit(t), []string{target})
+	it.Then(t).Should(it.Nil(err))
+
+	before := gitOutput(t, repo, "log", "--oneline")
+
+	out, err := sut(initCmdSkipGit(t), []string{target})
+
+	it.Then(t).Should(it.Error(out, err).Contain("already"))
+	it.Then(t).Should(it.Equal(before, gitOutput(t, repo, "log", "--oneline")))
+}
+
+// arc init --skip-git-init <dir-outside-any-repository>
+// spec.md US2 Acceptance Scenario 6 (FR-012): the flag has nothing to attach
+// the graph to, and there is no silent fallback to creating a repository.
+func TestInitSkipGitWithoutEnclosingRepository(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "graph")
+
+	out, err := sut(initCmdSkipGit(t), []string{target})
+
+	it.Then(t).Should(it.Error(out, err))
+	_, statErr := os.Stat(target)
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+}
+
+// arc init --json [--skip-git-init] <dir>
+// spec.md US2 (FR-027, FR-028; quickstart S7): `repository` is present and
+// non-empty in both modes, equals `path` exactly when the graph root is the
+// repository root, and the three pre-existing fields are unchanged.
+func TestInitJSONReportsRepositoryInBothModes(t *testing.T) {
+	bios.JSON = true
+	t.Cleanup(func() { bios.JSON = false })
+
+	var payload struct {
+		Path           string   `json:"path"`
+		Commit         string   `json:"commit"`
+		FoldersCreated []string `json:"foldersCreated"`
+		Repository     string   `json:"repository"`
+	}
+
+	standalone := filepath.Join(t.TempDir(), "graph")
+	out, err := sut(NewInitCmd(), []string{standalone})
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).Should(it.Nil(json.Unmarshal([]byte(out), &payload)))
+	it.Then(t).
+		Should(it.Equal(standalone, payload.Path)).
+		Should(it.Equal(standalone, payload.Repository)).
+		ShouldNot(it.Equal("", payload.Commit)).
+		Should(it.Seq(payload.FoldersCreated).Contain("Source", "Entity"))
+
+	repo := newHostRepo(t)
+	nested := filepath.Join(repo, "notes")
+	out, err = sut(initCmdSkipGit(t), []string{nested})
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).Should(it.Nil(json.Unmarshal([]byte(out), &payload)))
+	it.Then(t).
+		Should(it.Equal(nested, payload.Path)).
+		Should(it.Equal(repo, payload.Repository)).
+		ShouldNot(it.Equal(payload.Path, payload.Repository))
+}
+
+// arc init --skip-git-init <repo>/notes
+// spec.md US2 (FR-026): the human line names the existing repository the
+// graph was added to, and stays a single line (BUG-001).
+func TestInitSkipGitHumanLineNamesRepository(t *testing.T) {
+	repo := newHostRepo(t)
+
+	stdout, _, err := sutCaptureStderr(t, initCmdSkipGit(t), []string{filepath.Join(repo, "notes")})
+
+	it.Then(t).ShouldNot(it.Error(stdout, err))
+	it.Then(t).
+		Should(it.Equal(1, strings.Count(stdout, "\n"))).
+		Should(it.String(stdout).Contain("existing repository")).
+		Should(it.String(stdout).Contain(repo))
+
+	// The same must hold when the graph root IS the repository root, where
+	// `repository` equals `path` and a comparison alone could not tell the
+	// two modes apart.
+	atRoot := newHostRepo(t)
+	stdout, _, err = sutCaptureStderr(t, initCmdSkipGit(t), []string{atRoot})
+
+	it.Then(t).ShouldNot(it.Error(stdout, err))
+	it.Then(t).
+		Should(it.Equal(1, strings.Count(stdout, "\n"))).
+		Should(it.String(stdout).Contain("existing repository"))
+
+	// ...and must NOT appear for a standalone init, which created the
+	// repository it reports.
+	standalone := filepath.Join(t.TempDir(), "graph")
+	stdout, _, err = sutCaptureStderr(t, NewInitCmd(), []string{standalone})
+
+	it.Then(t).ShouldNot(it.Error(stdout, err))
+	it.Then(t).ShouldNot(it.String(stdout).Contain("existing repository"))
+}
+
+// arc init --skip-git-init <repo>/notes
+// spec.md US3 Acceptance Scenario 1 (FR-017): the host project's own ignore
+// file is byte-for-byte unchanged and absent from the commit.
+func TestInitSkipGitNeverTouchesHostIgnoreFile(t *testing.T) {
+	repo := newHostRepo(t)
+	hostIgnore := filepath.Join(repo, ".gitignore")
+	it.Then(t).Should(it.Nil(os.WriteFile(hostIgnore, []byte("node_modules/\n"), 0o644)))
+	gitOutput(t, repo, "add", "-A")
+	gitOutput(t, repo, "commit", "-qm", "host: ignore rules")
+
+	_, err := sut(initCmdSkipGit(t), []string{filepath.Join(repo, "notes")})
+	it.Then(t).Should(it.Nil(err))
+
+	it.Then(t).Should(it.Equal("node_modules/\n", readGraphFile(t, hostIgnore)))
+	for _, path := range commitPaths(t, repo) {
+		it.Then(t).Should(it.True(path != ".gitignore"))
+	}
+	_, statErr := os.Stat(filepath.Join(repo, "notes", ".gitignore"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+}
+
+// arc init --skip-git-init <repo>/notes
+// spec.md US3 Acceptance Scenario 2 (FR-016): the graph's local state is
+// excluded from version control by .arc/.gitignore alone.
+func TestInitSkipGitExcludesLocalStateViaArcIgnore(t *testing.T) {
+	repo := newHostRepo(t)
+
+	_, err := sut(initCmdSkipGit(t), []string{filepath.Join(repo, "notes")})
+	it.Then(t).Should(it.Nil(err))
+
+	it.Then(t).Should(it.Equal("*\n", readGraphFile(t, filepath.Join(repo, "notes", ".arc", ".gitignore"))))
+	it.Then(t).
+		ShouldNot(it.String(gitOutput(t, repo, "ls-files")).Contain("notes/.arc")).
+		Should(it.Equal("", strings.TrimSpace(gitOutput(t, repo, "status", "--porcelain"))))
+}
+
+// arc init --skip-git-init <repo>
+// spec.md US3 Acceptance Scenario 3 (FR-015): a file colliding with a path the
+// layout would write is refused before anything is written.
+func TestInitSkipGitRefusesFileCollision(t *testing.T) {
+	repo := newHostRepo(t)
+	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(repo, "_schema", "Class"), 0o755)))
+	collide := filepath.Join(repo, "_schema", "Class", "Entity.md")
+	it.Then(t).Should(it.Nil(os.WriteFile(collide, []byte("mine\n"), 0o644)))
+
+	out, err := sut(initCmdSkipGit(t), []string{repo})
+
+	it.Then(t).Should(it.Error(out, err))
+	it.Then(t).Should(it.Equal("mine\n", readGraphFile(t, collide)))
+	_, statErr := os.Stat(filepath.Join(repo, "Source"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+}
+
+// arc init --skip-git-init <repo>
+// spec.md US3 Acceptance Scenario 4 (FR-015, FR-031): an existing canonical
+// folder is refused whether or not it is empty, and the message names the
+// conflicting path and the subfolder recovery.
+func TestInitSkipGitRefusesFolderCollision(t *testing.T) {
+	for _, populated := range []bool{true, false} {
+		repo := newHostRepo(t)
+		source := filepath.Join(repo, "Source")
+		it.Then(t).Should(it.Nil(os.MkdirAll(source, 0o755)))
+		if populated {
+			it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(source, "mine.txt"), []byte("mine\n"), 0o644)))
+		}
+
+		out, err := sut(initCmdSkipGit(t), []string{repo})
+
+		message := errorMessage(t, out, err)
+		it.Then(t).
+			Should(it.String(message).Contain("Source")).
+			Should(it.String(message).Contain("subfolder"))
+		if populated {
+			it.Then(t).Should(it.Equal("mine\n", readGraphFile(t, filepath.Join(source, "mine.txt"))))
+		}
+		_, statErr := os.Stat(filepath.Join(repo, "Entity"))
+		it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+	}
+}
+
+// arc init --skip-git-init <repo>/graph
+// spec.md US3 Acceptance Scenario 5 (FR-031): the subfolder the collision
+// message names is a working recovery.
+func TestInitSkipGitSubfolderRecoveryAfterCollision(t *testing.T) {
+	repo := newHostRepo(t)
+	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(repo, "Source"), 0o755)))
+
+	_, err := sut(initCmdSkipGit(t), []string{repo})
+	it.Then(t).ShouldNot(it.Nil(err))
+
+	out, err := sut(initCmdSkipGit(t), []string{filepath.Join(repo, "graph")})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	assertIsDir(t, filepath.Join(repo, "graph", "Source"))
+}
+
+// arc init --skip-git-init <repo>/private/graph
+// spec.md US3 (FR-020, quickstart S8): a target the host project's own ignore
+// rules exclude is refused upfront, not with a late "nothing to commit".
+func TestInitSkipGitRefusesIgnoredTarget(t *testing.T) {
+	repo := newHostRepo(t)
+	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(repo, ".gitignore"), []byte("private/\n"), 0o644)))
+	gitOutput(t, repo, "add", "-A")
+	gitOutput(t, repo, "commit", "-qm", "host: ignore private")
+
+	out, err := sut(initCmdSkipGit(t), []string{filepath.Join(repo, "private", "graph")})
+
+	it.Then(t).Should(it.String(errorMessage(t, out, err)).Contain("ignore"))
+	_, statErr := os.Stat(filepath.Join(repo, "private"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+}
+
+// arc init --skip-git-init <repo>/notes, with staging forced to fail
+// spec.md US3 Acceptance Scenario 6 (FR-018, FR-019): a failure after the
+// layout is written removes exactly what this run wrote and leaves every
+// pre-existing file — and the pre-existing directory itself — intact.
+func TestInitSkipGitRollbackLeavesPreExistingFilesIntact(t *testing.T) {
+	repo := newHostRepo(t)
+	target := filepath.Join(repo, "notes")
+	it.Then(t).Should(it.Nil(os.MkdirAll(target, 0o755)))
+	keep := filepath.Join(target, "keep.txt")
+	it.Then(t).Should(it.Nil(os.WriteFile(keep, []byte("keep\n"), 0o644)))
+
+	// an index lock makes `git add` fail after the layout is on disk —
+	// the only way to reach rollback from outside the process.
+	lock := filepath.Join(repo, ".git", "index.lock")
+	it.Then(t).Should(it.Nil(os.WriteFile(lock, nil, 0o644)))
+	t.Cleanup(func() { os.Remove(lock) })
+
+	out, err := sut(initCmdSkipGit(t), []string{target})
+
+	it.Then(t).Should(it.Error(out, err))
+	it.Then(t).Should(it.Equal("keep\n", readGraphFile(t, keep)))
+	assertIsDir(t, target)
+	for _, path := range []string{"Source/.gitkeep", "_schema/Class/Entity.md", ".arc/.gitignore"} {
+		_, statErr := os.Stat(filepath.Join(target, filepath.FromSlash(path)))
+		it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+	}
 }

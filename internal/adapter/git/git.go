@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -42,6 +43,9 @@ const (
 	ErrGitRevert   = faults.Type("git revert failed")
 	ErrGitBlame    = faults.Type("git blame failed")
 	ErrGitShow     = faults.Type("git show failed")
+
+	ErrGitRevParse    = faults.Type("git rev-parse failed")
+	ErrGitCheckIgnore = faults.Type("git check-ignore failed")
 )
 
 // execError captures combined stdout+stderr from a failed git subprocess
@@ -114,6 +118,131 @@ func (v VCS) StageAll(ctx context.Context, dir string) error {
 		return ErrGitStage.With(err)
 	}
 	return nil
+}
+
+// RepoRoot returns the root of the innermost git repository enclosing dir,
+// or ("", nil) when dir is inside no repository at all — an expected
+// outcome, not an error, following the same convention IsTracked and
+// ShowFile already set (contracts/vcs-adapter-contract.md A1). dir MUST
+// exist: `git -C` fails otherwise, so resolving a not-yet-created target to
+// its nearest existing ancestor is the caller's job (research.md D2).
+//
+// Because git performs the upward search itself, "innermost wins" is git's
+// own rule and submodules, linked worktrees and .git-as-a-file all resolve
+// for free.
+//
+// The root is reported in dir's own path spelling, not git's. `rev-parse
+// --show-toplevel` reports a fully symlink-resolved path — /private/var/…
+// where the caller said /var/… on macOS — which is a different string for
+// the same directory and therefore neither comparable to the caller's dir
+// nor safe to join a graph-relative path onto. `--show-cdup` answers the
+// same question as a relative walk upward, which joined back onto dir stays
+// in the caller's spelling. One invocation yields both; --show-toplevel is
+// still read, because it is what distinguishes being inside a work tree.
+func (v VCS) RepoRoot(ctx context.Context, dir string) (string, error) {
+	out, err := run(ctx, dir, "rev-parse", "--show-toplevel", "--show-cdup")
+	if err != nil {
+		var eerr execError
+		if errors.As(err, &eerr) && strings.Contains(eerr.output, "not a git repository") {
+			return "", nil
+		}
+		return "", ErrGitRevParse.With(err)
+	}
+
+	lines := strings.Split(string(out), "\n")
+	if len(lines) < 2 || strings.TrimSpace(lines[0]) == "" {
+		return "", nil
+	}
+
+	cdup := strings.TrimSpace(lines[1])
+	if cdup == "" {
+		return dir, nil
+	}
+	return filepath.Clean(filepath.Join(dir, cdup)), nil
+}
+
+// IsIgnored reports whether path — relative to dir — is excluded by the
+// repository's ignore rules (`git check-ignore -q`). Exit 1 is
+// check-ignore's documented "no path matched" status and is an expected
+// answer, not a failure; only exit 2 or above is a genuine error
+// (contracts/vcs-adapter-contract.md A2). The exit-code discrimination is
+// the same one IsTracked performs.
+//
+// This answers one question only: does the HOST project exclude the graph
+// directory (FR-020). It must not be repurposed to verify .arc/.gitignore's
+// own exclusion — a `*` rule inside .arc/ ignores that directory's
+// contents, not its entry, so check-ignore on .arc itself correctly reports
+// "not ignored" while nothing inside it is ever tracked (research.md D4).
+func (v VCS) IsIgnored(ctx context.Context, dir, path string) (bool, error) {
+	_, err := run(ctx, dir, "check-ignore", "-q", path)
+	if err == nil {
+		return true, nil
+	}
+
+	var eerr execError
+	if errors.As(err, &eerr) {
+		var exitErr *exec.ExitError
+		if errors.As(eerr.err, &exitErr) && exitErr.ExitCode() == 1 {
+			return false, nil
+		}
+	}
+
+	return false, ErrGitCheckIgnore.With(err)
+}
+
+// StagePaths stages exactly the listed paths, resolved relative to dir, and
+// nothing else (`git add -- <path>…`). Distinct from StageAll, whose
+// `-A -- .` is correctly scoped for a graph in a subfolder but means "every
+// change in the project" when the graph root and the repository root
+// coincide — which is precisely the case arc init --skip-git-init creates
+// (contracts/vcs-adapter-contract.md A3).
+//
+// An empty paths slice returns without invoking git at all: a bare
+// `git add --` would otherwise degrade to staging everything, the exact
+// failure this method exists to prevent.
+func (v VCS) StagePaths(ctx context.Context, dir string, paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+
+	args := append([]string{"add", "--"}, paths...)
+	if _, err := run(ctx, dir, args...); err != nil {
+		return ErrGitStage.With(err)
+	}
+	return nil
+}
+
+// CommitPaths commits exactly the listed paths, resolved relative to dir,
+// ignoring whatever else the index holds (`git commit -m <msg> -- <path>…`),
+// then resolves the new commit's short hash exactly as Commit does.
+//
+// The trailing pathspec is load-bearing, not decorative: a plain
+// `git commit -m` commits the WHOLE index, including files the user staged
+// themselves before running arc init (research.md D3, FR-014).
+//
+// This is a new method rather than a signature change to Commit. The one
+// concrete VCS type satisfies both internal/app/ctrl/port.VCS and
+// internal/app/graph/port.VCS structurally (ADR 001), and graph's port
+// declares Commit without a pathspec — one Go method cannot satisfy both
+// shapes, and internal/app/graph must stay unmodified (research.md D7).
+func (v VCS) CommitPaths(ctx context.Context, dir, message string, paths []string) (string, error) {
+	const label = "Committing empty graph"
+	start := time.Now()
+
+	args := append([]string{"commit", "-m", message, "--"}, paths...)
+	if _, err := run(ctx, dir, args...); err != nil {
+		v.Reporter.Error(label, err)
+		return "", ErrGitCommit.With(err)
+	}
+
+	out, err := run(ctx, dir, "rev-parse", "--short", "HEAD")
+	if err != nil {
+		v.Reporter.Error(label, err)
+		return "", ErrGitCommit.With(err)
+	}
+
+	v.Reporter.Done(label, time.Since(start))
+	return strings.TrimSpace(string(out)), nil
 }
 
 func (v VCS) Commit(ctx context.Context, dir, message string) (string, error) {

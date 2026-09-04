@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-04
+
+/speckit-specify `arc init` fails to create an empty graph in the root of existing git repository. Also it creates a graph in the subfolder of existing git repository but it initializes a repository within the repository. It does not suites use-cases where you'd like to add a graph into existing project. The `arc init` MUST fail if it is executing in the context of git project also blocking the possibility to create a repository within repository. However, `arc init` should support the advanced usage flag `--skip-git-init`. It allows to create a graph within existing repository. All commands that requires and uses git must use existing "parent" repo fo all commands.  
+
+/speckit-plan Use existing features, services and infrastructure to implement requirements. Limit nesesary changes at `cmd` and adapters level only. If existing service requires modification ask.
+
+
 ## 2026-08-28
 
 /speckit-specify Add two new tools to MCP server:
