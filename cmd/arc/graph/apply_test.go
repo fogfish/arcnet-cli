@@ -111,6 +111,18 @@ func runGit(t *testing.T, dir string, args ...string) string {
 // behavior — so Resolve's fail-fast validation never rejects this fixture.
 func initGraph(t *testing.T, dir string) {
 	t.Helper()
+	writeGraphLayout(t, dir)
+
+	runGit(t, dir, "init")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "graph(init): empty knowledge graph")
+}
+
+// writeGraphLayout writes the canonical folder layout and seeded _schema/
+// into dir without touching git — the part initGraph and initNestedGraph
+// (revert_test.go, BUG-002) share.
+func writeGraphLayout(t *testing.T, dir string) {
+	t.Helper()
 	for _, folder := range []string{"Source", "Entity", "Resource", "timeline/yearly", "timeline/monthly", "_schema/Class", "_schema/Property"} {
 		it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, folder), 0o755)))
 	}
@@ -123,10 +135,6 @@ func initGraph(t *testing.T, dir string) {
 		it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Dir(full), 0o755)))
 		it.Then(t).Should(it.Nil(os.WriteFile(full, raw, 0o644)))
 	}
-
-	runGit(t, dir, "init")
-	runGit(t, dir, "add", "-A")
-	runGit(t, dir, "commit", "-m", "graph(init): empty knowledge graph")
 }
 
 // seedNode writes and commits a node file directly, for merge-scenario

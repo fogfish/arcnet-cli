@@ -11,6 +11,7 @@ package git_test
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -356,4 +357,158 @@ func writeFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644)
 	it.Then(t).Should(it.Nil(err))
+}
+
+// --- BUG-002: nested-repository scoping ------------------------------------
+//
+// Every case above mounts the graph at the repository root, where a graph-
+// scoped command and a repo-scoped one are indistinguishable. These cases
+// mount the graph at a *subdirectory* of a repository — the topology
+// BUG-002's four defects only appear in (spec.md FR-021, T048).
+
+// nestedGraph initializes a repository at a temporary root and returns it
+// together with two sibling subdirectories: graph (the mounted graph) and
+// other (a second directory that no graph-scoped command may ever reach).
+func nestedGraph(t *testing.T) (repo, graph, other string) {
+	t.Helper()
+	setGitIdentity(t)
+
+	repo = t.TempDir()
+	it.Then(t).Should(it.Nil(git.New(bios.NewReporter(true, true)).Init(context.Background(), repo)))
+
+	graph = filepath.Join(repo, "graph")
+	other = filepath.Join(repo, "other")
+	for _, dir := range []string{graph, other} {
+		it.Then(t).Should(it.Nil(os.MkdirAll(dir, 0o755)))
+	}
+	return repo, graph, other
+}
+
+// runGit shells out directly, so an assertion never depends on the adapter
+// method it is checking.
+func runGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	it.Then(t).Should(it.Nil(err))
+	return strings.TrimSpace(string(out))
+}
+
+// T044/BUG 1: `git add -A` with no pathspec stages the whole tree.
+func TestVCSStageAllNestedStagesOnlyTheGraph(t *testing.T) {
+	repo, graph, other := nestedGraph(t)
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	writeFile(t, graph, "seed.md", "seed")
+	writeFile(t, other, "seed.md", "seed")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, repo)))
+	_, err := vcs.Commit(ctx, repo, "seed")
+	it.Then(t).Should(it.Nil(err))
+
+	// Both directories are now dirty; only the graph's own change may reach
+	// the graph's commit.
+	writeFile(t, graph, "f.md", "graph change")
+	writeFile(t, other, "f.md", "unrelated change")
+
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, graph)))
+	hash, err := vcs.Commit(ctx, graph, "graph(ingest): scoped")
+	it.Then(t).Should(it.Nil(err))
+
+	changed := runGit(t, repo, "show", "--pretty=", "--name-only", hash)
+	it.Then(t).
+		Should(it.True(strings.Contains(changed, "graph/f.md"))).
+		Should(it.True(!strings.Contains(changed, "other/f.md")))
+}
+
+// T045/BUG 3: diff-tree emits repository-root-relative paths spanning every
+// directory the commit touched.
+func TestVCSChangedPathsNestedIsGraphRelative(t *testing.T) {
+	repo, graph, other := nestedGraph(t)
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	writeFile(t, graph, "f.md", "a")
+	writeFile(t, other, "g.md", "b")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, repo)))
+	hash, err := vcs.Commit(ctx, repo, "spans both directories")
+	it.Then(t).Should(it.Nil(err))
+
+	paths, err := vcs.ChangedPaths(ctx, graph, hash)
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.Seq(paths).Equal("f.md"))
+}
+
+// T046/BUG 2: `git show <hash>:<path>` resolves path against the repository
+// root, so every historical read in a nested graph fails.
+func TestVCSShowFileNestedReturnsHistoricalContent(t *testing.T) {
+	repo, graph, _ := nestedGraph(t)
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	writeFile(t, graph, "f.md", "v1")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, repo)))
+	hash, err := vcs.Commit(ctx, repo, "first")
+	it.Then(t).Should(it.Nil(err))
+
+	writeFile(t, graph, "f.md", "v2")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, repo)))
+	_, err = vcs.Commit(ctx, repo, "second")
+	it.Then(t).Should(it.Nil(err))
+
+	raw, err := vcs.ShowFile(ctx, graph, hash, "f.md")
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.Equal("v1", string(raw)))
+}
+
+// T049: both genuine absence conditions must still read as (nil, nil) in a
+// nested graph — these are the two cases showFileMissingMarkers covers.
+func TestVCSShowFileNestedAbsentPathsAreNotErrors(t *testing.T) {
+	repo, graph, _ := nestedGraph(t)
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	writeFile(t, graph, "f.md", "v1")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, repo)))
+	hash, err := vcs.Commit(ctx, repo, "first")
+	it.Then(t).Should(it.Nil(err))
+
+	// absent at the commit and absent on disk
+	raw, err := vcs.ShowFile(ctx, graph, hash, "nope.md")
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.True(raw == nil))
+
+	// present on disk, absent at the commit
+	writeFile(t, graph, "later.md", "x")
+	raw, err = vcs.ShowFile(ctx, graph, hash, "later.md")
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.True(raw == nil))
+}
+
+// T047/BUG 4: `git log --all --grep` with no pathspec searches the whole
+// repository, matching another graph's ingest commits.
+func TestVCSCommitsMatchingNestedIgnoresSiblingCommits(t *testing.T) {
+	repo, graph, other := nestedGraph(t)
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	writeFile(t, other, "s.md", "x")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, repo)))
+	_, err := vcs.Commit(ctx, repo, "graph(ingest): other graph\n\nSource-Id: shared-citekey")
+	it.Then(t).Should(it.Nil(err))
+
+	writeFile(t, graph, "g.md", "y")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, repo)))
+	_, err = vcs.Commit(ctx, repo, "graph(ingest): this graph\n\nSource-Id: my-citekey")
+	it.Then(t).Should(it.Nil(err))
+
+	hashes, err := vcs.CommitsMatching(ctx, graph, "Source-Id: shared-citekey")
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.Equal(0, len(hashes)))
 }

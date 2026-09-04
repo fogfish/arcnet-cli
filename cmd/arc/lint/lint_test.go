@@ -77,6 +77,18 @@ func runGit(t *testing.T, dir string, args ...string) string {
 // validation never rejects this fixture.
 func initGraph(t *testing.T, dir string) {
 	t.Helper()
+	writeGraphLayout(t, dir)
+
+	runGit(t, dir, "init")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "graph(init): empty knowledge graph")
+}
+
+// writeGraphLayout writes the canonical layout and seeded _schema/ without
+// touching git — shared by initGraph and the nested-repository fixture
+// (BUG-002 T051).
+func writeGraphLayout(t *testing.T, dir string) {
+	t.Helper()
 	for _, folder := range []string{"Source", "Entity", "Resource", "timeline/yearly", "timeline/monthly", "_schema/Class", "_schema/Property"} {
 		it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, folder), 0o755)))
 	}
@@ -87,10 +99,6 @@ func initGraph(t *testing.T, dir string) {
 	for path, raw := range appschema.Seed() {
 		writeNode(t, dir, path, string(raw))
 	}
-
-	runGit(t, dir, "init")
-	runGit(t, dir, "add", "-A")
-	runGit(t, dir, "commit", "-m", "graph(init): empty knowledge graph")
 }
 
 func writeNode(t *testing.T, dir, relPath, content string) {
@@ -1825,4 +1833,42 @@ func TestLintSowaCategoryModifiesNoFile(t *testing.T) {
 
 	after := runGit(t, dir, "status", "--porcelain")
 	it.Then(t).Should(it.Equal(before, after))
+}
+
+// --- BUG-002 T051: FR-010 against a graph nested in a larger repository ----
+
+// spec.md 016 FR-021 / 004 FR-010: CommitsMatching must count only ingest
+// commits touching this graph. Before BUG-002's fix `git log --all --grep`
+// carried no pathspec, so a sibling graph sharing the repository that
+// ingested the same citekey was counted too, and this graph's own source
+// node was wrongly reported as having 2 matching commits.
+func TestLintIngestCommitIgnoresSiblingGraphInSameRepository(t *testing.T) {
+	repo := t.TempDir()
+	graph := filepath.Join(repo, "graph")
+	other := filepath.Join(repo, "other")
+
+	writeGraphLayout(t, graph)
+	writeGraphLayout(t, other)
+	runGit(t, repo, "init")
+	runGit(t, repo, "add", "-A")
+	runGit(t, repo, "commit", "-m", "graph(init): empty knowledge graph")
+
+	// the sibling graph ingests the same citekey, in the same repository
+	writeNode(t, other, "Source/foo-2026-x.md", conformantSource)
+	runGit(t, repo, "add", "-A")
+	runGit(t, repo, "commit", "-m", "graph(ingest): foo-2026-x — sibling graph\n\nSource-Id: foo-2026-x\n")
+
+	// this graph ingests it exactly once
+	writeNode(t, graph, "Source/foo-2026-x.md", conformantSource)
+	writeNode(t, graph, "Entity/Widget.md", conformantEntity)
+	runGit(t, repo, "add", "-A")
+	runGit(t, repo, "commit", "-m", "graph(ingest): foo-2026-x — this graph\n\nSource-Id: foo-2026-x\n")
+
+	chdir(t, graph)
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.String(out).Contain("2 nodes checked, 2 passing, 0 failing")).
+		Should(it.True(!strings.Contains(out, "matching commits found")))
 }

@@ -16,6 +16,8 @@
 
 **Bugfix**: 2026-07-12 — BUG-001 A second `arc revert` of an identifier that was previously reverted and then re-applied wrongly refused with "more than one ingest commit found," treating the expected result of a retract-then-reapply cycle as a data-integrity anomaly. Added FR-020, a corresponding Edge Case, SC-009, and clarified the "Re-applying a retracted patch" Out of Scope note and the one-ingest-commit-per-identifier Assumption.
 
+**Bugfix**: 2026-09-03 — BUG-002 Every history operation was silently scoped to the enclosing version-control repository rather than to the graph directory, so a graph nested inside a larger repository matched foreign ingest commits, listed changed files belonging to other graphs, staged unrelated changes into its own commit, and — most disruptively — failed every historical file read outright, making the merge-aware reconciliation path (FR-012/FR-013) unusable for such a graph. Added FR-021, a corresponding Edge Case, SC-010, and a new Assumption correcting the never-stated graph-root-equals-repository-root precondition.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Undo the patch just applied (Priority: P1)
@@ -76,6 +78,7 @@ A user wants to retract a patch that introduced a node later touched by one or m
 - What happens when reverting is interrupted partway (process killed, disk full, permission error)? The graph and its git history must be left exactly as they were before the attempt — no partially removed nodes, no partially stripped text, no dangling commit.
 - What happens when every node the patch touched turns out to be exclusively owned by it (no shared nodes at all)? The revert behaves the same as reverting the most recent commit — a clean, whole removal of everything the patch contributed.
 - What happens when the given identifier matches more than one ingest commit, because the patch was reverted once and then re-applied? The tool must treat the most recent matching ingest commit as the one to revert. This is not a corruption of the "exactly one ingest commit per document" invariant — `arc apply`'s own idempotency check guarantees at most one ingest commit's contribution can ever be active (tracked) at a time, so every older matching commit must, by construction, already have been fully retracted before the newer one was created. *(Bugfix BUG-001, 2026-07-12)*
+- What happens when the graph directory is not itself the root of its version-control repository — a graph kept inside an existing repository, or one of several graphs sharing one? Every history operation must still see exactly the graph's own directory and its own history: an ingest-commit lookup must not match a commit belonging to another graph, a commit's changed-file list must not include files from outside the graph, reading a file's earlier content must resolve against the graph directory rather than the repository root, and the revert's own commit must not sweep in unrelated changes from elsewhere in the repository. *(Bugfix BUG-002, 2026-09-03)*
 
 ## Requirements *(mandatory)*
 
@@ -101,6 +104,7 @@ A user wants to retract a patch that introduced a node later touched by one or m
 - **FR-018**: The tool MUST report, as part of its output, which of the two reconciliation approaches (whole-commit undo, or per-node reconciliation) was used for the revert, so the user can tell which case they were in.
 - **FR-019**: The tool MUST offer an opt-in, more detailed report that, for each node the revert touched, identifies the node and states how it was reconciled (removed, content stripped, or left untouched because another patch's contribution required it); this detail MUST NOT appear in the tool's default output.
 - **FR-020**: When more than one commit in the graph's history carries the given identifier's ingest trailer — the expected result of a prior retract-then-reapply cycle for the same identifier, not a data-integrity failure — the tool MUST treat the most recent such commit as the one to locate and revert, and MUST NOT refuse solely because more than one match exists. *(Bugfix BUG-001, 2026-07-12)*
+- **FR-021**: Every history operation the tool performs — locating an ingest commit (FR-001), determining which files that commit changed (FR-005/FR-006), determining which other commits have since touched a file (FR-008), reading a file's earlier content (FR-012/FR-013), and staging and committing the revert's own result (FR-015) — MUST be confined to the graph's own directory and to that directory's own history, and MUST NOT read, match, or stage anything outside it. This MUST hold whether the graph directory is itself the root of its version-control repository or a subdirectory nested within a larger one; the tool MUST NOT assume the two are the same directory, and MUST NOT rely on repository topology to supply that confinement for it. *(Bugfix BUG-002, 2026-09-03)*
 
 ### Out of Scope
 
@@ -132,6 +136,7 @@ A user wants to retract a patch that introduced a node later touched by one or m
 - **SC-007**: A user can determine, from the revert command's own output, which reconciliation approach was used, without inspecting the graph or its history manually.
 - **SC-008**: 100% of attempts to revert an already-retracted patch result in zero graph or history changes, with a clear "nothing to do" outcome.
 - **SC-009**: A user can revert an identifier that was previously reverted and later re-applied, with the tool correctly locating and acting on the most recent ingest commit, in 100% of tested retract-then-reapply-then-revert cycles. *(Bugfix BUG-001, 2026-07-12)*
+- **SC-010**: A revert performed on a graph nested inside a larger version-control repository produces exactly the same result as the identical revert performed on the same graph at the repository root, in 100% of tested cases — including reverts that reconcile a shared node's flagged conflict record — and its resulting commit contains zero files from outside the graph directory. *(Bugfix BUG-002, 2026-09-03)*
 
 ## Assumptions
 
@@ -141,3 +146,4 @@ A user wants to retract a patch that introduced a node later touched by one or m
 - Reverting is fully local and offline, consistent with `arc apply` — no network access is required or attempted.
 - A patch's already-flagged conflict record (from a prior `arc apply`) self-documents which value belongs to which side, making it possible to remove one side's value without additional stored provenance.
 - A document's own source node is always exclusively created by its own patch — no other patch ever writes to another document's source record — so the source node's continued existence reliably indicates the patch has not been retracted, and its absence reliably indicates it already has been (Clarifications, Session 2026-07-12).
+- ~~The graph directory is the root of its own version-control repository.~~ — an assumption never stated in this spec, but silently relied upon by the original design of every history operation; corrected (Bugfix BUG-002, 2026-09-03). `arc init` does create the graph and its repository as a single directory, but nothing in the tool detects, warns about, or prevents a graph that sits inside a larger repository, so every history operation must be explicitly confined to the graph's own directory (FR-021) rather than inheriting that confinement from repository topology.

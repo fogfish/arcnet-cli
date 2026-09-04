@@ -13,6 +13,8 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 
 **Bugfix**: 2026-07-12 — BUG-001 Updated from bugfix patch. Reopened T020/T023 (D1's ingest-commit lookup and its unit tests) and TN06/TN14 (compliance checks that depended on them); added T040-T043 to fix the "more than one ingest commit found" false refusal after a retract-then-reapply cycle and add regression coverage.
 
+**Bugfix**: 2026-09-03 — BUG-002 Updated from bugfix patch. Reopened T027 (`ShowFile`'s "path absent" test asserts only against a repo-root graph and cannot distinguish absence from a misread fatal) and TN14 (the new Edge Case/SC-010 have no E2E test yet, see T050); annotated T017/T026 (which faithfully implemented a contract that specified unscoped git commands); added T044-T051 to scope all four repo-scoped commands to the graph directory and add nested-repository regression coverage.
+
 **Organization**: Tasks are grouped by user story (spec.md: US1 P1, US2 P2, US3 P3) to enable independent implementation and testing.
 
 ## Format: `[ID] [P?] [Story] Description`
@@ -97,7 +99,7 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 
 > E2E tests for this story were already written in Phase 2d (T009) and MUST currently be failing (red). Implementation below MUST turn them green with minimal test changes.
 
-- [X] T017 [US1] Implement `CommitsMatching`, `ChangedPaths`, `CommitsTouching`, `RevertCommit` on `internal/adapter/git.VCS` in `internal/adapter/git/git.go` (contracts/vcs-port-contract.md's git-command mapping) plus `ErrGitDiffTree`/`ErrGitRevert` error sentinels
+- [X] T017 [US1] Implement `CommitsMatching`, `ChangedPaths`, `CommitsTouching`, `RevertCommit` on `internal/adapter/git.VCS` in `internal/adapter/git/git.go` (contracts/vcs-port-contract.md's git-command mapping) plus `ErrGitDiffTree`/`ErrGitRevert` error sentinels *(not reopened — BUG-002: this task faithfully implemented the argv the contract specified; the contract itself was wrong. `CommitsMatching`'s and `ChangedPaths`'s corrected argv is delivered by T047/T045.)*
 - [X] T018 [P] [US1] Add `internal/adapter/git/git_test.go` cases for the four new methods (success + failure exit codes)
 - [X] T019 [US1] Implement `internal/bios.Confirm(prompt string) (bool, error)` in `internal/bios/confirm.go` (research.md D10: TTY-gated, refuses when non-interactive without `--force`) plus `internal/bios/confirm_test.go`
 - [X] T020 [US1] ⚠️ Reopened — BUG-001 Implement `service.Revert`'s D1 (locate ingest commit via `CommitsMatching`)/D2 (idempotency via `IsTracked`)/D3 (per-path eligibility loop)/D4 (`RevertCommit` call) logic in `internal/app/graph/service/revert.go`, per contracts/revert-algorithm-contract.md's top-level decision pseudocode (reopened — BUG-001: D1's "more than one match" branch refused instead of selecting the newest match; see T040)
@@ -136,8 +138,8 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 
 > E2E tests for this story were already written in Phase 2d (T011) and MUST currently be failing (red).
 
-- [X] T026 [US3] Implement `Blame` and `ShowFile` on `internal/adapter/git.VCS` in `internal/adapter/git/git.go` (contracts/vcs-port-contract.md) plus `ErrGitBlame`/`ErrGitShow` error sentinels
-- [X] T027 [P] [US3] Add `internal/adapter/git/git_test.go` cases for `Blame`/`ShowFile` (including `ShowFile`'s "path absent at this commit" non-error case)
+- [X] T026 [US3] Implement `Blame` and `ShowFile` on `internal/adapter/git.VCS` in `internal/adapter/git/git.go` (contracts/vcs-port-contract.md) plus `ErrGitBlame`/`ErrGitShow` error sentinels *(not reopened — BUG-002: implemented the contract as written, including the unsafe `IsTracked` marker analogy the contract prescribed; `ShowFile`'s corrected path resolution and marker discrimination are delivered by T046.)*
+- [X] T027 [P] [US3] ⚠️ Reopened — BUG-002 ✅ Fixed (T048/T049) Add `internal/adapter/git/git_test.go` cases for `Blame`/`ShowFile` (including `ShowFile`'s "path absent at this commit" non-error case) (reopened — BUG-002: every `ShowFile`/`Blame` case in this file constructs a graph at the repository root, so none of them exercise path resolution for a nested graph — the actual defect. Coverage is completed by T048/T049.)
 - [X] T028 [US3] Implement the per-node exclusivity test (D5, reusing `CommitsTouching`) and `removeNode` (D6: `store.Remove`, reuse `enumerateNodes`/`buildReverseIndex` from `internal/app/graph/service/subgraph.go`, filter referrers' `Edges`, rewrite via `core.RenderNode`) in `internal/app/graph/service/revert.go`
 - [X] T029 [US3] Implement `removeTimelineEntry` — a structural sibling to `upsertTimelinePeriod` — in `internal/app/graph/service/apply.go` (reuses `parseTimelineEntries`/`periodGranularity`), wired into T028's referrer-rewrite branch for `@type: timeline` referrers
 - [X] T030 [US3] Implement `reconcileShared`'s Texts-key/paragraph blame-mapping (D7) in `internal/app/graph/service/revert.go`: walk `renderNodeBody`'s physical order (leading key, other keys alphabetically, trailing key) to build the line→(Texts key, paragraph index) map, intersect with `Blame`'s `ingestHash`-attributed lines, strip matched paragraphs (mirroring `internal/core/merge.go`'s `splitParagraphs`), rewrite via `core.RenderNode` — never touching `Attrs`/`Edges`/`HRefs` (FR-011)
@@ -177,6 +179,33 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 
 ---
 
+## Bugfix Tasks (BUG-002)
+
+**Bugfix**: 2026-09-03 — BUG-002 Updated from bugfix patch. Four `internal/adapter/git` commands are scoped by git to the enclosing repository rather than to the subprocess working directory, so they were correct only while the graph root and the repository root were the same directory. Each now carries an explicit scoping mechanism (spec.md FR-021, contracts/vcs-port-contract.md invariant 4).
+
+**Purpose**: Fix BUG-002 (a graph nested in a larger repository matches foreign ingest commits, lists foreign changed paths, stages unrelated files into its own commit, and fails every historical file read, aborting the merge-aware reconciliation path) and add the nested-repository regression coverage no existing test can provide.
+
+- [X] T044 [P] Scope `StageAll` in `internal/adapter/git/git.go` to `git add -A -- .` (BUG 1) — `git add -A` with no pathspec stages the whole tree regardless of the subprocess working directory, so both call sites (`internal/app/graph/service/apply.go:422`, `internal/app/graph/service/revert.go:132`) sweep unrelated repository changes into the graph's own commit, violating FR-015 and 003-apply-patch FR-011. No signature change.
+- [X] T045 [P] Scope `ChangedPaths` in `internal/adapter/git/git.go` by adding `--relative` to `git diff-tree` (BUG 3) — returned paths become graph-root-relative and paths outside the graph are excluded, making `service.Revert`'s existing treatment of them as graph-relative (`internal/app/graph/service/revert.go:87`) correct rather than accidental.
+- [X] T046 Fix `ShowFile` in `internal/adapter/git/git.go` (BUG 2): request `git show <hash>:./<path>` so the path resolves against the graph directory rather than the repository root. Without it every historical read in a nested graph fails with `fatal: path '<dir>/<p>' exists, but not '<p>'`, which `resolveConflictMarker`/`reconcileShared` propagate (`internal/app/graph/service/revert.go:496`), aborting the whole merge-aware path (FR-012/FR-013). *(Scope corrected 2026-09-03: an earlier draft also required narrowing `showFileMissingMarkers`, on the claim that the resolution fatal matched one of them and was silently returned as `(nil, nil)`. Verified false — the fatal matches neither marker and correctly surfaces as `ErrGitShow`. The markers stay as they are; T046 is the `./` prefix only.)*
+- [X] T047 [P] Scope `CommitsMatching` in `internal/adapter/git/git.go` by appending a `-- .` pathspec to `git log --all` (BUG 4) — restricts matches to commits touching the graph directory, correcting both `service.Revert`'s ingest-commit lookup (`internal/app/graph/service/revert.go:52`, FR-001) and `arc lint`'s FR-010 one-ingest-commit check (`internal/app/lint/service/rules_history.go:28`).
+- [X] T048 Add a nested-repository fixture to `internal/adapter/git/git_test.go`: `git init` a parent directory, mount the graph at a subdirectory of it, and add one regression case per defect — staging does not pick up a dirty sibling directory (T044), `ChangedPaths` returns only graph-relative paths for a commit spanning two directories (T045), `ShowFile` returns real content rather than `(nil, nil)` (T046), `CommitsMatching` does not match a sibling directory's commit (T047). Every one of this file's existing 19 cases constructs a repo-root graph and can catch none of them. (depends on T044-T047)
+- [X] T049 [P] Complete reopened T027 under the T048 fixture: assert `ShowFile` on a nested graph returns real historical content, and that both genuine absence conditions (path absent on disk, and path present on disk but absent at the commit) still return `(nil, nil)` there — the two cases `showFileMissingMarkers` exists to cover. (depends on T046, T048)
+- [X] T050 Add an end-to-end regression test (`internal/app/graph/service/revert_test.go` and/or `cmd/arc/graph/revert_test.go`) covering SC-010: perform a revert that reconciles a shared node's flagged conflict record (the D8(b) historical-walk path, FR-012/FR-013) against a graph nested in a larger repository, asserting the result is identical to the same revert at the repository root and that the revert's commit contains zero files from outside the graph. BUG 2 aborts this path with an error in a nested graph, so this test is the one that proves the whole merge-aware reconciliation works there end to end. (depends on T046, T048)
+- [X] T051 [P] Add coverage in `internal/app/lint/service/` for FR-010 against a nested graph: a second graph in the same repository that ingested the same `Source-Id` must not be counted toward the one-ingest-commit-per-document check. (depends on T047)
+
+**Checkpoint**: BUG-002 fixed — reopened T027 completed via T048/T049, nested-repository fixture (T048) green across all four defects, SC-010 end-to-end regression (T050) passing, full `go test ./...` clean. Each fix was verified by reverting it individually and confirming the corresponding test turns red.
+
+**Implementation notes (2026-09-03)**
+
+- **T046 scope corrected.** BUG-002's original claim — that the path-resolution fatal matches `showFileMissingMarkers` and is silently returned as `(nil, nil)` — was verified false against real `git show` output. The fatal (`path 'x' exists, but not 'y'`) matches neither marker and correctly surfaces as `ErrGitShow`. The markers are unchanged; T046 is the `./` prefix only, and BUG-002's severity is corrected Critical → High.
+- **T051 relocated.** Written in `cmd/arc/lint/lint_test.go`, not `internal/app/lint/service/`: the service tests drive a mock `lint.port.VCS`, which cannot exercise real git path scoping, while the `cmd/arc/lint` harness commits with real git. Proven red (`2 matching commits found for this document`) before the T047 fix.
+- **T050's actual guard coverage.** Verified by reverting each fix in turn: T050 catches BUG 1 (`StageAll`) and BUG 3 (`ChangedPaths`) end to end, but **not** BUG 2 — see T052. BUG 2 and BUG 4 are covered at the adapter level by T048/T049 and by T051 respectively.
+
+- [ ] T052 [P] Close the pre-existing E2E gap around `ShowFile`: **no** test outside `internal/adapter/git` invokes it against real git. Proven by instrumenting `ShowFile` to panic — the whole suite passes except the adapter's own cases, so `resolveConflictMarker`/`reconcileShared`'s D8(b) historical walk is exercised only by `internal/app/graph/service/revert_internal_test.go` against a mock `port.VCS`. Build a CLI-level fixture that actually produces a flagged conflict record whose `incomingSourceID` differs from the reverted `source-id` (the early-return at `revert.go:485-487` skips the walk otherwise) and revert it, at the repository root and nested. Not a BUG-002 regression — a gap BUG-002 surfaced; T050 was originally written expecting to cover this and does not.
+
+---
+
 ## Phase N: Constitution Compliance Verification
 
 **Purpose**: Implements the constitution's Compliance Checklist (Implementation Phase). This phase MUST be retained verbatim; do not omit or merge it into other phases.
@@ -199,7 +228,7 @@ description: "Task list for arc revert (specs/016-arc-revert)"
 - [X] TN11 Configuration precedence and XDG locations respected; no secrets logged or accepted only via plaintext flags — N/A confirmed at T012 (Principle XI)
 - [X] TN12 Help text (`Short`/`Long`/`Example`) populated for `arc revert` (Principle XII) — T022
 - [X] TN13 E2E tests from Phase 2d (T009-T011) turned GREEN and changed minimally during implementation (Principle VIII)
-- [X] TN14 ⚠️ Reopened — BUG-001 All spec.md scenarios for this feature (US1 x3, US2 x2, US3 x4, plus the Edge Cases in T036) have a passing, colocated E2E test (Principle VIII) (reopened — BUG-001: the new FR-020/SC-009 retract-reapply-revert scenario needs its own E2E test, see T042)
+- [X] TN14 ⚠️ Reopened — BUG-001, BUG-002 ✅ Fixed (T050) All spec.md scenarios for this feature (US1 x3, US2 x2, US3 x4, plus the Edge Cases in T036) have a passing, colocated E2E test (Principle VIII) (reopened — BUG-001: the new FR-020/SC-009 retract-reapply-revert scenario needs its own E2E test, see T042) (reopened — BUG-002: the new nested-repository Edge Case and SC-010 need their own E2E test, see T050)
 - [X] TN15 Release/versioning impact assessed: `arc revert` is a wholly new command and `RevertResult`'s `--json` shape is its first version — no existing `--json`/`--plain` contract is broken, so no major version bump is required (Principle XIV)
 
 ---

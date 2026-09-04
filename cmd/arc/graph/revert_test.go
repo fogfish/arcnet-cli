@@ -759,3 +759,77 @@ func TestRevertLocatesAndRewritesNodesInTypeNamedFolders(t *testing.T) {
 		ShouldNot(it.String(resource).Contain("[[doc-2026-a]]")).
 		Should(it.String(resource).Contain("[[doc-2026-b]]"))
 }
+
+// --- BUG-002 / spec.md SC-010: revert inside a nested repository -----------
+
+// initNestedGraph builds a graph at <repo>/graph inside a git repository
+// rooted at repo, with a sibling <repo>/other that no graph-scoped command
+// may ever reach. Unlike initGraph, the graph directory has no .git of its
+// own — the whole point of the fixture (BUG-002, T050).
+func initNestedGraph(t *testing.T, repo string) (graph, other string) {
+	t.Helper()
+	graph = filepath.Join(repo, "graph")
+	other = filepath.Join(repo, "other")
+	it.Then(t).Should(it.Nil(os.MkdirAll(graph, 0o755)))
+	it.Then(t).Should(it.Nil(os.MkdirAll(other, 0o755)))
+
+	writeGraphLayout(t, graph)
+	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(other, "unrelated.md"), []byte("unrelated"), 0o644)))
+
+	runGit(t, repo, "init")
+	runGit(t, repo, "add", "-A")
+	runGit(t, repo, "commit", "-m", "graph(init): empty knowledge graph")
+	return graph, other
+}
+
+// spec.md SC-010 / FR-021: the per-node reconciliation path (FR-012/FR-013)
+// must behave identically for a graph nested inside a larger repository, and
+// the revert's own commit must contain no file from outside the graph. This
+// fixture is deliberately the flagged-conflict one (Reference.relevance is
+// firstWriteWin, so two documents contributing different notes leave a
+// conflict record): unpicking that record is the D8(b) historical walk, the
+// only path that calls ShowFile. Before BUG-002's fix every read there
+// failed with "fatal: path 'graph/...' exists, but not '...'", which
+// resolveConflictMarker propagates — aborting the revert outright.
+func TestRevertReconcilesSharedNodeInNestedRepository(t *testing.T) {
+	repo := t.TempDir()
+	graph, other := initNestedGraph(t, repo)
+	chdir(t, graph)
+
+	patchA := writePatchFile(t, t.TempDir(), "docA.patch.md", v011RevertDocA)
+	_, err := sut(NewApplyCmd(), []string{patchA})
+	it.Then(t).Should(it.Nil(err))
+
+	patchB := writePatchFile(t, t.TempDir(), "docB.patch.md", v011RevertDocB)
+	_, err = sut(NewApplyCmd(), []string{patchB})
+	it.Then(t).Should(it.Nil(err))
+
+	// dirty the sibling: no graph-scoped command may sweep it in
+	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(other, "unrelated.md"), []byte("edited"), 0o644)))
+
+	resourcePath := filepath.Join(graph, "Resource", "handshake-fragment.md")
+	referencePath := filepath.Join(graph, "Reference", "rfc-8446.md")
+
+	out, err := sut(forcedRevertCmd(t), []string{"doc-2026-a"})
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).Should(it.String(out).Contain("per-node"))
+
+	// identical outcome to the repository-root case
+	afterResource := readFile(t, resourcePath)
+	afterReference := readFile(t, referencePath)
+	it.Then(t).
+		ShouldNot(it.String(afterResource).Contain("Doc A's account of the handshake fragment.")).
+		Should(it.String(afterResource).Contain("Doc B's account of the handshake fragment.")).
+		ShouldNot(it.String(afterReference).Contain("Doc A's reason for keeping this pointer.")).
+		Should(it.String(afterReference).Contain("doc-2026-b"))
+
+	// SC-010: the revert's commit carries nothing from outside the graph
+	changed := runGit(t, repo, "show", "--pretty=", "--name-only", "HEAD")
+	for _, line := range strings.Split(strings.TrimSpace(changed), "\n") {
+		if line == "" {
+			continue
+		}
+		it.Then(t).Should(it.True(strings.HasPrefix(line, "graph/")))
+	}
+	it.Then(t).Should(it.True(!strings.Contains(changed, "other/")))
+}

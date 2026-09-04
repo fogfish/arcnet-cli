@@ -33,8 +33,8 @@ All errors returned across this interface are wrapped with a `github.com/fogfish
 
 ### `StageAll(ctx, dir) error`
 
-- Runs the equivalent of `git add -A` with working directory `dir`.
-- Stages every file created by the layout step, and nothing else (the directory is guaranteed to contain only files this command just wrote).
+- Runs the equivalent of `git add -A -- .` with working directory `dir`. *(Corrected — 016-arc-revert BUG-002, 2026-09-03: the `-- .` pathspec is required. `git add -A` with no pathspec stages the **whole repository tree** regardless of working directory, so the guarantee below holds only while `dir` is itself the repository root.)*
+- Stages every file created by the layout step, and nothing else. ~~(the directory is guaranteed to contain only files this command just wrote)~~ — that guarantee covers `dir`'s *contents*, not the command's *scope*: for a graph nested inside a larger repository the pathspec is what confines staging to `dir`.
 - On failure, returns `git.ErrGitStage.With(execErr)`.
 
 ### `Commit(ctx, dir, message) (hash string, err error)`

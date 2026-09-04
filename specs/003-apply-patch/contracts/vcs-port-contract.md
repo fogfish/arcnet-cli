@@ -24,7 +24,7 @@ type VCS interface {
 ```
 
 - `IsTracked` — `git ls-files --error-unmatch <path>` in `dir` (CORE §11.2's documented idempotency check). Exit `0` → `(true, nil)`. Exit `1` (git's own "not tracked" status for `--error-unmatch`) → `(false, nil)` — this is an expected outcome, not an error. Any other failure (git missing, not a repository) → `(false, err)`.
-- `StageAll` — `git add -A` in `dir`.
+- `StageAll` — `git add -A -- .` in `dir`. *(Corrected — 016-arc-revert BUG-002, 2026-09-03: "in `dir`" describes the working directory, not the scope. Without the `-- .` pathspec `git add -A` stages the whole repository tree, so a graph nested inside a larger repository sweeps unrelated changes into its own ingest commit, violating FR-011's "every file the application touched" — and nothing else.)*
 - `Commit` — `git commit -F <tmpfile>` in `dir` with the CORE §11.3 message (research.md D9's Reporter step `"Committing"`); returns the short hash (`git rev-parse --short HEAD`), matching `arc init`'s established convention.
 
 ## Migration note
