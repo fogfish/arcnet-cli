@@ -1872,3 +1872,92 @@ func TestLintIngestCommitIgnoresSiblingGraphInSameRepository(t *testing.T) {
 		Should(it.String(out).Contain("2 nodes checked, 2 passing, 0 failing")).
 		Should(it.True(!strings.Contains(out, "matching commits found")))
 }
+
+// ---------------------------------------------------------------------------
+// specs/031-init-existing-git-repo — Bugfix BUG-001, Phase 7 (FR-035, SC-010).
+//
+// A graph sharing its root with a host project: the project's own markdown is
+// inside the tree lint walks, but it is not graph content. lint must index and
+// skip it, never count it, never report it as a failing node.
+// ---------------------------------------------------------------------------
+
+// rootModeForeignFiles is the host project's own markdown — no "@id"/"@type"
+// front matter, so not graph content (spec 031 FR-032).
+var rootModeForeignFiles = map[string]string{
+	"README.md":       "# My Project\n\nA readme that predates the graph.\n",
+	"CONTRIBUTING.md": "# Contributing\n\nSend patches.\n",
+	"docs/design.md":  "# Design\n\nNotes on the transport layer.\n",
+}
+
+// initRootModeGraph builds a host repository whose root carries its own
+// markdown and then initializes the graph layout at that same root.
+func initRootModeGraph(t *testing.T, repo string) {
+	t.Helper()
+	for path, content := range rootModeForeignFiles {
+		writeNode(t, repo, path, content)
+	}
+	writeGraphLayout(t, repo)
+	runGit(t, repo, "init")
+	runGit(t, repo, "add", "-A")
+	runGit(t, repo, "commit", "-m", "graph(init): empty knowledge graph")
+}
+
+// arc lint, graph root shared with the host project
+// spec 031 FR-035/SC-010: the two real nodes are checked and pass; the three
+// foreign files are neither counted nor reported.
+func TestLintExcludesForeignFilesFromNodeCount(t *testing.T) {
+	repo := t.TempDir()
+	initRootModeGraph(t, repo)
+	ingestSource(t, repo, "foo-2026-x", "A Test Document", conformantSource)
+	writeNode(t, repo, "Entity/Widget.md", conformantEntity)
+	commitAll(t, repo, "seed: Widget entity")
+
+	chdir(t, repo)
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.String(out).Contain("2 nodes checked, 2 passing, 0 failing"))
+	for path := range rootModeForeignFiles {
+		it.Then(t).ShouldNot(it.String(out).Contain(path))
+	}
+}
+
+// arc lint, graph root shared with the host project
+// spec 031 FR-035: a foreign file is never a violation — no "frontMatter"
+// rule fires for the host's own markdown, and exit status stays clean.
+func TestLintReportsNoViolationForForeignFiles(t *testing.T) {
+	repo := t.TempDir()
+	initRootModeGraph(t, repo)
+
+	chdir(t, repo)
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.String(out).Contain("0 nodes checked, 0 passing, 0 failing"))
+	it.Then(t).ShouldNot(it.String(out).Contain("frontMatter"))
+}
+
+// arc lint, a genuinely broken node beside foreign files
+// spec 031 FR-032/FR-035: skipping foreign files must not become a hiding
+// place for real defects — a file that claims graph identity ("@id" present)
+// but is malformed is still linted and still fails.
+func TestLintStillReportsBrokenNodeBesideForeignFiles(t *testing.T) {
+	repo := t.TempDir()
+	initRootModeGraph(t, repo)
+	writeNode(t, repo, "Entity/Broken.md", "---\n\"@id\": Broken\n---\n# Broken\n\nNo \"@type\".\n")
+	commitAll(t, repo, "seed: broken node")
+
+	chdir(t, repo)
+	out, err := sut(NewLintCmd(), nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("Entity/Broken.md")).
+		Should(it.String(out).Contain("frontMatter")).
+		Should(it.String(out).Contain("1 nodes checked, 0 passing, 1 failing"))
+	for path := range rootModeForeignFiles {
+		it.Then(t).ShouldNot(it.String(out).Contain(path))
+	}
+}

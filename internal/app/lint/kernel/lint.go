@@ -86,6 +86,15 @@ type LintResult struct {
 	Passing int `json:"passing"`
 	// Failing is the count of nodes with at least one violation.
 	Failing int `json:"failing"`
+	// Foreign holds markdown files under the graph root that carry no
+	// graph identity at all — the host project's own README, ADRs, design
+	// notes (spec 031 FR-032). They were walked, recognized as not-ours,
+	// and skipped: they are counted in neither Passing nor Failing, appear
+	// in neither Nodes nor Violations, and never affect exit status. This
+	// is a record of what lint declined to check, not a defect list (spec
+	// 031 FR-035). Additive to the --json contract, exactly as spec 031
+	// FR-028's precedent requires.
+	Foreign []string `json:"foreign"`
 }
 
 // NewLintResult derives Violations/Passing/Failing from nodes (in walk
@@ -93,6 +102,14 @@ type LintResult struct {
 // (e.g. RuleUniqueBasename) — graphSpanning entries are listed first,
 // matching the Human renderer's expected order.
 func NewLintResult(root string, nodes []NodeStatus, graphSpanning ...Violation) LintResult {
+	return NewLintResultWithForeign(root, nodes, nil, graphSpanning...)
+}
+
+// NewLintResultWithForeign is NewLintResult plus the foreign-file index
+// (spec 031 FR-035). It is a separate constructor rather than a fifth
+// parameter on NewLintResult so the existing three-argument callers — and
+// their tests — keep compiling unchanged.
+func NewLintResultWithForeign(root string, nodes []NodeStatus, foreign []string, graphSpanning ...Violation) LintResult {
 	violations := make([]Violation, 0, len(graphSpanning))
 	violations = append(violations, graphSpanning...)
 
@@ -112,6 +129,7 @@ func NewLintResult(root string, nodes []NodeStatus, graphSpanning ...Violation) 
 		Violations: violations,
 		Passing:    passing,
 		Failing:    failing,
+		Foreign:    foreign,
 	}
 }
 

@@ -44,6 +44,11 @@ type parsedNode struct {
 // Lint mounts dir, walks every node file, and checks it against the full
 // CORE §14 conformance checklist, never stopping at the first violation
 // found (spec FR-013). It never writes to the graph (spec FR-014).
+//
+// Markdown under the graph root that declares no graph identity is the host
+// project's own content, not a node: it is indexed into LintResult.Foreign
+// and skipped, counted in neither Passing nor Failing (spec 031 FR-032/
+// FR-035, BUG-001).
 func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios.Reporter, index core.Index, dir string) (kernel.LintResult, error) {
 	store, err := mounter.Mount(dir)
 	if err != nil {
@@ -64,6 +69,8 @@ func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios
 	fileViolations := map[string][]kernel.Violation{}
 	basenameIndex := map[string][]string{}
 	var parsed []parsedNode
+	var foreign []string
+	nodePaths := make([]string, 0, len(paths))
 
 	for _, path := range paths {
 		raw, err := readRaw(store, path)
@@ -71,6 +78,20 @@ func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios
 			reporter.Error(labelReadingGraph, err)
 			return kernel.LintResult{}, err
 		}
+
+		// A graph root may be shared with a host project (spec 031 FR-010),
+		// so the walk above reaches markdown arc neither wrote nor
+		// understands. Such a file is indexed and skipped here — before the
+		// basename index, before the conflict-marker check, before parsing
+		// — so it can contribute neither a violation nor a
+		// duplicate-basename collision (spec 031 FR-032/FR-035). Mirrors
+		// internal/app/graph/service.Grep's own unreadable accumulation
+		// rather than inventing a second convention (Principle V).
+		if isForeignFile(path, raw, index) {
+			foreign = append(foreign, path)
+			continue
+		}
+		nodePaths = append(nodePaths, path)
 
 		basename := basenameOf(path)
 		basenameIndex[basename] = append(basenameIndex[basename], path)
@@ -159,8 +180,8 @@ func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios
 	}
 	reporter.Done(labelCheckingHistory, time.Since(start))
 
-	nodes := make([]kernel.NodeStatus, 0, len(paths))
-	for _, path := range paths {
+	nodes := make([]kernel.NodeStatus, 0, len(nodePaths))
+	for _, path := range nodePaths {
 		status := kernel.NodeStatus{Path: path, Violations: fileViolations[path]}
 		for _, p := range parsed {
 			if p.Path == path {
@@ -172,7 +193,49 @@ func Lint(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, reporter bios
 		nodes = append(nodes, status)
 	}
 
-	return kernel.NewLintResult(dir, nodes, graphSpanning...), nil
+	return kernel.NewLintResultWithForeign(dir, nodes, foreign, graphSpanning...), nil
+}
+
+// isForeignFile reports whether path is the host project's own content
+// rather than a graph node (spec 031 FR-032).
+//
+// Identity alone is not a sufficient test, and this is worth stating plainly
+// because spec 031 FR-032 words the rule that way. A file arc definitely
+// owns can lose its identity precisely when something has gone wrong with
+// it: "Entity/Broken.md" holding unresolved merge-conflict markers, or
+// garbage where its front matter should be, declares no "@id"/"@type"
+// either. Classifying those as foreign would silently retire two of lint's
+// own checks — RuleMergeConflict and RuleFrontMatter — on exactly the files
+// that need them most, trading this bug for a quieter one.
+//
+// So location decides first. A file directly inside a folder named for a
+// registered node type is arc's territory by construction: arc created that
+// folder, writes every node into it as "<Type>/<id>.md", and spec 031 FR-015
+// refuses to initialize a graph where such a folder already exists. Anything
+// there is a node — a malformed one if it will not parse, never host content.
+// Elsewhere — the graph root itself, a "docs/" tree, any folder arc does not
+// own — a file is host content unless it claims graph identity outright.
+func isForeignFile(path string, raw []byte, index core.Index) bool {
+	if isNodeTypeFolder(path, index) {
+		return false
+	}
+	return !core.LooksLikeNode(raw)
+}
+
+// isNodeTypeFolder reports whether path sits directly inside a folder named
+// for a registered node type — the "<Type>/<id>.md" shape service.Apply
+// writes (nodeFolder(kind) == kind).
+func isNodeTypeFolder(path string, index core.Index) bool {
+	idx := strings.LastIndex(path, "/")
+	if idx < 0 {
+		return false
+	}
+	folder := path[:idx]
+	if strings.Contains(folder, "/") {
+		return false
+	}
+	_, registered := index.Types[folder]
+	return registered
 }
 
 func guardIsGraph(store fsys.Store, dir string) error {

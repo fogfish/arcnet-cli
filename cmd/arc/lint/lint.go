@@ -65,6 +65,30 @@ func formatGraphSpanningViolation(v kernel.Violation) string {
 	return formatOwnedViolation(v)
 }
 
+// foreignNote renders the foreign-file index as one non-failing line, or
+// nothing when the graph root holds no host content (spec 031 FR-035).
+// It is deliberately a count rather than a list: on a graph sharing a root
+// with a large project the list is long, unchanging and uninteresting, and
+// burying the violations under it would defeat the purpose of the report.
+// --verbose names them; --json always carries the full list.
+func foreignNote(r kernel.LintResult) string {
+	if len(r.Foreign) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s%d file(s) skipped: not graph nodes\n", bios.SCHEMA.IconWarn, len(r.Foreign))
+}
+
+// verboseForeignNote names every skipped file, so a user who expected one of
+// them to be a node can see exactly which files lint declined to check and
+// why (spec 031 FR-035).
+func verboseForeignNote(r kernel.LintResult) string {
+	var buf []byte
+	for _, path := range r.Foreign {
+		buf = append(buf, fmt.Sprintf("%s%s — skipped, not a graph node\n", bios.SCHEMA.IconWarn, path)...)
+	}
+	return string(buf)
+}
+
 func summaryLine(r kernel.LintResult) string {
 	icon := bios.SCHEMA.IconOK
 	if r.Failing > 0 {
@@ -88,6 +112,7 @@ func (humanLintPrinter) Show(r kernel.LintResult) ([]byte, error) {
 			buf = append(buf, formatOwnedViolation(v)...)
 		}
 	}
+	buf = append(buf, foreignNote(r)...)
 	buf = append(buf, summaryLine(r)...)
 	return buf, nil
 }
@@ -110,6 +135,7 @@ func (verboseLintPrinter) Show(r kernel.LintResult) ([]byte, error) {
 			buf = append(buf, formatOwnedViolation(v)...)
 		}
 	}
+	buf = append(buf, verboseForeignNote(r)...)
 	buf = append(buf, summaryLine(r)...)
 	return buf, nil
 }

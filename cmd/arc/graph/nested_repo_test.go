@@ -9,6 +9,7 @@
 package graph
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -275,4 +276,238 @@ func TestNestedLintScopesHistoryToGraphSubtree(t *testing.T) {
 	it.Then(t).
 		Should(it.Equal(standaloneOut, nestedOut)).
 		ShouldNot(it.String(nestedOut).Contain("ingest"))
+}
+
+// ---------------------------------------------------------------------------
+// specs/031-init-existing-git-repo — Bugfix BUG-001, Phase 7 (FR-032..FR-035).
+//
+// The second parity axis. initHostGraph above nests the graph in a subfolder
+// and keeps the host's own content in a *sibling* directory, so no command's
+// tree walk ever meets a file arc did not write. Here the graph root IS the
+// project root: the host's markdown sits inside the very tree apply, lint and
+// grep walk. quickstart.md S10.
+// ---------------------------------------------------------------------------
+
+// foreignFiles are the host project's own markdown — content arc neither
+// wrote nor understands, carrying no "@id"/"@type" front matter (FR-032).
+var foreignFiles = map[string]string{
+	"README.md":        "# My Project\n\nA readme that predates the graph.\n",
+	"CONTRIBUTING.md":  "# Contributing\n\nSend patches.\n",
+	"docs/design.md":   "# Design\n\nNotes on the transport layer.\n",
+	"docs/adr/0001.md": "# ADR 1\n\nWe chose TLS.\n",
+}
+
+// rootModeEntity is a conformant Entity node carrying the same term the
+// host's docs/design.md carries.
+const rootModeEntity = `---
+"@id": Widget
+"@type": Entity
+category: [independent, abstract, occurrent, script]
+---
+# Widget
+
+A widget for the transport layer.
+`
+
+// initRootModeGraph builds a host repository whose root carries its own
+// markdown, then initializes the graph layout at that same root — the shape
+// `arc init --skip-git-init` produces at a project root, which FR-010
+// legalized and which no other fixture in this repository builds.
+func initRootModeGraph(t *testing.T, repo string) {
+	t.Helper()
+
+	for path, content := range foreignFiles {
+		full := filepath.Join(repo, filepath.FromSlash(path))
+		it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Dir(full), 0o755)))
+		it.Then(t).Should(it.Nil(os.WriteFile(full, []byte(content), 0o644)))
+	}
+	runGit(t, repo, "init")
+	runGit(t, repo, "add", "-A")
+	runGit(t, repo, "commit", "-m", "host: the project before the graph")
+
+	writeGraphLayout(t, repo)
+	runGit(t, repo, "add", "-A")
+	runGit(t, repo, "commit", "-m", "graph(init): empty knowledge graph")
+}
+
+// assertForeignFilesIntact asserts every host file is byte-for-byte what it
+// was and carries no pending change — FR-032's "no command may fail because
+// one exists" has a sibling obligation: no command may quietly rewrite one.
+func assertForeignFilesIntact(t *testing.T, repo string) {
+	t.Helper()
+	for path, want := range foreignFiles {
+		it.Then(t).Should(it.Equal(want, readFile(t, filepath.Join(repo, filepath.FromSlash(path)))))
+	}
+	status := runGit(t, repo, "status", "--porcelain")
+	for path := range foreignFiles {
+		it.Then(t).ShouldNot(it.String(status).Contain(path))
+	}
+}
+
+// arc apply, graph root shared with the host project
+// spec.md FR-032/FR-033, SC-009: the host's own markdown is not graph content,
+// so apply never opens it and never fails on it.
+func TestRootModeApplySucceedsBesideForeignFiles(t *testing.T) {
+	repo := t.TempDir()
+	initRootModeGraph(t, repo)
+	chdir(t, repo)
+	patch := writePatchFile(t, t.TempDir(), "tls13.patch.md", tls13Patch)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	assertIsFile(t, filepath.Join(repo, "Source", "rescorla-2026-tls13.md"))
+	assertForeignFilesIntact(t, repo)
+}
+
+// arc apply, graph root shared with the host project
+// spec.md FR-032, US2 Acceptance Scenario 2: the ingest commit carries only
+// files the apply itself wrote — never a foreign file swept in by staging.
+func TestRootModeApplyCommitExcludesForeignFiles(t *testing.T) {
+	repo := t.TempDir()
+	initRootModeGraph(t, repo)
+	chdir(t, repo)
+	patch := writePatchFile(t, t.TempDir(), "tls13.patch.md", tls13Patch)
+
+	_, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Nil(err))
+
+	for _, path := range headPaths(t, repo) {
+		_, foreign := foreignFiles[path]
+		it.Then(t).ShouldNot(it.True(foreign))
+	}
+}
+
+// arc apply, root-mode vs standalone
+// spec.md FR-025/SC-009: parity across the root-sharing axis — the same patch
+// applied to a graph sharing its root produces the same graph as one that
+// owns its root outright.
+func TestRootModeApplyParityWithStandalone(t *testing.T) {
+	repo := t.TempDir()
+	initRootModeGraph(t, repo)
+	patch := writePatchFile(t, t.TempDir(), "tls13.patch.md", tls13Patch)
+
+	chdir(t, repo)
+	_, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Nil(err))
+
+	standalone := t.TempDir()
+	initGraph(t, standalone)
+	chdir(t, standalone)
+	_, err = sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Nil(err))
+
+	// The host's own markdown is the one legitimate difference between the
+	// two trees; everything arc owns must match exactly.
+	got := graphTree(t, repo)
+	for path := range foreignFiles {
+		delete(got, path)
+	}
+	want := graphTree(t, standalone)
+	it.Then(t).Should(it.Seq(sortedKeys(got)).Equal(sortedKeys(want)...))
+	for path, content := range want {
+		it.Then(t).Should(it.Equal(content, got[path]))
+	}
+}
+
+// arc apply, with a foreign file sitting at a path the patch targets
+// spec.md FR-034: this is the one case where a foreign file is legitimately
+// fatal — the patch demanded that exact path. The rejection names the path and
+// the missing field, and describes a READ, because no write is ever attempted.
+func TestRootModeApplyTargetedForeignFileFailsAsRead(t *testing.T) {
+	repo := t.TempDir()
+	initRootModeGraph(t, repo)
+	// An ENTITY path, not the source path: seeding the source would make
+	// apply report "already tracked" (FR-003 idempotency) and return before
+	// reading anything, so the read-path rejection under test would never
+	// run.
+	seedNode(t, repo, "Entity/Transport Layer Security.md", "# Not a node\n\nNo front matter at all.\n")
+	chdir(t, repo)
+	patch := writePatchFile(t, t.TempDir(), "tls13.patch.md", tls13Patch)
+
+	before := gitLog(t, repo)
+
+	out, err := sut(NewApplyCmd(), []string{patch})
+
+	it.Then(t).Must(it.Fail(func() error { return err }))
+	it.Then(t).
+		Should(it.String(err.Error()).Contain("Entity/Transport Layer Security.md")).
+		Should(it.String(err.Error()).Contain(`"@id"`)).
+		Should(it.String(err.Error()).Contain("failed to read")).
+		Should(it.Equal(before, gitLog(t, repo))).
+		Should(it.Equal("", strings.TrimSpace(out)))
+	it.Then(t).ShouldNot(it.String(err.Error()).Contain("failed to write"))
+}
+
+// arc grep, graph root shared with the host project
+// spec.md FR-035 regression lock: grep already indexes what it cannot parse
+// as a node and excludes it from the scan. This pins that behavior, since it
+// is the convention apply and lint are being brought in line with.
+func TestRootModeGrepExcludesForeignFilesFromMatches(t *testing.T) {
+	repo := t.TempDir()
+	initRootModeGraph(t, repo)
+	// A real node carrying the same term docs/design.md carries, so a pass
+	// is "only the node matched", not "nothing matched" — grep exits
+	// non-zero on no matches at all (grep_test.go US1 Scenario 2), which
+	// would otherwise make this assertion vacuously true.
+	seedNode(t, repo, "Entity/Widget.md", rootModeEntity)
+	chdir(t, repo)
+
+	out, err := sut(NewGrepCmd(), []string{"transport"})
+
+	it.Then(t).ShouldNot(it.Error(out, err))
+	it.Then(t).Should(it.String(out).Contain("Entity  Widget"))
+	for path := range foreignFiles {
+		it.Then(t).ShouldNot(it.String(out).Contain(path))
+	}
+}
+
+// arc apply, with the host project's markdown scaled up
+// spec.md FR-033/SC-009 (T064): apply's read cost is governed by its patch,
+// not by the graph root's size. The whole-graph walk this bugfix removed made
+// every apply pay for every file under the root — a correctness defect on a
+// shared root, and an unbounded cost on a large project. Growing the host's
+// foreign markdown from a handful to a thousand files must change nothing
+// observable: same result, same commit, and no read of any of them.
+func TestRootModeApplyCostIsIndependentOfForeignFileCount(t *testing.T) {
+	small := t.TempDir()
+	initRootModeGraph(t, small)
+	patch := writePatchFile(t, t.TempDir(), "tls13.patch.md", tls13Patch)
+
+	chdir(t, small)
+	_, err := sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Nil(err))
+
+	large := t.TempDir()
+	initRootModeGraph(t, large)
+	bulk := filepath.Join(large, "docs", "bulk")
+	it.Then(t).Should(it.Nil(os.MkdirAll(bulk, 0o755)))
+	for i := 0; i < 1000; i++ {
+		name := filepath.Join(bulk, fmt.Sprintf("note-%04d.md", i))
+		it.Then(t).Should(it.Nil(os.WriteFile(name, []byte("# Note\n\nHost content.\n"), 0o644)))
+	}
+	runGit(t, large, "add", "-A")
+	runGit(t, large, "commit", "-m", "host: a thousand notes")
+
+	chdir(t, large)
+	_, err = sut(NewApplyCmd(), []string{patch})
+	it.Then(t).Should(it.Nil(err))
+
+	// identical graph output either way — the thousand files are invisible
+	// to apply, not merely tolerated by it
+	got, want := graphTree(t, large), graphTree(t, small)
+	for path := range got {
+		if strings.HasPrefix(path, "docs/bulk/") {
+			delete(got, path)
+		}
+	}
+	it.Then(t).Should(it.Seq(sortedKeys(got)).Equal(sortedKeys(want)...))
+	for path, content := range want {
+		it.Then(t).Should(it.Equal(content, got[path]))
+	}
+
+	// and none of them reached the commit
+	for _, path := range headPaths(t, large) {
+		it.Then(t).ShouldNot(it.True(strings.HasPrefix(path, "docs/bulk/")))
+	}
 }

@@ -174,6 +174,43 @@ func LooksLikePatch(raw []byte) bool {
 	return typ == patchManifestTypeValue || kind == patchManifestTypeValue
 }
 
+// LooksLikeNode reports whether raw claims graph identity at all — that is,
+// whether its front matter carries any of the keys by which a file declares
+// itself part of the graph: "@id", "@type", or the retired "kind" (recognized
+// here for error routing, exactly as LooksLikePatch recognizes it, never for
+// acceptance).
+//
+// It answers a question that only became askable once a graph root could be
+// shared with a host project (spec 031 FR-010): a *.md file under the graph
+// root may now be the host's own README, ADR or design note, which arc neither
+// wrote nor understands. Such a file is FOREIGN — spec 031 FR-032 — and a
+// command that walks the tree must index and skip it rather than parse it as a
+// node and fail (spec 031 FR-035).
+//
+// The test is deliberately "declares NONE of the identity keys", not "fails to
+// declare all of them". A file carrying "@id" but no "@type" is a broken graph
+// node, not host content, and must stay visible to arc lint as the violation it
+// is; treating it as foreign would turn this classifier into a hiding place for
+// exactly the defects lint exists to surface. Host markdown carries none of
+// these keys, so the narrow test is sufficient for every file this
+// distinguishes in practice.
+//
+// A document arc cannot parse at all is not foreign either: an unparseable
+// front matter is a defect worth reporting, and callers keep their existing
+// handling for it.
+func LooksLikeNode(raw []byte) bool {
+	_, manifest, err := parseDocument(raw)
+	if err != nil {
+		return true
+	}
+	for _, key := range []string{"@id", "@type", "kind"} {
+		if value, ok := manifest[key].(string); ok && value != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // ParseNode parses one on-disk graph node file (front-matter + body) into a
 // Node. index resolves a "**Label**" body block's predicate identity and
 // role (spec 010 FR-019, Bugfix BUG-002) — see ParsePatch's doc comment.

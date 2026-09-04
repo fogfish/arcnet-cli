@@ -6,6 +6,11 @@ Runnable scenarios proving the feature end-to-end. Each maps to acceptance
 scenarios in [spec.md](spec.md); contract details live in
 [contracts/](contracts/) and are not repeated here.
 
+**Bugfix**: 2026-09-04 — [BUG-001](bugs/BUG-001.md) S3 and S9 both initialize
+into a *subfolder* of the host repo (`$H/notes`, `$H/kb`), so no scenario here
+ever placed a graph root alongside the host project's own markdown — the same
+blind spot that let the bug ship. S10 adds that shape.
+
 ## Prerequisites
 
 ```sh
@@ -180,6 +185,43 @@ and a standalone one; results must match.
 **Expected**: identical outcomes to the same sequence on a standalone graph.
 Most should pass on the existing adapter (BUG-002 fixes); each failure becomes
 its own narrowly-scoped fix task rather than speculative hardening.
+
+---
+
+## S10 — A graph sharing its root with the host project (FR-032-FR-035, SC-009/SC-010)
+
+The shape S3 and S9 never build: the graph root **is** the host project root, so
+the project's own markdown sits inside the tree every walking command sees.
+
+```sh
+H=$(mktemp -d); git -C "$H" init -q
+echo '# My Project' > "$H/README.md"
+echo 'contributing' > "$H/CONTRIBUTING.md"
+mkdir -p "$H/docs"; echo 'design notes' > "$H/docs/design.md"
+git -C "$H" -c user.email=a@b.c -c user.name=t add -A
+git -C "$H" -c user.email=a@b.c -c user.name=t commit -qm init
+
+/tmp/arc init --skip-git-init "$H"          # graph root == project root
+cd "$H"
+
+/tmp/arc apply <patch.md>                   # must succeed
+/tmp/arc lint                               # must not fail on README/CONTRIBUTING/docs
+/tmp/arc grep <pattern>                     # must not match inside foreign files
+
+git -C "$H" status --porcelain              # README/CONTRIBUTING/docs unchanged, unstaged
+git -C "$H" show --name-only --format="" HEAD   # only graph files in the commit
+```
+
+**Expected**: `apply` succeeds and the commit carries only graph files; the three
+foreign files are byte-for-byte unchanged and never staged. `lint` reports zero
+violations attributable to them and counts only real nodes; `grep` returns no
+match drawn from them.
+
+**Before the fix**, the first command fails outright with
+`failed to write README.md: manifest is missing a mandatory field or uses the
+pre-0.5 node format: missing mandatory "@id" field` — a message naming a write
+that never happens, on a file `arc` only ever read. That exact invocation is the
+BUG-001 reproduction, and it is the one-line regression check for this scenario.
 
 ---
 

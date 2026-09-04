@@ -53,6 +53,55 @@ written first and run against the **unmodified** git adapter. Result:
 | `arc revert` parity, nested vs standalone | FR-025 | **PASS** |
 | `arc lint` history check ignores a look-alike `Source-Id` commit elsewhere in the host repo | FR-023 | **PASS** (`CommitsMatching`'s `-- .`) |
 
+### Round 2 — the root-sharing axis (T069, Bugfix BUG-001, 2026-09-04)
+
+The table above is accurate and remains closed on its evidence. It is also
+**incomplete**, and the way it is incomplete is the lesson worth recording:
+every scenario in it nests the graph in a subfolder (`<repo>/kb`) and puts the
+host's content in a *sibling* directory (`<repo>/other`). Nothing arc did not
+write ever sat inside the tree a command walks, so the whole filesystem-walk
+layer was unreachable by construction. Parity has two axes, and this feature
+verified one of them:
+
+| Axis | Meaning | Verified by | Outcome |
+|---|---|---|---|
+| Repository nesting | graph root **below** the repository root | `initHostGraph`, T048 | **PASS** on the existing adapter |
+| Root sharing | graph root **shared** with files arc did not write | `initRootModeGraph`, T058-T061 | **FAILED** — three defects, fixed in T062-T066 |
+
+Root-sharing triage, run against the unmodified walk layer:
+
+| Scenario | Requirement | Outcome before the fix |
+|---|---|---|
+| `arc apply` beside `README.md`/`CONTRIBUTING.md`/`docs/` | FR-032, FR-033 | **FAIL** — `guardNoOldFormatNodes` parsed the host's markdown and aborted every apply |
+| `arc apply` error names the operation it attempted | FR-034 | **FAIL** — read-path rejection reported as `failed to write` |
+| `arc apply` read cost independent of host tree size | FR-033, SC-009 | **FAIL** — the walk read every `*.md` under the root |
+| `arc lint` on a shared root | FR-035, SC-010 | **FAIL** — host markdown counted and reported as failing nodes |
+| `arc grep` on a shared root | FR-035 | **PASS** — already indexed unparseable files as `Unreadable` |
+
+`arc grep` passing alone is the tell: all three commands walk the same tree,
+and only the one that already had a foreign-file index survived contact with a
+shared root. That index is now lint's too (T065/T066), and apply no longer
+walks at all (T062).
+
+**One interpretation call, recorded because it deviates from FR-032's letter.**
+FR-032 defines a foreign file as one that "does not declare both `"@id"` and
+`"@type"`". Implemented literally, that silently retires two of lint's own
+checks: `Entity/Broken.md` holding unresolved merge-conflict markers, or
+garbage where its front matter belongs, declares neither key either — and
+would have been skipped as host content. Two existing tests caught this
+(`TestLintUnresolvedMergeConflictReportedOnce`,
+`TestLintRecordsFrontMatterViolationWithoutAbortingWalk`), which is precisely
+what they are for. `service.isForeignFile` therefore asks **location first**: a
+file directly inside a folder named for a registered node type is arc's by
+construction — arc created that folder, writes every node as
+`<Type>/<id>.md`, and FR-015 refuses to initialize where such a folder already
+exists — so anything there is a node, malformed if it will not parse, never
+host content. Only elsewhere (the graph root itself, a `docs/` tree) does the
+identity test decide. Same outcome for every file FR-032 was written about;
+lint's coverage intact.
+
+---
+
 **T049, T050 and T051 are therefore closed as no-change-needed**, with the
 passing tests as the evidence. BUG-002 / spec 016's nested-repository fixes are
 now verified rather than assumed, and `internal/app/graph`,

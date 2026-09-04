@@ -21,9 +21,18 @@ import (
 var errNoCause = errors.New("")
 
 const (
-	ErrNotAGraph       = faults.Safe1[string]("%s is not an initialized graph")
-	ErrPatchRead       = faults.Safe1[string]("failed to read patch file %s")
-	ErrNodeWrite       = faults.Safe1[string]("failed to write %s")
+	ErrNotAGraph = faults.Safe1[string]("%s is not an initialized graph")
+	ErrPatchRead = faults.Safe1[string]("failed to read patch file %s")
+	ErrNodeWrite = faults.Safe1[string]("failed to write %s")
+	// ErrNodeRead reports a rejection raised while READING an existing node
+	// file — a parse failure, or an "@id" that drifted from its own
+	// basename. It exists because the write sentinel above was doing both
+	// jobs, so a file arc had only ever read was reported as one it had
+	// failed to write (spec 031 FR-034, BUG-001). The distinction is not
+	// cosmetic: "failed to write README.md" sends the reader looking for a
+	// permissions or disk fault that does not exist, which is precisely
+	// what Constitution X's actionable-output rule (spec 031 FR-029) forbids.
+	ErrNodeRead        = faults.Safe1[string]("failed to read %s")
 	ErrInvalidPattern  = faults.Safe1[string]("%s is not a valid pattern")
 	ErrInvalidAttrFlag = faults.Safe1[string]("--attr %s must be name=value or name~=pattern")
 	ErrSeedNotFound    = faults.Safe1[string]("no node found with basename %s")
