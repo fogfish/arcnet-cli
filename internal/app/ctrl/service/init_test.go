@@ -47,7 +47,7 @@ type fakeDirEntry struct {
 func (e fakeDirEntry) Name() string               { return e.name }
 func (e fakeDirEntry) IsDir() bool                { return e.dir }
 func (e fakeDirEntry) Type() fs.FileMode          { return 0 }
-func (e fakeDirEntry) Info() (fs.FileInfo, error) { return fakeFileInfo{name: e.name, dir: e.dir}, nil }
+func (e fakeDirEntry) Info() (fs.FileInfo, error) { return fakeFileInfo(e), nil }
 
 type fakeFile struct {
 	name    string
