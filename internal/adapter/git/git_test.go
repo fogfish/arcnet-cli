@@ -10,6 +10,7 @@ package git_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -511,4 +512,157 @@ func TestVCSCommitsMatchingNestedIgnoresSiblingCommits(t *testing.T) {
 	it.Then(t).
 		Should(it.Nil(err)).
 		Should(it.Equal(0, len(hashes)))
+}
+
+// --- specs/031-init-existing-git-repo: repository detection & scoped commits
+
+// contracts/vcs-adapter-contract.md A1: inside a work tree RepoRoot returns
+// the innermost enclosing repository root, from the root itself and from a
+// subdirectory alike.
+func TestVCSRepoRootInsideRepository(t *testing.T) {
+	repo, graph, _ := nestedGraph(t)
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	fromRoot, err := vcs.RepoRoot(ctx, repo)
+	it.Then(t).Should(it.Nil(err)).Should(it.Equal(repo, fromRoot))
+
+	fromSub, err := vcs.RepoRoot(ctx, graph)
+	it.Then(t).Should(it.Nil(err)).Should(it.Equal(repo, fromSub))
+}
+
+// contracts/vcs-adapter-contract.md A1: the root is reported in the
+// caller's own path spelling, so it stays comparable to the path the caller
+// passed in and safe to build graph paths onto. `rev-parse --show-toplevel`
+// alone reports a symlink-resolved path (/private/var/… on macOS), which is
+// a different string for the same directory.
+func TestVCSRepoRootKeepsCallerPathSpelling(t *testing.T) {
+	repo, graph, _ := nestedGraph(t)
+	vcs := git.New(bios.NewReporter(true, true))
+
+	root, err := vcs.RepoRoot(context.Background(), graph)
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.Equal(repo, root))
+	rel, rerr := filepath.Rel(root, graph)
+	it.Then(t).Should(it.Nil(rerr)).Should(it.Equal("graph", rel))
+}
+
+// contracts/vcs-adapter-contract.md A1: outside any repository the answer is
+// ("", nil) — an expected negative, never an error.
+func TestVCSRepoRootOutsideRepository(t *testing.T) {
+	setGitIdentity(t)
+	vcs := git.New(bios.NewReporter(true, true))
+
+	root, err := vcs.RepoRoot(context.Background(), t.TempDir())
+
+	it.Then(t).Should(it.Nil(err)).Should(it.Equal("", root))
+}
+
+// contracts/vcs-adapter-contract.md A2: exit 0 is "ignored", exit 1 is the
+// expected "no path matched" and must not surface as an error.
+func TestVCSIsIgnoredDiscriminatesExitCodes(t *testing.T) {
+	repo, _, _ := nestedGraph(t)
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	writeFile(t, repo, ".gitignore", "private/\n")
+
+	ignored, err := vcs.IsIgnored(ctx, repo, "private/graph")
+	it.Then(t).Should(it.Nil(err)).Should(it.True(ignored))
+
+	ignored, err = vcs.IsIgnored(ctx, repo, "graph")
+	it.Then(t).Should(it.Nil(err)).Should(it.True(!ignored))
+}
+
+// contracts/vcs-adapter-contract.md A2: exit 2 and above is a genuine
+// failure — a path outside the repository is the reachable case.
+func TestVCSIsIgnoredReportsGenuineFailure(t *testing.T) {
+	repo, _, _ := nestedGraph(t)
+	vcs := git.New(bios.NewReporter(true, true))
+
+	_, err := vcs.IsIgnored(context.Background(), repo, "../outside")
+
+	it.Then(t).Should(it.True(errors.Is(err, git.ErrGitCheckIgnore)))
+}
+
+// contracts/vcs-adapter-contract.md A3: an empty pathspec never invokes git,
+// so it can never degrade into staging everything.
+func TestVCSStagePathsEmptyStagesNothing(t *testing.T) {
+	repo, _, _ := nestedGraph(t)
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	writeFile(t, repo, "loose.md", "x")
+
+	it.Then(t).Should(it.Nil(vcs.StagePaths(ctx, repo, nil)))
+	it.Then(t).Should(it.String(runGit(t, repo, "status", "--porcelain")).Contain("?? loose.md"))
+}
+
+// contracts/vcs-adapter-contract.md A3/A4, research.md D3: staging and
+// committing by explicit pathspec confines the commit to the listed paths —
+// a file the user staged themselves survives staged and uncommitted, and a
+// modified file stays modified. This is FR-014.
+func TestVCSCommitPathsIsolatesUserIndex(t *testing.T) {
+	repo, _, _ := nestedGraph(t)
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	writeFile(t, repo, "README.md", "hi\n")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, repo)))
+	_, err := vcs.Commit(ctx, repo, "host: initial")
+	it.Then(t).Should(it.Nil(err))
+
+	// the user's own work, in flight
+	writeFile(t, repo, "README.md", "hi\ndirty\n")
+	writeFile(t, repo, "staged.txt", "staged\n")
+	runGit(t, repo, "add", "staged.txt")
+
+	// initialization's own footprint
+	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(repo, "Entity"), 0o755)))
+	writeFile(t, repo, filepath.Join("Entity", ".gitkeep"), "")
+
+	footprint := []string{"Entity/.gitkeep"}
+	it.Then(t).Should(it.Nil(vcs.StagePaths(ctx, repo, footprint)))
+
+	hash, err := vcs.CommitPaths(ctx, repo, "graph(init): empty knowledge graph", footprint)
+	it.Then(t).Should(it.Nil(err)).ShouldNot(it.Equal("", hash))
+
+	committed := strings.TrimSpace(runGit(t, repo, "show", "--name-only", "--format=", "HEAD"))
+	it.Then(t).Should(it.Equal("Entity/.gitkeep", committed))
+
+	status := runGit(t, repo, "status", "--porcelain")
+	it.Then(t).
+		Should(it.String(status).Contain("A  staged.txt")).
+		// runGit trims, so the porcelain " M" renders here without its
+		// leading column.
+		Should(it.String(status).Contain("M README.md"))
+}
+
+// contracts/vcs-adapter-contract.md A3/A4: the same pathspec discipline
+// holds for a graph nested in a subdirectory — paths resolve relative to the
+// directory git runs in, so the graph's own relative paths are what the
+// caller passes, in either topology.
+func TestVCSCommitPathsFromNestedGraphDirectory(t *testing.T) {
+	repo, graph, other := nestedGraph(t)
+	vcs := git.New(bios.NewReporter(true, true))
+	ctx := context.Background()
+
+	writeFile(t, other, "unrelated.md", "unrelated\n")
+	it.Then(t).Should(it.Nil(vcs.StageAll(ctx, repo)))
+	_, err := vcs.Commit(ctx, repo, "host: initial")
+	it.Then(t).Should(it.Nil(err))
+
+	writeFile(t, other, "unrelated.md", "edited\n")
+	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(graph, "Entity"), 0o755)))
+	writeFile(t, graph, filepath.Join("Entity", ".gitkeep"), "")
+
+	footprint := []string{"Entity/.gitkeep"}
+	it.Then(t).Should(it.Nil(vcs.StagePaths(ctx, graph, footprint)))
+	_, err = vcs.CommitPaths(ctx, graph, "graph(init): empty knowledge graph", footprint)
+	it.Then(t).Should(it.Nil(err))
+
+	committed := strings.TrimSpace(runGit(t, repo, "show", "--name-only", "--format=", "HEAD"))
+	it.Then(t).Should(it.Equal("graph/Entity/.gitkeep", committed))
+	it.Then(t).Should(it.String(runGit(t, repo, "status", "--porcelain")).Contain("other/unrelated.md"))
 }

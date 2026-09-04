@@ -117,7 +117,16 @@ arc init my-graph
 cd my-graph
 ```
 
-This is a complete, offline bootstrap: the canonical folder layout, a versioned `_schema/` seeded with the entire ARCNET-CORE built-in vocabulary (one document per type and per predicate), the `.arc/` state directory, a `.gitignore`, and the initial git commit.
+This is a complete, offline bootstrap: the canonical folder layout, a versioned `_schema/` seeded with the entire ARCNET-CORE built-in vocabulary (one document per type and per predicate), the `.arc/` state directory with its own rule keeping it out of version control, and the initial git commit.
+
+**Adding a graph to a project you already version.** `arc init` refuses to run inside an existing git repository rather than nesting a new one inside yours; it names the repository it found and the flag that overrides the refusal:
+
+```bash
+cd my-project
+arc init --skip-git-init notes     # graph in notes/, committed to my-project's own history
+```
+
+With `--skip-git-init` no repository is created, the commit contains only the files initialization itself wrote — anything you had modified, staged or untracked is left exactly as it was — and your project's own `.gitignore` is never read, created or modified. If a canonical folder name such as `Source/` is already taken, `arc` refuses and points you at the recovery: initialize into a subfolder.
 
 ```
 my-graph/
@@ -129,7 +138,7 @@ my-graph/
 ├── _schema/
 │   ├── Class/           # one document per node type
 │   └── Property/        # one document per predicate, with its merge policy
-├── .arc/                # local state, git-ignored
+├── .arc/                # local state, excluded from git by its own .gitignore
 └── .git/
 ```
 
@@ -198,6 +207,7 @@ An MCP server over stdio, exposing your graph read-only to any MCP client.
 ```bash
 # bootstrap
 arc init [<dir>]                          # initialize a new, empty knowledge graph
+arc init [<dir>] --skip-git-init          # ...into an existing git repository, using its history
 
 # ingest
 arc apply <patch.md>                      # ingest one patch document

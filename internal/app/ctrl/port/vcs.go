@@ -16,6 +16,15 @@ import "context"
 type VCS interface {
 	IsAvailable(ctx context.Context) error
 	Init(ctx context.Context, dir string) error
-	StageAll(ctx context.Context, dir string) error
-	Commit(ctx context.Context, dir, message string) (hash string, err error)
+	// StagePaths stages exactly the given graph-relative paths, and
+	// nothing else. Unlike StageAll it never sweeps in unrelated changes,
+	// which is required when the graph root and the repository root
+	// coincide (contracts/cli-contract.md C7).
+	StagePaths(ctx context.Context, dir string, paths []string) error
+
+	// CommitPaths commits exactly the given paths, ignoring whatever else
+	// the index holds. Distinct from Commit, which commits the whole
+	// index — including anything the user staged themselves before running
+	// arc init (research.md D3, FR-014).
+	CommitPaths(ctx context.Context, dir, message string, paths []string) (hash string, err error)
 }

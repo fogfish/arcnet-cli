@@ -54,10 +54,38 @@ var DefaultLayout = ArcNetCoreLayout{
 	SeedFiles: map[string]string{},
 }
 
+// InitOpts carries the repository facts cmd/arc/ctrl resolves through the
+// git adapter before calling the service, plus the user's own flag. They
+// are passed as plain values rather than probed from inside the service
+// because detection MUST happen before the target directory exists
+// (research.md D2, D6) — and because every DECISION taken from them still
+// belongs to the service.
+type InitOpts struct {
+	// ParentRepo is the root of the innermost repository enclosing the
+	// target, expressed in the same path spelling as the target itself so
+	// the two are directly comparable. Empty means no enclosing
+	// repository was found.
+	ParentRepo string
+
+	// SkipGitInit is the --skip-git-init flag as given by the user.
+	SkipGitInit bool
+
+	// TargetIgnored reports whether the parent repository's ignore rules
+	// exclude the target. Meaningful only when ParentRepo is non-empty.
+	TargetIgnored bool
+}
+
 // InitResult is the domain value component.go's Init returns to
 // cmd/arc/ctrl, rendered by the bios.Registry[InitResult].
 type InitResult struct {
 	Root           GraphRoot `json:"path"`
 	CommitHash     string    `json:"commit"`
 	FoldersCreated []string  `json:"foldersCreated"`
+
+	// Repository is the root of the repository the initial commit landed
+	// in, populated in BOTH modes and never empty (FR-027): the graph root
+	// itself for a standalone init, an ancestor for --skip-git-init. A
+	// consumer distinguishes the two by comparing it to Root — no mode
+	// boolean is emitted (FR-028).
+	Repository string `json:"repository"`
 }

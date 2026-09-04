@@ -21,7 +21,9 @@ import (
 )
 
 // Init bootstraps a new, empty knowledge graph at dir, seeding _schema/
-// with schemaSeed. It is a thin delegator into service.Init.
-func Init(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, dir string, schemaSeed map[string]string) (kernel.InitResult, error) {
-	return service.Init(ctx, mounter, vcs, dir, schemaSeed)
+// with schemaSeed. opts carries the repository context cmd/arc/ctrl
+// resolved through the git adapter before calling in (research.md D2, D6).
+// It is a thin delegator into service.Init.
+func Init(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, dir string, schemaSeed map[string]string, opts kernel.InitOpts) (kernel.InitResult, error) {
+	return service.Init(ctx, mounter, vcs, dir, schemaSeed, opts)
 }
