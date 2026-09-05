@@ -2,6 +2,12 @@
 
 ## 2026-09-05
 
+/speckit-specify `arc lint` takes `--skip`, it is a list of rule names to skip, it uses comma to separate multiple values. The flag requires a sibling command `arc lint rules` that shows a human readable definition for all rules implemented by the app. 
+
+/speckit-plan implement the feature at `cmd/arc/lint` level only by apply post filtering to the results from linter service. The rules id and human readable definitions are implemented as constants in `internal/app/lint/kernel` 
+
+---
+
 /speckit-specify `arc stats` summary about the graph: total nodes and edges, node count by class, broken link count, source ingestion by year. Usage of verbose mode adds detailed statistic with total edges by predicate, source ingestion rate by month and other graph statistic.
 
 /speckit-plan implement the stat feature within `internal/app/graph` service, also implement `arc stats` command in the `cmd/arc/graph` 

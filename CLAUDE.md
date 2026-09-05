@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/032-arc-stats/plan.md`
+`specs/033-arc-lint-skip-rules/plan.md`
 <!-- SPECKIT END -->
 
 ## Go file license header
