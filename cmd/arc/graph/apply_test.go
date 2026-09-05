@@ -885,7 +885,7 @@ func TestApplyLabeledBlockShapeSurvivesWikilinksListMarkersHeadingsAndGrouping(t
 	assertIsFile(t, nodePath)
 	content := readFile(t, nodePath)
 	it.Then(t).
-		Should(it.String(content).Contain("## Assumptions")).
+		Should(it.String(content).Contain("**Assumptions**")).
 		Should(it.String(content).Contain("- Core graph structure can be meaningfully separated from domain-specific semantics")).
 		Should(it.String(content).Contain("- [[LLM]]s can be effectively trained on regulated node structures to maintain semantic consistency")).
 		Should(it.String(content).Contain("## Related Aporias")).
@@ -3151,13 +3151,16 @@ func TestApplyAcceptsReferenceNodeWithoutUnknownTypeDiagnostic(t *testing.T) {
 	// A type the tool already knows is never auto-registered, so applying
 	// one must not rewrite its seeded schema document. Thought, which it
 	// does not know, is the control: that one is registered on first sight.
-	// specs/023 FR-028: §11.6 v0.11 requires "title" alone; "relevance" is
-	// retained as Optional. "ref" is retired outright under CORE 0.12
-	// (BUG-001/FR-034) — no longer part of Reference's conformant shape.
+	// specs/023 FR-028 (corrected, BUG-002): §11.6 v0.11 requires "title"
+	// alone; "relevance" is retired outright, not retained — Reference's
+	// leading prose keys as "text" instead. "ref" is retired outright under
+	// CORE 0.12 (BUG-001/FR-034) — no longer part of Reference's
+	// conformant shape.
 	referenceSchema := readFile(t, filepath.Join(dir, "_schema", "Class", "Reference.md"))
 	it.Then(t).
 		Should(it.String(referenceSchema).Contain("required:: [[title]]")).
-		Should(it.String(referenceSchema).Contain("optional:: [[relevance]]")).
+		Should(it.String(referenceSchema).Contain("optional:: [[text]]")).
+		ShouldNot(it.String(referenceSchema).Contain("optional:: [[relevance]]")).
 		ShouldNot(it.String(referenceSchema).Contain("optional:: [[ref]]"))
 }
 
@@ -3195,14 +3198,14 @@ func TestApplyStoresLeadingProseUnderTheTypesOwnPredicate(t *testing.T) {
 	dir := applyV011Patch(t)
 
 	resource := parseNodeFile(t, filepath.Join(dir, "Resource", "probe-fragment.md"))
-	it.Then(t).
-		Should(it.String(resource.Texts["text"]).Contain("A fragment of the probe document")).
-		Should(it.Equal("", resource.Texts["relevance"]))
+	it.Then(t).Should(it.String(resource.Texts["text"]).Contain("A fragment of the probe document"))
 
+	// spec 023 BUG-002: "relevance" is retired outright — Reference's
+	// leading prose keys as "text" now, the same shared generic predicate
+	// Entity/Resource already use for theirs, so both nodes' prose lands
+	// under the same key.
 	reference := parseNodeFile(t, filepath.Join(dir, "Reference", "rescorla-2018-tls13.md"))
-	it.Then(t).
-		Should(it.String(reference.Texts["relevance"]).Contain("The normative definition of the handshake")).
-		Should(it.Equal("", reference.Texts["text"]))
+	it.Then(t).Should(it.String(reference.Texts["text"]).Contain("The normative definition of the handshake"))
 }
 
 // arc apply probe.patch.md

@@ -52,9 +52,8 @@ var coreIndexFixture = core.Index{
 		"Reference": {},
 	},
 	Predicates: map[string]core.PredicateDef{
-		"ref":       {Merge: core.MergeImmutable},
-		"status":    {Merge: core.MergeLastWriteWin},
-		"relevance": {Merge: core.MergeFirstWriteWin},
+		"ref":    {Merge: core.MergeImmutable},
+		"status": {Merge: core.MergeLastWriteWin},
 	},
 }
 
@@ -75,11 +74,23 @@ func indexWithType(name string) core.Index {
 // indexWithPredicate returns coreIndexFixture plus one additional
 // registered predicate, for tests exercising the already-registered path.
 func indexWithPredicate(name string) core.Index {
+	return indexWithPredicateDef(name, core.PredicateDef{})
+}
+
+// indexWithPredicateDef returns coreIndexFixture with one predicate
+// registered (or overridden) as def — e.g. giving "text" a local
+// MergeFirstWriteWin for a conflict-detection test, without mutating the
+// shared coreIndexFixture other tests' Entity/Resource nodes rely on
+// staying MergeAppend (spec 023 BUG-002: Reference's leading prose keys as
+// "text" too now that "relevance" is retired, so a test exercising the
+// conflict path via Reference needs its own local override, not the
+// shared fixture).
+func indexWithPredicateDef(name string, def core.PredicateDef) core.Index {
 	predicates := make(map[string]core.PredicateDef, len(coreIndexFixture.Predicates)+1)
 	for k, v := range coreIndexFixture.Predicates {
 		predicates[k] = v
 	}
-	predicates[name] = core.PredicateDef{}
+	predicates[name] = def
 	return core.Index{Types: coreIndexFixture.Types, Predicates: predicates}
 }
 
@@ -257,22 +268,26 @@ A test entity.
 `
 
 // sourceReferencePatch/existingWidgetSpecReferenceWithStatus: a "Reference"
-// node's leading prose (Texts["relevance"], firstWriteWin per
-// coreIndexFixture) genuinely diverges from what's already on disk, so it
-// is flagged — its "status" (lastWriteWin) diverges too but is never
-// flagged (spec.md FR-012), and "ref" (immutable) is unchanged on both
-// sides so it doesn't interact with this scenario.
+// node's leading prose (Texts["text"] — spec 023 BUG-002 retires
+// "relevance" outright; Reference's leading prose keys as "text" like
+// every other type not otherwise named) genuinely diverges from what's
+// already on disk, so it is flagged when the test locally declares "text"
+// firstWriteWin (indexWithPredicateDef) — its "status" (lastWriteWin)
+// diverges too but is never flagged (spec.md FR-012), and "ref"
+// (immutable) is unchanged on both sides so it doesn't interact with this
+// scenario.
 //
 // The node was typed "Resource" until ARCNET-CORE v0.11
 // (specs/022-reference-type-folders). It is a "Reference" now for the same
-// reason the predicates it carries are: ref/status/relevance describe an
-// external work the graph has not ingested, and that whole semantic moved
-// to Reference. Note that coreIndexFixture's firstWriteWin declaration for
-// "relevance" is this test's own, chosen to exercise the flagged-divergence
-// branch of the merge algebra over a text-role key; the SEEDED vocabulary
-// declares "relevance" as append (CorePredicateDefs), as it does every
-// other prose key. The fixture is deliberately not read from the seed, so
-// this scenario keeps exercising that branch regardless.
+// reason the predicates it carries are: ref/status describe an external
+// work the graph has not ingested, and that whole semantic moved to
+// Reference. The local firstWriteWin declaration for "text" is this test's
+// own, chosen to exercise the flagged-divergence branch of the merge
+// algebra over a text-role key; the SEEDED vocabulary declares "text" as
+// append (CorePredicateDefs), as it does every other prose key. The
+// override is deliberately local (not the shared coreIndexFixture), so
+// this scenario keeps exercising that branch without changing what other
+// tests' Entity/Resource nodes see for "text".
 const sourceReferencePatch = `---
 "@type": patch
 document: foo-2026-x
@@ -413,16 +428,24 @@ func TestApplyMergesExistingNode(t *testing.T) {
 	it.Then(t).Should(it.String(content).Contain("replaces:: [[Old Widget]]"))
 }
 
-// BUG-004: a "Reference" node (MergeUnionFirstWriter) is unaffected by this
-// bugfix — its already-populated scalar field is still flagged as a
-// conflict on divergence, exactly as before.
+// BUG-004: a "Reference" node's leading prose (MergeFirstWriteWin, exercised
+// here via a local index override — spec 023 BUG-002 retires "relevance" as
+// a real predicate, so Reference's leading prose keys as "text" like every
+// other type not otherwise named; this test's own conflict-detection
+// exercise still needs *some* first-write-win-declared prose predicate, so
+// it declares "text" that way locally rather than in the shared
+// coreIndexFixture other tests' Entity/Resource nodes also rely on staying
+// MergeAppend) is unaffected by this bugfix — its already-populated scalar
+// field is still flagged as a conflict on divergence, exactly as before.
 func TestApplyFlagsConflict(t *testing.T) {
 	store := newGraphStore()
 	store.files["patch.md"] = []byte(sourceReferencePatch)
 	store.files["Reference/Widget Spec.md"] = []byte(existingWidgetSpecReferenceWithStatus)
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 
-	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
+	index := indexWithPredicateDef("text", core.PredicateDef{Merge: core.MergeFirstWriteWin})
+
+	result, err := service.Apply(context.Background(), memMounter{store: store}, vcs, bios.NewReporter(true, true), index, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal(1, len(result.Conflicts)))
@@ -843,8 +866,9 @@ A test document.
 }
 
 // BUG-004: uses the same Reference-kind conflict fixture as
-// TestApplyFlagsConflict above, since an "Entity" (MergeUnion) node no
-// longer ever flags a conflict.
+// TestApplyFlagsConflict above (including its local "text" MergeFirstWriteWin
+// override — see that test's own comment), since an "Entity" (MergeUnion)
+// node no longer ever flags a conflict.
 func TestApplyReportsStepConflictFlagged(t *testing.T) {
 	store := newGraphStore()
 	store.files["patch.md"] = []byte(sourceReferencePatch)
@@ -852,7 +876,9 @@ func TestApplyReportsStepConflictFlagged(t *testing.T) {
 	vcs := &graphmock.VCS{CommitHash: "abc123"}
 	reporter := &fakeReporter{}
 
-	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, reporter, coreIndexFixture, &fakeSchema{}, "/graph", "/patch.md")
+	index := indexWithPredicateDef("text", core.PredicateDef{Merge: core.MergeFirstWriteWin})
+
+	_, err := service.Apply(context.Background(), memMounter{store: store}, vcs, reporter, index, &fakeSchema{}, "/graph", "/patch.md")
 
 	it.Then(t).Should(it.Nil(err))
 	it.Then(t).Should(it.Equal("Widget Spec: merged (conflict flagged)", reporter.steps[1]))

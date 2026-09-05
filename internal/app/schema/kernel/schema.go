@@ -86,22 +86,16 @@ var CorePredicateDefs = map[string]core.PredicateDef{
 	"doi":      {Role: "meta", Merge: core.MergeFillIfEmpty, Aligned: "schema:doi", Description: "Digital object identifier."},
 	"category": {Role: "meta", Merge: core.MergeImmutable, Description: "John F. Sowa's top-level category, decoded into a bag of words (e.g. independent/physical/continuant/object)."},
 	"aliases":  {Role: "meta", Merge: core.MergeUnion, Aligned: "skos:altLabel", Description: "Alternative names for the entity."},
-	// "notes" is retired (BUG-001/FR-033) as an Entity/Resource predicate —
-	// it stays registered because Reference still declares it (§11.6's own
-	// worked example), and it remains the generic non-leading-prose key
-	// every other type's trailing body section renders under.
-	"notes": {Role: "text", Merge: core.MergeAppend, Description: "Additional prose."},
-	// "relevance" declares append, not firstWriteWin: it is a Reference's
-	// leading prose (textPredicateFor), and several documents may each have
-	// their own reason for pointing at the same external work. Those reasons
-	// accumulate as separate paragraphs rather than the first one fixing the
-	// slot and every later contribution being reported as a conflict. This
-	// aligns it with every other prose predicate in the seeded vocabulary —
-	// "text", "abstract", "notes", and "description" all declare append —
-	// leaving no type-specific prose key first-fixed.
-	"relevance": {Role: "text", Merge: core.MergeAppend, Description: "A one-to-two sentence note on why the reference matters."},
-	"heading":   {Role: "meta", Merge: core.MergeFirstWriteWin, Description: "A human-readable title for the period, shown in place of the bare @id (period code)."},
-	"period":    {Role: "meta", Merge: core.MergeImmutable, Aligned: "arc:period", Description: "A timeline node's own period code (YYYY or YYYY-MM), duplicated from its @id so a bare 4-digit yearly value always decodes as a YAML string rather than an integer."},
+	// "notes" and "relevance" are both retired outright (spec 023 BUG-002):
+	// the same 0.11→0.12 revision note that retires "notes" from
+	// Entity/Resource (BUG-001/FR-033) also retires "relevance" ("mentioned
+	// only in prose, never actually registered or required"), and
+	// Reference's own current worked example (§11.6) confirms neither is a
+	// real predicate for any type — every type's default (unlabeled) prose
+	// is the shared generic "text" predicate above (or "abstract" for
+	// Source); there is no second, type-blind prose predicate.
+	"heading": {Role: "meta", Merge: core.MergeFirstWriteWin, Description: "A human-readable title for the period, shown in place of the bare @id (period code)."},
+	"period":  {Role: "meta", Merge: core.MergeImmutable, Aligned: "arc:period", Description: "A timeline node's own period code (YYYY or YYYY-MM), duplicated from its @id so a bare 4-digit yearly value always decodes as a YAML string rather than an integer."},
 
 	"role":        {Role: "meta", Merge: core.MergeImmutable, Description: "One of meta/text/href/edge/link (CORE §5): the predicate's serialization position."},
 	"merge":       {Role: "meta", Merge: core.MergeImmutable, Description: "One of the merge behaviors (CORE §9.3): how contributions to this predicate combine."},
@@ -156,13 +150,15 @@ var CoreTypeDefs = map[string]core.TypeDef{
 		},
 		Description: "A node for a subject occurring in sources, typed by Sowa category.",
 	},
-	// CORE §11.4 lists "notes" as Resource's sole optional; "indexed" is
-	// carried in addition because it is not a CORE predicate at all but an
-	// arc extension (arc:indexed, spec 009) that arc apply stamps on every
-	// node it creates. Omitting it would make every Resource the tool
-	// itself writes fail its own type-conformance check — the same reason
-	// Source, Entity, and Timeline each carry it, and the same kind of
-	// documented divergence as Timeline's arc-internal "period".
+	// CORE §11.4 declares no Optional predicates of its own for Resource
+	// (its former sole optional, "notes", is retired outright — spec 023
+	// BUG-002); "indexed" is carried anyway because it is not a CORE
+	// predicate at all but an arc extension (arc:indexed, spec 009) that
+	// arc apply stamps on every node it creates. Omitting it would make
+	// every Resource the tool itself writes fail its own type-conformance
+	// check — the same reason Source, Entity, and Timeline each carry it,
+	// and the same kind of documented divergence as Timeline's
+	// arc-internal "period".
 	"Resource": {
 		Required:    []string{"text", "tags", "mentionedIn"},
 		Optional:    []string{"indexed"},
@@ -181,13 +177,15 @@ var CoreTypeDefs = map[string]core.TypeDef{
 		Description: "A production-date index of ingested documents.",
 	},
 	// §11.6 v0.11's normative Class block requires "title" alone.
-	// "relevance" is retained as Optional so spec 022's body-prose keying
-	// (a Reference's leading prose is its "relevance") survives. "authors",
-	// "year", "ref", and "status" are all retired under CORE 0.12
-	// (BUG-001/FR-031/FR-032/FR-034): "author" (singular) replaces
-	// "authors", "published" replaces "year" — both already registered,
-	// correctly shaped predicates, so no new registration is needed — and
-	// "ref"/"status" have no replacement, they are simply gone.
+	// "relevance" is retired outright (spec 023 BUG-002), not just
+	// superseded — Reference's leading prose keys as "text" instead, the
+	// same shared generic predicate Entity/Resource already use for theirs
+	// (textPredicateFor). "authors", "year", "ref", and "status" are all
+	// retired under CORE 0.12 (BUG-001/FR-031/FR-032/FR-034): "author"
+	// (singular) replaces "authors", "published" replaces "year" — both
+	// already registered, correctly shaped predicates, so no new
+	// registration is needed — and "ref"/"status" have no replacement,
+	// they are simply gone.
 	//
 	// This SUPERSEDES a recorded Clarification in
 	// specs/022-reference-type-folders, which required title/ref/relevance
@@ -200,7 +198,7 @@ var CoreTypeDefs = map[string]core.TypeDef{
 	// the same reason.
 	"Reference": {
 		Required:    []string{"title"},
-		Optional:    []string{"url", "author", "published", "doi", "isCitedBy", "relevance", "indexed"},
+		Optional:    []string{"text", "url", "author", "published", "doi", "isCitedBy", "indexed"},
 		Description: "A node for an external work the graph points to but has not ingested, or a topic/area tracked for reading or research.",
 	},
 	// §11.1: every node carries "@id"/"@type" and nothing else
@@ -211,7 +209,7 @@ var CoreTypeDefs = map[string]core.TypeDef{
 	// does require one says so itself, as Source now does.
 	"Node": {
 		Required:    []string{},
-		Optional:    []string{"published", "created", "tags", "text", "updated", "scoreZ", "scoreC"},
+		Optional:    []string{"published", "created", "indexed", "tags", "text", "updated", "scoreZ", "scoreC"},
 		Description: "The graph's implicit universal base type: every content type (Source, Entity, Resource, Timeline, Reference) inherits its Required/Optional contract via rdfs:subClassOf, whether declared explicitly or not. Never itself a node's own @type — it exists only to be inherited from (spec 017).",
 	},
 	"Property": {

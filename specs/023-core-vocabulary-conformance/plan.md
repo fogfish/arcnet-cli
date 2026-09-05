@@ -11,6 +11,14 @@
 or renaming six of the seven predicates this plan's F4 table and the Assumptions section (spec.md)
 settled in the tool's favour. See new "F7" below and the added Open Item for `/speckit-clarify`.
 
+**Bugfix**: 2026-09-05 — [BUG-002](bugs/BUG-002.md). F7's own `relevance` row above claimed the
+0.11→0.12 revision note only dropped `relevance` "from *prose*, never from an actual
+Requires/Optional list" — wrong; the same revision note separately retires it outright, and
+`Reference`'s current worked example's Optional list confirms it (no `relevance`, no `notes`). Row
+corrected below; companion fix to spec 010's own [BUG-007](../010-predicate-node-model/bugs/BUG-007.md),
+which retires the `textPredicateFor` trailing-slot design this vocabulary retirement would
+otherwise leave half-fixed.
+
 ## Summary
 
 Correct the built-in predicate and type vocabulary `arc init` seeds so a new graph is conformant
@@ -129,7 +137,7 @@ direction for six of them:
 | `ref` (`Reference` Optional) | Registered, kept (T035) | Retired |
 | `status` (`Reference` Optional) | Registered, kept (T035) | Retired |
 | `granularity` (`Timeline` Optional) | Registered, kept (T034) | Retired |
-| `relevance` (`Reference` leading prose) | Registered, `firstWriteWin` (T019) | Unaffected — 0.12 drops it from *prose* only, never from an actual Requires/Optional list; no code change |
+| `relevance` (`Reference` leading prose) | Registered, `firstWriteWin` (T019) | ~~Unaffected — 0.12 drops it from *prose* only, never from an actual Requires/Optional list; no code change~~ **Corrected 2026-09-05 ([BUG-002](bugs/BUG-002.md))**: wrong — the *same* revision note quoted above separately retires `relevance` outright ("mentioned only in prose, never actually registered or required"), and `Reference`'s current (0.12) worked example's own Optional list (`url`/`author`/`published`/`doi`/`isCitedBy`) confirms it: no `relevance`, no `notes`. This row's "never from an actual Requires/Optional list" claim held for 0.10/0.11 (where `Reference` did carry both) but not 0.12. `relevance` retires; `Reference`'s leading prose becomes the shared `text` predicate. |
 
 `href`-as-a-predicate (the ninth item in BUG-001, from CORE's own `.nt` worked example) does not
 apply to this codebase — no RDF/N-Triples exporter exists here today.
@@ -316,6 +324,7 @@ Steps 1–3 are shippable without 4–6 and deliver US1–US4 for new graphs.
 | **Superseding spec 022's Clarification** on `Reference` | v0.11's normative `Class` block replaced the revision note 022 relied on. | *Keep 022's decision* — leaves the tool requiring two predicates the current spec does not, which is the exact false-positive class this feature exists to remove. Raised explicitly per Principle I rather than diverged from quietly. |
 | **XIV** — breaking change (round 2, [BUG-001](bugs/BUG-001.md)): a graph carrying `definition`/`authors`/`year`/`notes`/`ref`/`status`/`granularity` front-matter is not specially supported once these are retired | Same reasoning as the row above, applied consistently: `arc` is pre-1.0 with no compatibility guarantee (`ARCHITECTURE.md` Compatibility Policy); introducing leniency for this retirement but not the merge-vocabulary one would be an arbitrary inconsistency. | *Reader leniency for one release* — FR-037 originally proposed this and was corrected during bugfix-verify precisely because it contradicts the row above's own rejection of the identical alternative for the same feature. |
 | **Accepting `Entity`'s prose-drift regression** ([BUG-001](bugs/BUG-001.md), round 2) | `definition`→`text` collides with `Resource`'s already-`MergeAppend` `text` predicate; the merge algebra has no per-type/role-qualified override. | *Invent a merge-scoping mechanism* (per-type `text`, or a role+type-qualified override) — rejected as new complexity to preserve one predicate's first-fixed behaviour, when the existing six-value, node-agnostic merge model is itself a load-bearing simplicity constraint (FR-001/FR-004). |
+| **XIV** — breaking change ([BUG-002](bugs/BUG-002.md), 2026-09-05): a `Reference` node carrying `relevance` front-matter/prose, or any node carrying `notes`, is not specially supported once both are retired everywhere; `Reference`'s own leading prose migrates from `relevance` (`MergeFirstWriteWin`) to the shared `text` predicate (`MergeAppend`) — a second, narrower instance of the same `Entity`-style prose-drift regression accepted immediately above | Same reasoning as the two rows above, applied consistently: `arc` is pre-1.0, and `relevance`/`notes` are no more entitled to reader leniency than the seven predicates BUG-001 already retired without it. `Reference`'s `relevance`→`text` migration has no other registered predicate to land on — `text` is the only shared generic prose predicate CORE registers (§10.2). | *Keep `relevance` registered, `Reference`-only* — this is F7's own original (now-corrected) row's mistake: the upstream spec has already retired it, so keeping it would silently diverge from CORE 0.12 again, the exact drift this feature and BUG-001 both exist to close. *Invent a `Reference`-specific merge override to preserve `relevance`'s first-fixed behaviour under the `text` name* — rejected for the same reason the row above already rejected it for `Entity`. |
 
 ## Open Items for `/speckit-clarify`
 

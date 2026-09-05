@@ -401,19 +401,20 @@ func pluralSuffix(n int) string {
 	return "s"
 }
 
-// revertLeadingKey mirrors internal/core's own private
-// textPredicateFor(nodeType, true) lookup (internal/core/markdown.go) —
-// duplicated here because internal/core stays untouched by this feature
-// (plan.md Technical Context: "no new function signatures") and exposes no
-// public equivalent. Both tables are explicitly documented as a temporary
-// stopgap pending spec 011's Schema Index; keep them in sync if core's
-// table ever changes.
+// revertLeadingKey mirrors internal/core's own private textPredicateFor
+// lookup (internal/core/markdown.go) — duplicated here because internal/core
+// stays untouched by this feature (plan.md Technical Context: "no new
+// function signatures") and exposed no public equivalent at the time. Both
+// tables are explicitly documented as a temporary stopgap pending spec
+// 011's Schema Index; keep them in sync if core's table ever changes.
 //
 // The duplicate is kept in sync for the five ARCNET-CORE content types
 // only, and that half is enforced by test — revert_internal_test.go's
 // TestRevertLeadingKeyAgreesWithCoreForCoreTypes asserts this function
-// equals core.TextPredicateFor(t, true) for Source, Entity, Resource,
-// Timeline, and Reference.
+// equals core.TextPredicateFor(t) for Source, Entity, Resource, Timeline,
+// and Reference. `Reference`'s own key is `"text"`, not `"relevance"`
+// (spec 023 BUG-002 retires `relevance` outright — it is not a real
+// predicate for any type in current ARCNET-CORE).
 //
 // The three domain-profile entries below are a known divergence from core's
 // table, which has no case for any of them and falls through to "text":
@@ -427,13 +428,6 @@ func revertLeadingKey(nodeType string) string {
 	switch nodeType {
 	case "Source":
 		return "abstract"
-	case "Entity", "Resource":
-		// "text" for both (BUG-001/FR-030): CORE 0.12 retires Entity's own
-		// "definition" predicate — kept in sync with core's own
-		// textPredicateFor per this function's own doc comment above.
-		return "text"
-	case "Reference":
-		return "relevance"
 	case "hypothesis":
 		return "claim"
 	case "aporia":
@@ -441,14 +435,12 @@ func revertLeadingKey(nodeType string) string {
 	case "thought":
 		return "claim"
 	default:
+		// "text" for Entity/Resource/Reference and every other type
+		// (BUG-001/FR-030, spec 023 BUG-002) — kept in sync with core's own
+		// textPredicateFor per this function's own doc comment above.
 		return "text"
 	}
 }
-
-// revertTrailingKey mirrors internal/core's own private
-// textPredicateFor(nodeType, false), which is unconditionally "notes"
-// regardless of nodeType.
-const revertTrailingKey = "notes"
 
 const (
 	conflictMarkerOpenLine    = "<<<<<<< existing\n"
@@ -558,12 +550,14 @@ func splitParagraphsLocal(text string) []string {
 // approximation accepts (a paragraph whose very first line contains a
 // mention is left unattributable to a blamed commit, which D9 already
 // treats as a safe, successful no-op — never silent data loss in the
-// other direction). Physical order (leading key, other keys
-// alphabetically, trailing key last — internal/core/markdown.go:754-767)
-// is walked in that same sequence so the monotonically-advancing cursor
-// never revisits an earlier line, keeping each key's occurrences
-// correctly ordered even across the intervening, unparsed Edges block.
-func mapTextParagraphs(node core.Node, leadingKey, trailingKey string, rendered []byte) map[string][]textParagraphRange {
+// other direction). Physical order (leading key, other keys alphabetically
+// — internal/core/markdown.go's renderNodeBody) is walked in that same
+// sequence so the monotonically-advancing cursor never revisits an earlier
+// line, keeping each key's occurrences correctly ordered even across the
+// intervening, unparsed Edges block. There is no separate trailing key
+// (spec 010 BUG-007): any prose that once rendered after Edges is now part
+// of leadingKey's own value.
+func mapTextParagraphs(node core.Node, leadingKey string, rendered []byte) map[string][]textParagraphRange {
 	lines := strings.Split(strings.TrimSuffix(string(rendered), "\n"), "\n")
 	out := map[string][]textParagraphRange{}
 	cursor := 0
@@ -596,7 +590,7 @@ func mapTextParagraphs(node core.Node, leadingKey, trailingKey string, rendered 
 	}
 	var others []string
 	for k := range node.Texts {
-		if k == leadingKey || k == trailingKey {
+		if k == leadingKey {
 			continue
 		}
 		others = append(others, k)
@@ -604,9 +598,6 @@ func mapTextParagraphs(node core.Node, leadingKey, trailingKey string, rendered 
 	sort.Strings(others)
 	for _, k := range others {
 		appendKey(k)
-	}
-	if trailingKey != "" {
-		appendKey(trailingKey)
 	}
 
 	return out
@@ -622,25 +613,23 @@ func allLinesBlamed(pr textParagraphRange, blamedSet map[int]bool) bool {
 }
 
 // physicalTextKeyOrder returns node's Texts keys in renderNodeBody's own
-// documented physical order (leading key, other keys alphabetically,
-// trailing key last).
-func physicalTextKeyOrder(node core.Node, leadingKey, trailingKey string) []string {
+// documented physical order (leading key, other keys alphabetically). There
+// is no trailing key (spec 010 BUG-007) — any prose that once rendered
+// after Edges is now part of leadingKey's own value.
+func physicalTextKeyOrder(node core.Node, leadingKey string) []string {
 	var keys []string
 	if _, ok := node.Texts[leadingKey]; ok {
 		keys = append(keys, leadingKey)
 	}
 	var others []string
 	for k := range node.Texts {
-		if k == leadingKey || k == trailingKey {
+		if k == leadingKey {
 			continue
 		}
 		others = append(others, k)
 	}
 	sort.Strings(others)
 	keys = append(keys, others...)
-	if _, ok := node.Texts[trailingKey]; ok {
-		keys = append(keys, trailingKey)
-	}
 	return keys
 }
 
@@ -660,7 +649,7 @@ func reconcileShared(ctx context.Context, vcs port.VCS, index core.Index, dir, p
 	}
 
 	leadingKey := revertLeadingKey(node.Type)
-	keys := physicalTextKeyOrder(node, leadingKey, revertTrailingKey)
+	keys := physicalTextKeyOrder(node, leadingKey)
 
 	newTexts := make(map[string]string, len(node.Texts))
 	for k, v := range node.Texts {
@@ -696,7 +685,7 @@ func reconcileShared(ctx context.Context, vcs port.VCS, index core.Index, dir, p
 					blamedSet[bl.Number] = true
 				}
 			}
-			paragraphRanges = mapTextParagraphs(node, leadingKey, revertTrailingKey, rendered)
+			paragraphRanges = mapTextParagraphs(node, leadingKey, rendered)
 		}
 
 		var kept []string

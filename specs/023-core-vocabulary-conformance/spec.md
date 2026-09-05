@@ -18,6 +18,18 @@ change. Open Item 3 (`definition`→`text` merge collision) resolved: `text` ado
 uniformly (no per-type merge override introduced); FR-030 and the Edge Case updated accordingly.
 FR-036 marked exempt from an acceptance scenario, matching FR-025's treatment.
 
+**Bugfix**: 2026-09-05 — [BUG-002](bugs/BUG-002.md) found that BUG-001's own sweep missed a second
+predicate the *same* 0.11→0.12 revision note retires: `relevance` ("mentioned only in prose, never
+actually registered or required") — not one of the seven names `CORE-FIX.md` §8.5's brief had
+pre-catalogued, so BUG-001's implementation checked it and explicitly confirmed it "unaffected"
+rather than missing it silently, which is precisely why a second bugfix round is needed to catch
+what the first one's own scope excluded. Also found `notes` was never fully retired from
+`Reference` either, despite BUG-001 keeping it registered on that basis — `Reference`'s current
+(v0.12) worked example carries neither `notes` nor `relevance`. FR-028 corrected to match the
+current worked example exactly; new FR-038 retires `relevance` outright; FR-033 annotated — its
+`textPredicateFor` clause was never implemented (T068's own recorded deviation), now unblocked by
+spec 010's companion [BUG-007](../010-predicate-node-model/bugs/BUG-007.md).
+
 **Input**: User description: "The schema vocabulary `arc init` seeds is not conformant with ARCNET-CORE v0.10 in five independent ways, all of them edits to the same built-in predicate and type tables. First, the tool defines a seventh merge operation, `validatedOverwrite`, used by the `scoreZ` and `scoreC` predicates; §9.3 fixes the menu at six values and §4.8 requires every merge to be commutative and idempotent, which an overwrite is not — so a freshly initialized graph is non-conformant out of the box. Second, every seeded `Class` node carries a type-level `merge` attribute, but §9.3 explicitly retired type-level merge in favour of per-predicate merge, and §10.8 registers `merge` as a predicate used by `Property` only; the tool's own code comments already concede the field is no longer consulted. Fourth, `Timeline` requires `granularity` and `period` where §11.5 requires `cites` alone, producing the same class of false failure. Fifth, three core predicates from §10.2 are missing entirely — `author`, `about`, `genre` — so any patch using them triggers auto-registration with a guessed role and merge that are wrong for all three, and three registered predicates carry the wrong merge operation: `abstract` and `description` are `append` where §10.2 and §10.8 declare `firstWriteWin`, and `cites` is `append` where §10.6 declares `union`. The `abstract` and `description` mismatches are the material ones: re-applying a patch appends the abstract to itself, breaking the idempotency guarantee §14.3 requires of every apply. All four must be corrected, existing graphs must be able to pick up the corrected vocabulary, and the false-positive lint rules must stop firing."
 
 ## User Scenarios & Testing *(mandatory)*
@@ -190,7 +202,7 @@ without applying any patch.
 - **FR-008**: The document type MUST require exactly `title`, `published`, `abstract`, `mentions`.
 - **FR-009**: The timeline period type MUST require exactly `cites`, and ~~MUST permit `granularity`, `period`, and `heading` as optional~~ **superseded by FR-035 ([BUG-001](bugs/BUG-001.md)): `granularity` is retired, not merely optional; `period` and `heading` remain optional.**
 - **FR-010**: Lint MUST NOT report a missing-required-predicate diagnostic for a node that carries every predicate its own type requires under FR-007 through FR-009, FR-028, or FR-029.
-- **FR-028**: The external-work type MUST require only its title, retaining its classification, relevance, status, and notes predicates as optional.
+- **FR-028**: The external-work type MUST require only its title, retaining its classification, relevance, status, and notes predicates as optional. ~~classification, relevance, status, and notes~~ **Corrected 2026-09-05 ([BUG-002](bugs/BUG-002.md))**: stale even against this feature's own FR-032/FR-034 (which already retired `year`/`ref`/`status` from `Reference`) — never updated to match. `Reference`'s current worked example (ARCNET-CORE §11.6, v0.12) retains only `url`, `author`, `published`, `doi`, `isCitedBy` as optional; `classification` was never a real predicate name in any revision; `relevance` is retired outright (FR-038). The external-work type MUST require only its title, retaining `url`, `author`, `published`, `doi`, and `isCitedBy` as optional, plus the shared generic `text` predicate (§10.2) for its own body prose — no Reference-specific leading-prose predicate survives.
 - **FR-029**: The document and subject types MUST permit topical tags; the type-definition type MUST require its own description and permit the inheritance predicate the tool already writes onto seeded type definitions.
 
 #### Predicate registrations and merge corrections
@@ -220,7 +232,16 @@ without applying any patch.
   date; `year` MUST NOT be registered.
 - **FR-033**: `Entity` and `Resource` MUST NOT declare `notes` in their Optional lists, and the
   parser/renderer's non-leading-prose key (`textPredicateFor`, `internal/core/markdown.go`) MUST
-  NOT key either type's trailing body section as `notes`.
+  NOT key either type's trailing body section as `notes`. **Bugfix note 2026-09-05 ([BUG-002](bugs/BUG-002.md))**:
+  the schema-table half of this FR was implemented as written; the `textPredicateFor` half was
+  not — T068's completion note recorded a deliberate deviation ("no safe replacement key exists
+  for Entity/Resource's trailing prose"), reasoning that no longer holds once spec 010's own
+  [BUG-007](../010-predicate-node-model/bugs/BUG-007.md) lands: it retires the trailing-slot
+  *concept* itself (merging trailing prose into the type's one default `text`-role predicate,
+  FR-026 there), for every type, not just `Entity`/`Resource` — a strictly larger fix than a
+  type-aware replacement key would have been, and the one T068 lacked at the time. T068 is
+  reopened in tasks.md; its reclosure is spec 010 BUG-007's own implementation, not new work
+  here.
 - **FR-034**: `Reference` MUST NOT declare `ref` or `status` in its Optional list.
 - **FR-035**: `Timeline` MUST NOT declare `granularity` at all — supersedes FR-009's "MUST permit
   `granularity`... as optional". Yearly-vs-monthly bucketing MUST be derived from the `@id`
@@ -241,6 +262,15 @@ without applying any patch.
   breaking change, identically to FR-001/FR-004 — a graph seeded by a previous release whose nodes
   carry these keys is not specially supported; re-initializing or re-applying content against the
   corrected vocabulary is the expected recovery, with no reader-leniency mechanism introduced.
+- **FR-038**: `relevance` MUST NOT be registered in `CorePredicateDefs`, and `Reference` MUST NOT
+  declare it in its Optional list — the same 0.11→0.12 revision note this feature's own BUG-001
+  already read for `notes`/`ref`/`status`/`granularity` separately retires `relevance` outright
+  ("mentioned only in prose, never actually registered or required"), which BUG-001's own
+  implementation checked and explicitly confirmed "unaffected" at the time (`relevance` was not
+  one of the seven names `CORE-FIX.md` §8.5's program brief had pre-catalogued going into that
+  fix). `Reference`'s own leading-prose predicate becomes the shared generic `text` predicate
+  (§10.2) instead — the same predicate `Entity`/`Resource` already use for theirs (FR-030) —
+  rather than a Reference-specific name. *(Added — Bugfix BUG-002, 2026-09-05.)*
 
 #### Documentation
 

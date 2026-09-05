@@ -99,6 +99,65 @@ func TestCheckTypeOptionalPredicateListedUnderBothRequiredAndOptionalTolerated(t
 	it.Then(t).Should(it.Equal(0, len(out)))
 }
 
+// BUG-005 (spec 010): the exact reported reproduction — a "**Label**" title
+// sharing its own line with its prose ("**Overview**\nOverview text", no
+// blank line) — parses to its own "overview" predicate (internal/core's
+// fix), so lint sees a real, schema-recorded Optional predicate instead of
+// the type-blind "notes" catch-all CORE 0.12 retired from Entity's Optional
+// list (spec 023 FR-033). Before the parse-side fix, this exact patch
+// produced Texts["notes"], which this same index (deliberately omitting
+// "notes" from Entity's Optional list) would have reported a violation for.
+const bug005LabeledProseBlockPatch = `---
+"@type": patch
+document: foo-2026-x
+published: 2026-01-01
+---
+# Entity
+
+## Widget
+` + "```yaml\n\"@id\": Widget\n\"@type\": Entity\n```" + `
+
+**Overview**
+Overview text
+`
+
+func TestCheckTypeOptionalBug005LabeledProseBlockPasses(t *testing.T) {
+	index := core.Index{
+		Types: map[string]core.TypeDef{
+			"Entity": {Optional: []string{"overview"}}, // deliberately no "notes" — CORE 0.12 (spec 023 FR-033)
+		},
+		Predicates: map[string]core.PredicateDef{
+			"overview": {Role: "text"},
+		},
+	}
+
+	patch, err := core.ParsePatch(bytes.NewReader([]byte(bug005LabeledProseBlockPatch)), index)
+	it.Then(t).Should(it.Nil(err))
+
+	node := patch.Nodes[0]
+	out := checkTypeOptional(node, "Entity/Widget.md", []byte("---\n\"@id\": Widget\n\"@type\": Entity\n---\n"), index)
+	it.Then(t).Should(it.Equal(0, len(out)))
+}
+
+// BUG-005's fix is scoped to the *labeled* prose case only — spec 023
+// BUG-001's own T068 deviation (genuinely unlabeled trailing prose on
+// Entity/Resource still falling into the type-blind "notes" slot) remains
+// open and MUST still fail lint exactly as before; this fix must not be
+// mistaken for having closed that residual gap too.
+func TestCheckTypeOptionalUnlabeledTrailingProseOnEntityStillFails(t *testing.T) {
+	index := core.Index{
+		Types: map[string]core.TypeDef{
+			"Entity": {Optional: []string{"overview"}}, // still no "notes"
+		},
+	}
+	node := core.Node{Type: "Entity", Texts: map[string]string{"notes": "Unlabeled trailing prose."}}
+	out := checkTypeOptional(node, "Entity/Widget.md", []byte("---\n\"@id\": Widget\n\"@type\": Entity\n---\n"), index)
+	it.Then(t).Should(it.Equal(1, len(out)))
+	it.Then(t).
+		Should(it.Equal(kernel.RuleTypeOptional, out[0].Rule)).
+		Should(it.String(out[0].Message).Contain("notes"))
+}
+
 func TestCheckPredicateRoleMatchingNoViolation(t *testing.T) {
 	node := core.Node{Attrs: map[string][]core.Predicate{"title": {{Value: "T"}}}, Texts: map[string]string{"abstract": "A"}}
 	out := checkPredicateRole(node, "x.md", []byte("---\ntitle: T\n---\n"), typeConformanceIndexFixture)

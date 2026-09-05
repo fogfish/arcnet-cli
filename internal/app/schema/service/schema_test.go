@@ -656,17 +656,19 @@ func TestSeedEmitsReferenceTypeDocument(t *testing.T) {
 		Should(it.String(content).Contain(`"@type": Class`)).
 		Should(it.String(content).Contain("subClassOf:: [[Node]]"))
 
-	// specs/023 FR-028 supersedes spec 022's Clarification: §11.6 v0.11's
-	// normative Class block requires "title" alone, and "relevance" moves
-	// to Optional. BUG-001/FR-031/FR-032/FR-034 additionally retire
-	// "authors" (→ "author"), "year" (→ "published"), "ref", and "status"
-	// outright.
+	// specs/023 FR-028 (corrected, BUG-002): §11.6's normative Class block
+	// requires "title" alone. "relevance" is retired outright, not
+	// superseded into Optional — Reference's own leading prose keys as
+	// "text" instead, the same shared generic predicate Entity/Resource
+	// already use for theirs. BUG-001/FR-031/FR-032/FR-034 additionally
+	// retire "authors" (→ "author"), "year" (→ "published"), "ref", and
+	// "status" outright.
 	it.Then(t).Should(it.String(content).Contain("required:: [[title]]"))
 	it.Then(t).ShouldNot(it.String(content).Contain("required:: [[relevance]]"))
-	for _, optional := range []string{"url", "author", "published", "doi", "isCitedBy", "relevance", "indexed"} {
+	for _, optional := range []string{"text", "url", "author", "published", "doi", "isCitedBy", "indexed"} {
 		it.Then(t).Should(it.String(content).Contain("optional:: [[" + optional + "]]"))
 	}
-	for _, retired := range []string{"authors", "year", "ref", "status"} {
+	for _, retired := range []string{"authors", "year", "ref", "status", "relevance"} {
 		it.Then(t).
 			ShouldNot(it.String(content).Contain("required:: [[" + retired + "]]")).
 			ShouldNot(it.String(content).Contain("optional:: [[" + retired + "]]"))

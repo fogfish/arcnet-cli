@@ -660,13 +660,16 @@ func TestInitSeedsReferenceType(t *testing.T) {
 
 	it.Then(t).
 		Should(it.String(content).Contain(`"@type": Class`)).
-		// specs/023 FR-028 supersedes spec 022's Clarification: §11.6 v0.11
-		// requires "title" alone (plan.md F3). "authors"/"year"/"ref"/
-		// "status"/"notes" are retired outright under CORE 0.12
-		// (BUG-001/FR-031/FR-032/FR-034/FR-033) — "author"/"published"
-		// replace the first two, the rest have no replacement.
+		// specs/023 FR-028 (corrected, BUG-002) supersedes spec 022's
+		// Clarification: §11.6 v0.11 requires "title" alone (plan.md F3).
+		// "authors"/"year"/"ref"/"status"/"notes"/"relevance" are all
+		// retired outright under CORE 0.12 (BUG-001/FR-031/FR-032/FR-034/
+		// FR-033, BUG-002/FR-038) — "author"/"published" replace the first
+		// two, "text" replaces "relevance" (the same shared generic
+		// predicate every other type not otherwise named uses), the rest
+		// have no replacement.
 		Should(it.Seq(schemaBullets(t, content, "required")).Equal("title")).
-		Should(it.Seq(schemaBullets(t, content, "optional")).Equal("url", "author", "published", "doi", "isCitedBy", "relevance", "indexed")).
+		Should(it.Seq(schemaBullets(t, content, "optional")).Equal("text", "url", "author", "published", "doi", "isCitedBy", "indexed")).
 		Should(it.String(content).Contain("subClassOf:: [[Node]]"))
 
 	// FR-006: every predicate Reference declares must itself be seeded,

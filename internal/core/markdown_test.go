@@ -1776,11 +1776,16 @@ func TestParsePatchMultipleUntitledListsPreserveBulletShapeAndTitlePairing(t *te
 	node := patch.Nodes[0]
 
 	// The leading-slot list ("xxx"/"yyy"/"zzz") keeps its bulleted shape.
-	// Untitled lists are reconstructed with "*" (renderBareTextListLines,
-	// BUG-004), not "-", regardless of the marker the source used — "-" is
-	// reserved for Edges bullets so an untitled text list can never
-	// silently merge with an adjacent bare/headed Edges list on a later
-	// parse (CommonMark starts a new list on any marker change).
+	// Untitled lists are reconstructed with an alternating "*"/"+" marker
+	// (nextBareList, BUG-004/BUG-007), never "-" — reserved for Edges
+	// bullets — so an untitled text list can never silently merge with an
+	// adjacent bare/headed Edges list on a later parse (CommonMark starts a
+	// new list on any marker change). Both untitled lists merge into the
+	// same "abstract" key (spec 010 BUG-007, FR-026) — there is no separate
+	// "notes"/trailing predicate for a second untitled list's content to
+	// land under instead — and the marker alternates between them (this
+	// one "*", the next "+") so the two stay distinguishable as separate
+	// lists on a later parse despite now being string-adjacent.
 	it.Then(t).
 		Should(it.String(node.Texts["abstract"]).Contain("* xxx")).
 		Should(it.String(node.Texts["abstract"]).Contain("* yyy")).
@@ -1790,8 +1795,8 @@ func TestParsePatchMultipleUntitledListsPreserveBulletShapeAndTitlePairing(t *te
 	// bulleted shape instead of being flattened into bare paragraphs
 	// indistinguishable from free prose.
 	it.Then(t).
-		Should(it.String(node.Texts["notes"]).Contain("* A graph requires schema metadata independent of its content.")).
-		Should(it.String(node.Texts["notes"]).Contain("* Node types may define merge algorithms as schema metadata."))
+		Should(it.String(node.Texts["abstract"]).Contain("+ A graph requires schema metadata independent of its content.")).
+		Should(it.String(node.Texts["abstract"]).Contain("+ Node types may define merge algorithms as schema metadata."))
 
 	// BUG-004's core defect: **Mentions** and **Cites** must still resolve
 	// and stay paired with their own lists, not split into orphaned labels
@@ -1803,8 +1808,8 @@ func TestParsePatchMultipleUntitledListsPreserveBulletShapeAndTitlePairing(t *te
 		Should(it.Equal("cites", node.Edges[1].Predicate)).
 		Should(it.Equal("Obsidian", node.Edges[1].Target))
 	it.Then(t).
-		ShouldNot(it.String(node.Texts["notes"]).Contain("**Mentions**")).
-		ShouldNot(it.String(node.Texts["notes"]).Contain("**Cites**"))
+		ShouldNot(it.String(node.Texts["abstract"]).Contain("**Mentions**")).
+		ShouldNot(it.String(node.Texts["abstract"]).Contain("**Cites**"))
 }
 
 // BUG-004: a `**Label**` block occurring after two untitled plain lists
@@ -1846,6 +1851,305 @@ func TestRoundTripMultipleUntitledListsIdempotent(t *testing.T) {
 	}}
 
 	patch, err := core.ParsePatch(strings.NewReader(multipleUntitledListsPatch), index)
+	it.Then(t).Should(it.Nil(err))
+	node := patch.Nodes[0]
+
+	first, err := core.RenderNode(node, index)
+	it.Then(t).Should(it.Nil(err))
+
+	parsed, err := core.ParseNode(strings.NewReader(string(first)), index)
+	it.Then(t).Should(it.Nil(err))
+
+	second, err := core.RenderNode(parsed, index)
+	it.Then(t).Should(it.Nil(err))
+
+	it.Then(t).Should(it.Equal(string(first), string(second)))
+}
+
+// BUG-005 (FR-024): the exact reported reproduction — a "**Label**" title
+// immediately followed by its own prose on the very next line, with no
+// blank line in between. CommonMark joins these into a single Paragraph
+// node via a soft line break rather than two sibling Paragraphs, so the
+// title was never recognized at all before this fix: its content fell
+// through to the type-blind trailing slot ("notes"), which "arc lint"
+// then correctly rejects for a type that doesn't declare it.
+const labeledProseBlockPatch = `---
+"@type": patch
+document: foo-2026-x
+published: 2026-01-01
+---
+# Entity
+
+## Widget
+` + "```yaml\n\"@id\": Widget\n\"@type\": Entity\n```" + `
+
+*important text*
+
+- derivedFrom:: [[document]]
+
+**Overview**
+Overview text
+
+**Concerns**
+- concerns:: [[A]]
+- concerns:: [[B]]
+`
+
+func TestParsePatchLabeledProseBlockResolvesToOwnPredicate(t *testing.T) {
+	index := core.Index{Predicates: map[string]core.PredicateDef{
+		"derivedFrom": {Role: "edge"},
+		"concerns":    {Role: "link", Label: "Concerns"},
+		"overview":    {Role: "text"},
+	}}
+
+	patch, err := core.ParsePatch(strings.NewReader(labeledProseBlockPatch), index)
+	it.Then(t).Should(it.Nil(err))
+
+	node := patch.Nodes[0]
+	_, hasNotes := node.Texts["notes"]
+	it.Then(t).
+		Should(it.Equal("Overview text", node.Texts["overview"])).
+		Should(it.Equal(3, len(node.Edges))).
+		Should(it.True(!hasNotes)) // must not fall into the type-blind "notes" slot
+
+	rendered, err := core.RenderNode(node, index)
+	it.Then(t).Should(it.Nil(err))
+
+	// The named text-role predicate ("Overview") renders before the flat
+	// edge list and before the "Concerns" link-role block, matching the
+	// position every other named text-role predicate already renders in
+	// (render-shape-contract.md's step-6 clarification, BUG-005) — and
+	// with a bold label, never a heading, per ARCNET-CORE §5 (BUG-006,
+	// FR-025); only the link-role "Concerns" block varies its markup by
+	// caller format.
+	out := string(rendered)
+	it.Then(t).
+		Should(it.String(out).Contain("**Overview**\nOverview text")).
+		Should(it.True(strings.Index(out, "**Overview**") < strings.Index(out, "derivedFrom"))).
+		Should(it.True(strings.Index(out, "derivedFrom") < strings.Index(out, "## Concerns")))
+}
+
+// BUG-005 (FR-024): a title followed by prose spanning more than one
+// paragraph (blank-line-separated) is captured as a single, joined text
+// value under its own predicate, not truncated to the first paragraph.
+const labeledMultiParagraphProsePatch = `---
+"@type": patch
+document: foo-2026-x
+published: 2026-01-01
+---
+# Entity
+
+## Widget
+` + "```yaml\n\"@id\": Widget\n\"@type\": Entity\n```" + `
+
+**Overview**
+First paragraph.
+
+Second paragraph.
+`
+
+func TestParsePatchLabeledMultiParagraphProseBlockRoundTrips(t *testing.T) {
+	index := core.Index{Predicates: map[string]core.PredicateDef{
+		"overview": {Role: "text"},
+	}}
+
+	patch, err := core.ParsePatch(strings.NewReader(labeledMultiParagraphProsePatch), index)
+	it.Then(t).Should(it.Nil(err))
+
+	node := patch.Nodes[0]
+	it.Then(t).
+		Should(it.String(node.Texts["overview"]).Contain("First paragraph.")).
+		Should(it.String(node.Texts["overview"]).Contain("Second paragraph."))
+}
+
+// BUG-005 (FR-021/FR-024): a "**Label**"-headed prose block whose label
+// does not resolve against the schema still falls back to auto-registered
+// text, exactly as the pre-existing list-following case already does, and
+// an inline wikilink within that prose is still extracted into HRefs
+// (CORE §5's href role applies to genuine prose, unlike a text-role list's
+// literal-markup preservation, FR-020).
+const unresolvedLabeledProseBlockPatch = `---
+"@type": patch
+document: foo-2026-x
+published: 2026-01-01
+---
+# Entity
+
+## Widget
+` + "```yaml\n\"@id\": Widget\n\"@type\": Entity\n```" + `
+
+**Overview**
+This mentions [[Something]] in passing.
+`
+
+func TestParsePatchUnresolvedLabeledProseBlockAutoRegistersAsText(t *testing.T) {
+	patch, err := core.ParsePatch(strings.NewReader(unresolvedLabeledProseBlockPatch), core.Index{})
+	it.Then(t).Should(it.Nil(err))
+
+	node := patch.Nodes[0]
+	it.Then(t).
+		Should(it.Equal("This mentions Something in passing.", node.Texts["overview"])).
+		Should(it.Equal("Overview", node.Labels["overview"])).
+		Should(it.Equal(1, len(node.HRefs))).
+		Should(it.Equal("Something", node.HRefs[0].Target))
+}
+
+// BUG-005: a title with prose sharing its own paragraph (no blank line)
+// round-trips byte-stable, exactly as the pre-existing title+list shape
+// already does (FR-014/FR-015).
+func TestRoundTripLabeledProseBlockIdempotent(t *testing.T) {
+	index := core.Index{Predicates: map[string]core.PredicateDef{
+		"derivedFrom": {Role: "edge"},
+		"concerns":    {Role: "link", Label: "Concerns"},
+		"overview":    {Role: "text"},
+	}}
+
+	patch, err := core.ParsePatch(strings.NewReader(labeledProseBlockPatch), index)
+	it.Then(t).Should(it.Nil(err))
+	node := patch.Nodes[0]
+
+	first, err := core.RenderNode(node, index)
+	it.Then(t).Should(it.Nil(err))
+
+	parsed, err := core.ParseNode(strings.NewReader(string(first)), index)
+	it.Then(t).Should(it.Nil(err))
+
+	second, err := core.RenderNode(parsed, index)
+	it.Then(t).Should(it.Nil(err))
+
+	it.Then(t).Should(it.Equal(string(first), string(second)))
+}
+
+// BUG-005: a title followed immediately (no blank line) by another title's
+// own prose (e.g. "**A**" with zero content of its own, then "**B**\ncontent"
+// right after) must not have "B"'s title+content misread as "A"'s own
+// continuation prose.
+const adjacentTitlesNoContentBetweenPatch = `---
+"@type": patch
+document: foo-2026-x
+published: 2026-01-01
+---
+# Entity
+
+## Widget
+` + "```yaml\n\"@id\": Widget\n\"@type\": Entity\n```" + `
+
+**A**
+
+**B**
+content for B
+`
+
+func TestParsePatchAdjacentTitlesNoContentBetween(t *testing.T) {
+	patch, err := core.ParsePatch(strings.NewReader(adjacentTitlesNoContentBetweenPatch), core.Index{})
+	it.Then(t).Should(it.Nil(err))
+
+	node := patch.Nodes[0]
+	it.Then(t).
+		Should(it.Equal("content for B", node.Texts["b"])).
+		Should(it.Equal("B", node.Labels["b"])).
+		Should(it.String(node.Texts["text"]).Contain("**A**"))
+}
+
+// BUG-006 (FR-025): a text-role predicate's block renders with a bold label
+// in *every* format — RenderNode and RenderPatch alike — never a `## `
+// heading; only a link-role predicate group's markup varies by caller
+// (`## Label` for RenderNode, `**Label**` for RenderPatch, spec 013 BUG-001).
+// Both a text-role and a link-role predicate in the same node confirm the
+// two rules are independent, not just that the text-role half was fixed.
+func TestRenderTextRolePredicateAlwaysBoldRegardlessOfFormat(t *testing.T) {
+	index := core.Index{Predicates: map[string]core.PredicateDef{
+		"overview":    {Role: "text"},
+		"concerns":    {Role: "link", Label: "Concerns"},
+		"derivedFrom": {Role: "edge"},
+	}}
+	node := core.Node{
+		ID:   "Widget",
+		Type: "Entity",
+		Texts: map[string]string{
+			"text":     "*important text*",
+			"overview": "Overview text",
+		},
+		Edges: []core.Link{
+			{Predicate: "derivedFrom", Target: "document"},
+			{Predicate: "concerns", Target: "A"},
+		},
+	}
+
+	nodeOut, err := core.RenderNode(node, index)
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.String(string(nodeOut)).Contain("**Overview**\nOverview text")).
+		Should(it.String(string(nodeOut)).Contain("## Concerns"))
+
+	p := core.Patch{
+		Document:  "foo-2026-x",
+		Published: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Nodes:     []core.Node{node},
+	}
+	patchOut, err := core.RenderPatch(p, index)
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).
+		Should(it.String(string(patchOut)).Contain("**Overview**\nOverview text")).
+		Should(it.String(string(patchOut)).Contain("**Concerns**"))
+}
+
+// BUG-007 (FR-026): unlabeled prose appearing both before and after other
+// body content (here, an edge-role bullet) merges into one value under the
+// type's single default text-role predicate — no separate "notes"/trailing
+// key exists for the second span to land under instead — and renders once,
+// at the top, before the edge list.
+const leadingAndTrailingProsePatch = `---
+"@type": patch
+document: foo-2026-x
+published: 2026-01-01
+---
+# Entity
+
+## Widget
+` + "```yaml\n\"@id\": Widget\n\"@type\": Entity\n```" + `
+
+Leading paragraph.
+
+- derivedFrom:: [[document]]
+
+Trailing paragraph.
+`
+
+func TestParsePatchLeadingAndTrailingProseMergeIntoOneKey(t *testing.T) {
+	index := core.Index{Predicates: map[string]core.PredicateDef{
+		"derivedFrom": {Role: "edge"},
+	}}
+
+	patch, err := core.ParsePatch(strings.NewReader(leadingAndTrailingProsePatch), index)
+	it.Then(t).Should(it.Nil(err))
+
+	node := patch.Nodes[0]
+	_, hasNotes := node.Texts["notes"]
+	it.Then(t).
+		Should(it.String(node.Texts["text"]).Contain("Leading paragraph.")).
+		Should(it.String(node.Texts["text"]).Contain("Trailing paragraph.")).
+		Should(it.True(!hasNotes))
+
+	// Both spans render together in the leading position, before the edge
+	// list — CORE §5's canonical ordering never places the default text
+	// predicate after edges, so the merge repositions "Trailing paragraph."
+	// rather than leaving it physically after "derivedFrom" (a permitted
+	// cosmetic normalization, FR-014).
+	rendered, err := core.RenderNode(node, index)
+	it.Then(t).Should(it.Nil(err))
+	out := string(rendered)
+	it.Then(t).Should(it.True(strings.Index(out, "Leading paragraph.") < strings.Index(out, "Trailing paragraph.")))
+	it.Then(t).Should(it.True(strings.Index(out, "Trailing paragraph.") < strings.Index(out, "derivedFrom")))
+}
+
+// BUG-007: the merged leading+trailing shape round-trips byte-stable.
+func TestRoundTripLeadingAndTrailingProseIdempotent(t *testing.T) {
+	index := core.Index{Predicates: map[string]core.PredicateDef{
+		"derivedFrom": {Role: "edge"},
+	}}
+
+	patch, err := core.ParsePatch(strings.NewReader(leadingAndTrailingProsePatch), index)
 	it.Then(t).Should(it.Nil(err))
 	node := patch.Nodes[0]
 
@@ -2019,35 +2323,35 @@ func TestParsePatchManifestTypeDoesNotLeakIntoNodeTypes(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestTextPredicateForCoreTypes is contract C4's table, asserted case by
-// case: each of the five ARCNET-CORE v0.11 content types at both prose
-// positions, plus one type the table has no case for.
+// case: each of the five ARCNET-CORE v0.11 content types' one default
+// (unlabeled) text-role predicate, plus one type the table has no case for.
 //
-// Resource and Reference are the two rows spec 022 changed. Resource means
-// a fragment of an *ingested* document, so its leading prose belongs under
-// the "text" its own type requires; Reference means an un-ingested external
-// work, so its leading prose is the "relevance" that justifies keeping the
-// pointer. Entity is the row BUG-001/FR-030 changes: CORE 0.12 retires its
-// own "text" predicate, so Entity now shares Resource's "text" key —
-// deliberately, to resolve the merge collision that would otherwise result
-// (plan.md F7) rather than register a new predicate. Trailing prose stays
-// "notes" for every type, with no per-type branch at all.
+// Resource, Reference, and Entity all key their default prose as "text"
+// (spec 023 BUG-001/BUG-002): Resource means a fragment of an *ingested*
+// document, Reference an un-ingested external work — CORE 0.12 retires
+// Reference's own former "relevance" outright, not just supersedes it, so
+// both types share the same generic "text" predicate every other type not
+// otherwise named already uses. Entity is the row BUG-001/FR-030 changed:
+// CORE 0.12 retires its own "definition" predicate, so Entity now shares
+// Resource's "text" key too — deliberately, to resolve the merge collision
+// that would otherwise result (plan.md F7) rather than register a new
+// predicate. There is no second, trailing-position predicate for any type
+// (spec 010 BUG-007, FR-026) — a type has exactly one default text-role key.
 func TestTextPredicateForCoreTypes(t *testing.T) {
 	for _, tt := range []struct {
 		nodeType string
-		leading  string
+		want     string
 	}{
 		{"Source", "abstract"},
 		{"Entity", "text"},
 		{"Resource", "text"},
 		{"Timeline", "text"},
-		{"Reference", "relevance"},
+		{"Reference", "text"},
 		// A domain-profile type the table has no case for falls through
 		// to the generic prose predicate, unchanged by this feature.
 		{"Thought", "text"},
 	} {
-		it.Then(t).
-			Should(it.Equal(tt.leading, core.TextPredicateFor(tt.nodeType, true))).
-			Should(it.Equal("notes", core.TextPredicateFor(tt.nodeType, false)))
+		it.Then(t).Should(it.Equal(tt.want, core.TextPredicateFor(tt.nodeType)))
 	}
 }
 
@@ -2090,7 +2394,7 @@ func TestParseRenderRoundTripPreservesLeadingProseKey(t *testing.T) {
 		prose   string
 	}{
 		{resourceFragmentFixture, "text", "A fragment of the ingested document worth keeping around."},
-		{referenceWorkFixture, "relevance", "Why this un-ingested work is worth pointing at."},
+		{referenceWorkFixture, "text", "Why this un-ingested work is worth pointing at."},
 	} {
 		node, err := core.ParseNode(strings.NewReader(tt.fixture), testIndex)
 		it.Then(t).Must(it.Nil(err))

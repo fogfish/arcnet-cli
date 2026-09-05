@@ -9,12 +9,12 @@ A node for an external work the graph points to but has not ingested, or a topic
 - subClassOf:: [[Node]]
 
 ## Optional
+- optional:: [[text]]
 - optional:: [[url]]
 - optional:: [[author]]
 - optional:: [[published]]
 - optional:: [[doi]]
 - optional:: [[isCitedBy]]
-- optional:: [[relevance]]
 - optional:: [[indexed]]
 
 ## Requires

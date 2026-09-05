@@ -33,10 +33,11 @@ func TestCorePredicateDefsContainsFullCoreVocabulary(t *testing.T) {
 		// specs/023 FR-011: author/about/genre are §10.2 core metadata
 		// predicates the seeded vocabulary omitted entirely.
 		"author", "about", "genre",
-		// BUG-001: "authors", "definition", "ref", "year", "status",
-		// "granularity" are retired under CORE 0.12 — see schema.go's own
-		// CorePredicateDefs comments for each retirement's rationale.
-		"title", "abstract", "url", "doi", "category", "aliases", "notes", "relevance", "period", "heading",
+		// BUG-001/BUG-002: "authors", "definition", "ref", "year", "status",
+		// "granularity", "notes", "relevance" are all retired under CORE
+		// 0.12 — see schema.go's own CorePredicateDefs comments for each
+		// retirement's rationale.
+		"title", "abstract", "url", "doi", "category", "aliases", "period", "heading",
 		"role", "merge", "label", "aligned", "description", "required", "optional",
 		"subClassOf",
 	}
@@ -158,8 +159,12 @@ func TestCoreTypeDefsOptionalListsIncludeCrossCuttingPredicates(t *testing.T) {
 		// optional.
 		{"Timeline", []string{"period", "heading", "indexed", "mentions", "mentionedIn"}},
 		// BUG-001/FR-031/FR-032/FR-034: "authors"→"author", "year"→
-		// "published", "ref"/"status" retired outright.
-		{"Reference", []string{"url", "author", "published", "doi", "isCitedBy", "relevance", "indexed"}},
+		// "published", "ref"/"status" retired outright. BUG-002/FR-038:
+		// "relevance" is also retired outright (not superseded) —
+		// Reference's own leading prose keys as "text" instead, the same
+		// shared generic predicate every other type not otherwise named
+		// already uses.
+		{"Reference", []string{"text", "url", "author", "published", "doi", "isCitedBy", "indexed"}},
 	}
 
 	for _, tc := range tests {
@@ -171,7 +176,7 @@ func TestCoreTypeDefsOptionalListsIncludeCrossCuttingPredicates(t *testing.T) {
 // Node's own Optional list (spec 017, data-model.md).
 func TestCoreTypeDefsNodeOptionalList(t *testing.T) {
 	node := kernel.CoreTypeDefs["Node"]
-	it.Then(t).Should(it.Seq(node.Optional).Equal("published", "created", "tags", "text", "updated", "scoreZ", "scoreC"))
+	it.Then(t).Should(it.Seq(node.Optional).Equal("published", "created", "indexed", "tags", "text", "updated", "scoreZ", "scoreC"))
 }
 
 // Every content type declares an explicit rdfs:subClassOf base pointing at

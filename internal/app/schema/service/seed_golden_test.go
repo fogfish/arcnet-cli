@@ -227,12 +227,13 @@ func TestSeedProsePredicatesDeclareAppend(t *testing.T) {
 
 	// "definition" is retired under CORE 0.12 (BUG-001/FR-030); Entity's
 	// leading prose is now "text", which is deliberately MergeAppend, not
-	// firstWriteWin (see schema.go's CorePredicateDefs comment). "abstract",
-	// "description" and "relevance" declare append for the same reason, so
-	// no prose predicate is first-fixed any longer — the seeded documents
-	// are asserted here so that stays true of what a graph receives, not
-	// only of the in-memory table.
-	for _, name := range []string{"relevance", "abstract", "description", "text", "notes"} {
+	// firstWriteWin (see schema.go's CorePredicateDefs comment). "abstract"
+	// and "description" declare append for the same reason, so no prose
+	// predicate is first-fixed any longer — the seeded documents are
+	// asserted here so that stays true of what a graph receives, not only
+	// of the in-memory table. "relevance"/"notes" are retired outright
+	// (spec 023 BUG-002) and no longer seeded at all.
+	for _, name := range []string{"abstract", "description", "text"} {
 		raw, ok := seed[kernel.PredicatesDir+"/"+name+".md"]
 		it.Then(t).Should(it.True(ok))
 		it.Then(t).
@@ -267,7 +268,14 @@ func TestSeedCitationPredicateDeclaresUnion(t *testing.T) {
 func TestSeedRetiredPredicatesAreGoneEntirely(t *testing.T) {
 	seed := service.Seed()
 
-	retired := []string{"definition", "authors", "year", "ref", "status", "granularity"}
+	// "notes"/"relevance" were excluded here until spec 023 BUG-002: T072's
+	// own note said including them would have been wrong, since at the
+	// time "notes" was retired only from Entity/Resource's Optional lists
+	// (not fully retired) and "relevance" wasn't retired at all yet. Both
+	// are now retired outright — no type declares either, and neither is
+	// seeded as a Property document — so both belong in this exhaustive
+	// absence check.
+	retired := []string{"definition", "authors", "year", "ref", "status", "granularity", "notes", "relevance"}
 
 	for _, name := range retired {
 		_, ok := seed[kernel.PredicatesDir+"/"+name+".md"]
