@@ -26,13 +26,15 @@ import (
 // means "use the built-in default" (research.md D10).
 const defaultGrepWorkers = 8
 
-// walkNodeFiles recursively walks store from its root, collecting every
-// *.md file except anything under .arc/ or _schema/ (mirrors
-// internal/app/lint/service.walkNodeFiles, research.md D9), in
-// deterministic (sorted) order. Shared by Grep and Subgraph (research.md
-// D7 in specs/007-arc-subgraph) — a second, copy-pasted walker in this
-// package would be exactly the drift Principle V exists to prevent.
-func walkNodeFiles(store fsys.Store) ([]string, error) {
+// walkFiles recursively walks store from its root, collecting every *.md
+// file whose containing directory skipDir does not reject, in
+// deterministic (sorted) order. The skip predicate is a parameter rather
+// than a hard-coded set because two callers need two different universes:
+// ordinary content walks exclude _schema/, while a whole-graph census must
+// include it (specs/032-arc-stats research.md D2). A boolean flag was
+// rejected — walkNodeFiles(store, true) communicates nothing at a call
+// site, whereas the named wrappers below do.
+func walkFiles(store fsys.Store, skipDir func(string) bool) ([]string, error) {
 	var out []string
 	var walk func(dir string) error
 	walk = func(dir string) error {
@@ -46,7 +48,7 @@ func walkNodeFiles(store fsys.Store) ([]string, error) {
 				full = dir + "/" + e.Name()
 			}
 			if e.IsDir() {
-				if full == ".arc" || full == "_schema" {
+				if skipDir(full) {
 					continue
 				}
 				if err := walk(full); err != nil {
@@ -67,6 +69,26 @@ func walkNodeFiles(store fsys.Store) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// walkNodeFiles collects every *.md file except anything under .arc/ or
+// _schema/ (mirrors internal/app/lint/service.walkNodeFiles, research.md
+// D9). Shared by Grep, Subgraph, Match and Context (research.md D7 in
+// specs/007-arc-subgraph) — a second, copy-pasted walker in this package
+// would be exactly the drift Principle V exists to prevent.
+func walkNodeFiles(store fsys.Store) ([]string, error) {
+	return walkFiles(store, func(dir string) bool {
+		return dir == ".arc" || dir == "_schema"
+	})
+}
+
+// walkGraphFiles collects every *.md file except anything under .arc/ —
+// the whole-graph census universe, schema documents included, that
+// arc stats counts as nodes (specs/032-arc-stats FR-002, research.md D1).
+func walkGraphFiles(store fsys.Store) ([]string, error) {
+	return walkFiles(store, func(dir string) bool {
+		return dir == ".arc"
+	})
 }
 
 // Grep enumerates every node file in the graph rooted at dir, narrows the

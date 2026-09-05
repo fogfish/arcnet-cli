@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-05
+
+/speckit-specify `arc stats` summary about the graph: total nodes and edges, node count by class, broken link count, source ingestion by year. Usage of verbose mode adds detailed statistic with total edges by predicate, source ingestion rate by month and other graph statistic.
+
+/speckit-plan implement the stat feature within `internal/app/graph` service, also implement `arc stats` command in the `cmd/arc/graph` 
+
+
 ## 2026-09-04
 
 /speckit-specify `arc init` fails to create an empty graph in the root of existing git repository. Also it creates a graph in the subfolder of existing git repository but it initializes a repository within the repository. It does not suites use-cases where you'd like to add a graph into existing project. The `arc init` MUST fail if it is executing in the context of git project also blocking the possibility to create a repository within repository. However, `arc init` should support the advanced usage flag `--skip-git-init`. It allows to create a graph within existing repository. All commands that requires and uses git must use existing "parent" repo fo all commands.  
