@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/031-init-existing-git-repo/plan.md`
+`specs/032-arc-stats/plan.md`
 <!-- SPECKIT END -->
 
 ## Go file license header

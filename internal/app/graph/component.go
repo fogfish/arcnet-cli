@@ -94,6 +94,15 @@ func NodeLinks(ctx context.Context, mounter fsys.Mounter, dir, id string) ([]cor
 	return service.NodeLinks(ctx, mounter, dir, id)
 }
 
+// Stats walks the graph rooted at dir once and reports its shape and
+// health: total nodes and edges, the per-type breakdown, the broken-link
+// count, and per-year ingestion. detail additionally computes the verbose
+// section (specs/032-arc-stats FR-018). It is a thin delegator into
+// service.Stats.
+func Stats(ctx context.Context, mounter fsys.Mounter, index core.Index, dir string, detail bool) (kernel.StatsResult, error) {
+	return service.Stats(ctx, mounter, index, dir, detail)
+}
+
 // NodeBacklinks fetches every relation elsewhere in the graph rooted at dir
 // whose target is the node identified by id. It is a thin delegator into
 // service.NodeBacklinks.

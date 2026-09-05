@@ -36,6 +36,7 @@ There is no database and no proprietary format. The graph is a git repository of
 * **Idempotent, mergeable ingestion** — re-applying a patch is a safe no-op; re-ingesting a lightly edited document merges per-predicate instead of duplicating or clobbering.
 * **Clean inverse** — `arc revert` retracts a document's entire contribution, reconciling nodes other patches have since enriched.
 * **Conformance linting** — `arc lint` validates the whole graph against the ARCNET-CORE checklist and reports every violation with file and line.
+* **Whole-graph statistics** — `arc stats` reports a graph's size, composition by type, broken links and ingestion coverage in one read-only pass; `--verbose` adds connectivity, hubs, schema coverage and content volume.
 * **Precise retrieval** — search node content with `arc grep`, extract a self-contained neighbourhood with `arc subgraph`, both narrowed by a triple-based `--type`/`--tag`/`--attr`/`--predicate` filter.
 * **Native MCP server** — `arc serve` exposes eight read-only tools over stdio or HTTP, so an agent can read your graph directly instead of being pasted context.
 * **Extension-agnostic** — domain profiles add new types and predicates through `arc apply schema`; no special subcommand, no rebuild.
@@ -188,7 +189,16 @@ arc lint
 
 Every node is validated against the ARCNET-CORE conformance checklist — front-matter, unique basenames, resolvable `[[links]]`, citekey identity, Sowa category, predicate registration, provenance, one ingest commit per document. Violations are reported with file and line; the run never stops at the first one.
 
-**6. Serve it to your agent.**
+**6. Measure it.**
+
+```bash
+arc stats
+arc stats --verbose
+```
+
+`arc stats` reports how many nodes the graph holds, how they break down by declared type, how many links point at nothing, and how much was ingested in each year. `--verbose` adds edges by predicate, monthly ingestion, disconnected and stub nodes, degree and hub ranking, schema coverage and content volume. Nodes are recognized by what each file declares, never by the folder holding it, so reorganizing the graph changes no reported figure. Broken links are a reported figure, not a failure: `arc stats` exits 0 whenever it produced a report — gating on graph health stays `arc lint`'s job.
+
+**7. Serve it to your agent.**
 
 ```bash
 arc serve --http :8080
@@ -221,6 +231,7 @@ arc revert <source-id> [--force]          # retract a document's contribution
 arc grep <pattern> [filter]               # search node content
 arc subgraph <basename> [--depth n] [filter] [--stubs]
 arc lint                                  # validate against the conformance checklist
+arc stats [--verbose]                     # report the graph's shape and health
 
 # serve
 arc serve [--http <addr>]                 # MCP server over stdio or HTTP
