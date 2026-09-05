@@ -151,19 +151,19 @@ func TestMapTextParagraphsLocatesEachParagraphsLineRange(t *testing.T) {
 		ID:   "Widget",
 		Type: "Entity",
 		Texts: map[string]string{
-			"notes": "First paragraph.\n\nSecond paragraph.",
+			"text": "First paragraph.\n\nSecond paragraph.",
 		},
 	}
 	rendered, err := core.RenderNode(node, core.Index{})
 	it.Then(t).Should(it.Nil(err))
 
-	ranges := mapTextParagraphs(node, revertLeadingKey(node.Type), revertTrailingKey, rendered)
+	ranges := mapTextParagraphs(node, revertLeadingKey(node.Type), rendered)
 
-	it.Then(t).Should(it.Equal(2, len(ranges["notes"])))
+	it.Then(t).Should(it.Equal(2, len(ranges["text"])))
 	it.Then(t).
-		Should(it.Equal("First paragraph.", ranges["notes"][0].text)).
-		Should(it.Equal("Second paragraph.", ranges["notes"][1].text))
-	it.Then(t).Should(it.True(ranges["notes"][0].endLine < ranges["notes"][1].startLine))
+		Should(it.Equal("First paragraph.", ranges["text"][0].text)).
+		Should(it.Equal("Second paragraph.", ranges["text"][1].text))
+	it.Then(t).Should(it.True(ranges["text"][0].endLine < ranges["text"][1].startLine))
 }
 
 func TestSplitParagraphsLocal(t *testing.T) {
@@ -211,7 +211,7 @@ func TestBuildRevertCommitMessageCarriesRevertedDocumentTrailerNotSourceId(t *te
 // spreading into it — including through this feature's own two new cases.
 func TestRevertLeadingKeyAgreesWithCoreForCoreTypes(t *testing.T) {
 	for _, nodeType := range []string{"Source", "Entity", "Resource", "Timeline", "Reference"} {
-		it.Then(t).Should(it.Equal(core.TextPredicateFor(nodeType, true), revertLeadingKey(nodeType)))
+		it.Then(t).Should(it.Equal(core.TextPredicateFor(nodeType), revertLeadingKey(nodeType)))
 	}
 }
 

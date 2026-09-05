@@ -55,6 +55,16 @@ For a given `Node`/`Index` pair, `RenderNode`/`RenderPatch` MUST render `n.Edges
    helper already recognizes both an `## Label` heading and a `**Label**` bold-label paragraph as a valid
    group title (BUG-003 precedent), so this amendment requires no parser change in either format.
 
+   **Clarification — spec 010 BUG-005 (2026-09-05)**: step 6 above governs only the two *reserved
+   structural* `Texts` slots (`textPredicateFor`'s leading/trailing keys). Every other, genuinely named
+   `text`-role predicate (`renderNodeBody`'s "other Texts keys" loop, spec 010 FR-021) already renders as
+   its own labeled block positioned *before* this step's edge/link partition, not after it — that ordering
+   was never stated here because, until spec 010 BUG-005, no such named predicate could ever be produced
+   from a title followed by a prose paragraph (only from a title followed by a list). Stated explicitly
+   now so a future change to either `renderNodeBody` or `classifyNodeBody` doesn't regress it by accident:
+   a named text-role predicate's block position is leading text → **named text-role blocks** → flat edge
+   list → link block(s) → trailing text.
+
 ## Round-trip guarantees
 
 - **Byte-stable on already-canonical input** (FR-008): `RenderNode(ParseNode(RenderNode(n, index)), index)` is

@@ -401,59 +401,42 @@ func isCamelCase(s string) bool {
 	return unicode.IsUpper(r)
 }
 
-// textPredicateFor is a small, explicitly temporary "@type"->text-predicate
-// lookup table (research.md D4): it names the leading and trailing prose
-// slots walkNodeBody still recognizes structurally, so a node's stored
-// prose keys are domain-appropriate (a source's leading prose really is its
-// "abstract") rather than the old fixed "text"/"notes" pair. This is a
-// stopgap superseded by spec 011's Schema Index, which will derive text
-// predicate names from a graph's actual schema instead of a hardcoded
-// table.
+// textPredicateFor is a small "@type"->text-predicate lookup table
+// (research.md D4) naming each type's one default (unlabeled) text-role
+// predicate: "abstract" for Source, "text" for everything else. Resource
+// means a fragment of an *ingested* document and Reference an un-ingested
+// external work, but both key their default prose as "text" — the shared
+// generic predicate every type not otherwise named uses
+// (specs/022-reference-type-folders, contract C4; spec 023 BUG-002 retires
+// Reference's own former "relevance").
 //
-// Leading prose keys by the predicate its own type declares, across the five
-// ARCNET-CORE v0.11 content types: "abstract" for Source, "text" for both
-// Entity and Resource (BUG-001/FR-030 — CORE 0.12 retires Entity's own
-// "definition"), "relevance" for Reference, and "text" for anything else.
-// Trailing prose is "notes" unconditionally, for every type. Resource means
-// a fragment of an *ingested* document and Reference an un-ingested external
-// work, so the leading key each takes is the one that type actually requires
-// — storing a Resource's body under "relevance" would put it under a
-// predicate the type no longer declares at all
-// (specs/022-reference-type-folders, contract C4).
+// A type has exactly one such key (spec 010 BUG-007, FR-026) — ARCNET-CORE
+// §5: "Start with values from default `text` predicate and continue into
+// other `text`-role predicates." There is no second, structurally distinct
+// "trailing" slot: walkNodeBody merges any unlabeled prose appearing after
+// other body content into this same key, and renderNodeBody writes it once,
+// in the leading position, never a second time after edges/links. This
+// table previously distinguished a "leading" call from a "trailing" one
+// (the latter unconditionally "notes", every type) — a carryover from the
+// pre-spec-010 fixed `Text`/`Notes` field pair, retired now that "notes" is
+// not a real predicate for any type (spec 023 BUG-002).
 //
 // Parse and render both route through this one function
 // (walkNodeBody/renderNodeBody), so the write side and the read side cannot
 // disagree about a key: one edit here moves both.
-// TextPredicateFor exposes textPredicateFor's leading/trailing structural
-// slot-key convention to other internal packages (BUG-002) — e.g.
-// internal/app/graph/service's auto-discovery hook, which must recognize
-// and skip these two reserved keys rather than treat them as genuinely
-// discovered predicates worth registering into _schema/.
-func TextPredicateFor(nodeType string, leading bool) string {
-	return textPredicateFor(nodeType, leading)
+// TextPredicateFor exposes textPredicateFor's default-key convention to
+// other internal packages (BUG-002) — e.g. internal/app/graph/service's
+// auto-discovery hook, which must recognize and skip this one reserved key
+// rather than treat it as a genuinely discovered predicate worth
+// registering into _schema/.
+func TextPredicateFor(nodeType string) string {
+	return textPredicateFor(nodeType)
 }
 
-func textPredicateFor(nodeType string, leading bool) string {
-	if !leading {
-		return "notes"
-	}
+func textPredicateFor(nodeType string) string {
 	switch nodeType {
 	case "Source":
 		return "abstract"
-	case "Entity", "Resource":
-		// "text" for both (BUG-001/FR-030): CORE 0.12 retires Entity's
-		// "definition" predicate, and Resource already keyed its leading
-		// prose as "text" — reusing that registered predicate is the
-		// resolution to the merge collision this rename would otherwise
-		// create (plan.md F7), not a new predicate. Both types therefore
-		// merge their leading prose by MergeAppend, not MergeFirstWriteWin
-		// — a deliberate, accepted regression of Entity's first-fixed
-		// prose protection (spec 023 US1), traded for not inventing a
-		// per-type/role-qualified merge override the algebra doesn't
-		// otherwise have.
-		return "text"
-	case "Reference":
-		return "relevance"
 	default:
 		return "text"
 	}
@@ -730,10 +713,11 @@ const (
 // bodyBlock is one classified top-level child of a node body, as produced
 // by classifyNodeBody (BUG-004).
 type bodyBlock struct {
-	kind  bodyBlockKind
-	para  *ast.Paragraph // set for bodyBlockProse
-	list  *ast.List      // set for bodyBlockList and bodyBlockTitled
-	label string         // set for bodyBlockTitled: the title's literal label text
+	kind    bodyBlockKind
+	para    *ast.Paragraph // set for bodyBlockProse
+	list    *ast.List      // set for bodyBlockList and bodyBlockTitled (list variant)
+	content []string       // set for bodyBlockTitled (prose variant, BUG-005/FR-024) — one entry per absorbed paragraph, mutually exclusive with list
+	label   string         // set for bodyBlockTitled: the title's literal label text
 }
 
 // classifyNodeBody is walkNodeBody's pass 1 (BUG-004, FR-023): a single
@@ -746,6 +730,25 @@ type bodyBlock struct {
 // this pass never "gives up" — each position is classified independently
 // of what came before it, so a title anywhere in the body still pairs with
 // its list.
+//
+// Bugfix BUG-005 (FR-024): a title is also paired with one or more
+// immediately following prose paragraphs — ARCNET-CORE §5's own `text`-role
+// body shape ("**Overview**" followed by a paragraph, not a list) — not
+// only with a following list, in either of the two AST shapes this can
+// take: the title as its own Paragraph node followed by one or more
+// separate Paragraph siblings (a blank line separates title from content),
+// or — the common case, since CommonMark joins adjacent, non-blank-
+// separated lines into a *single* Paragraph via a soft line break — the
+// title and its first line of content sharing one Paragraph node, split
+// apart by splitLeadingBoldLabel. Either way, collectTitledProse then
+// absorbs any further plain Paragraph siblings into the same block, so a
+// title's prose may span more than one paragraph. Consumption stops at the
+// first paragraph that is itself title-shaped (blockTitle), so a run of
+// adjacent titles with no prose between them (e.g. "**A**" immediately
+// followed by "**B**") never has the second title's own content swallowed
+// as the first title's; a title with zero prose or list content following
+// it falls through to the same "title paragraph read back as plain prose"
+// handling this function already gave that case before BUG-005.
 func classifyNodeBody(children []ast.Node, source []byte) []bodyBlock {
 	var blocks []bodyBlock
 	idx := 0
@@ -756,9 +759,20 @@ func classifyNodeBody(children []ast.Node, source []byte) []bodyBlock {
 				idx += 2
 				continue
 			}
+			if content, next, ok := collectTitledProse(children, idx+1, source); ok {
+				blocks = append(blocks, bodyBlock{kind: bodyBlockTitled, content: content, label: label})
+				idx = next
+				continue
+			}
 		}
 		switch v := children[idx].(type) {
 		case *ast.Paragraph:
+			if label, rest, ok := splitLeadingBoldLabel(v, source); ok {
+				more, next, _ := collectTitledProse(children, idx+1, source)
+				blocks = append(blocks, bodyBlock{kind: bodyBlockTitled, label: label, content: append([]string{rest}, more...)})
+				idx = next
+				continue
+			}
 			blocks = append(blocks, bodyBlock{kind: bodyBlockProse, para: v})
 		case *ast.List:
 			blocks = append(blocks, bodyBlock{kind: bodyBlockList, list: v})
@@ -766,6 +780,37 @@ func classifyNodeBody(children []ast.Node, source []byte) []bodyBlock {
 		idx++
 	}
 	return blocks
+}
+
+// collectTitledProse absorbs a run of plain (non-title) Paragraph nodes
+// starting at idx, as continuation content for a titled text-role block
+// (BUG-005/FR-024). It stops at the first child that isn't a Paragraph, or
+// that is itself title-shaped (blockTitle) — the latter so a later
+// `**Label**` block's own title is never misread as a continuation
+// paragraph of an earlier one. Returns each absorbed paragraph's own text,
+// the index of the first unconsumed child, and whether anything was
+// absorbed at all.
+func collectTitledProse(children []ast.Node, idx int, source []byte) (content []string, next int, ok bool) {
+	for idx < len(children) {
+		p, isPara := children[idx].(*ast.Paragraph)
+		if !isPara {
+			break
+		}
+		if _, isTitle := blockTitle(p, source); isTitle {
+			break
+		}
+		// A candidate continuation paragraph may itself be a *new* title
+		// sharing its own first line with its own content (splitLeadingBoldLabel's
+		// shape, e.g. "**B**\ncontent for B" immediately after "**A**" with no
+		// content of its own) — stop here too, or it would be misread as "A"'s
+		// continuation prose instead of "B"'s own titled block.
+		if _, _, isTitle := splitLeadingBoldLabel(p, source); isTitle {
+			break
+		}
+		content = append(content, linesText(p, source))
+		idx++
+	}
+	return content, idx, len(content) > 0
 }
 
 // walkNodeBody parses a node's body span (everything after its identity
@@ -827,9 +872,32 @@ func classifyNodeBody(children []ast.Node, source []byte) []bodyBlock {
 func walkNodeBody(children []ast.Node, source []byte, nodeType string, index Index) (texts map[string]string, hrefs, edges []Link, labels map[string]string) {
 	labelIndex := buildLabelIndex(index)
 	namedTexts := map[string][]string{}
+	namedTextParas := map[string][]string{}
 	namedLabels := map[string]string{}
 
 	blocks := classifyNodeBody(children, source)
+
+	// bareListMarker alternates "*"/"+" across every untitled bare list
+	// rendered into this node's default text-role value (BUG-007): once
+	// leading and trailing prose merge into one key (FR-026), two such
+	// lists can end up string-adjacent, separated only by a blank line —
+	// CommonMark merges same-marker bullet lists across a blank line into
+	// one loose List node (verified directly against goldmark), which
+	// would silently lose the boundary between them on the next parse,
+	// breaking FR-015's idempotent round-trip. A marker change
+	// unconditionally starts a new list regardless of blank lines, so
+	// consecutive bare lists never collide as long as no two adjacent ones
+	// share a marker.
+	bareListMarker := "*"
+	nextBareList := func(lines []string) string {
+		rendered := renderMarkedListLines(lines, bareListMarker)
+		if bareListMarker == "*" {
+			bareListMarker = "+"
+		} else {
+			bareListMarker = "*"
+		}
+		return rendered
+	}
 
 	var leading, trailing []string
 	i := 0
@@ -840,7 +908,7 @@ func walkNodeBody(children []ast.Node, source []byte, nodeType string, index Ind
 	if i < len(blocks) && blocks[i].kind == bodyBlockList {
 		links, textLines := classifyListItems(blocks[i].list, source)
 		edges = append(edges, links...)
-		if rendered := renderBareTextListLines(textLines); rendered != "" {
+		if rendered := nextBareList(textLines); rendered != "" {
 			leading = append(leading, rendered)
 		}
 		i++
@@ -850,6 +918,25 @@ func walkNodeBody(children []ast.Node, source []byte, nodeType string, index Ind
 		b := blocks[i]
 		switch b.kind {
 		case bodyBlockTitled:
+			if b.content != nil {
+				// BUG-005 (FR-024): a title followed by prose, instead of a
+				// list — ARCNET-CORE §5's own `text`-role body shape,
+				// b.content holding one entry per absorbed paragraph
+				// (collectTitledProse/splitLeadingBoldLabel). Unlike the
+				// list variant, there is no wikilink-list vs. prose
+				// distinction to make here: a paragraph cannot carry a
+				// role: edge/link's targets, so its content is always
+				// captured as prose under the resolved predicate's own
+				// name, or auto-registered under the label-derived name
+				// exactly as the list variant's unresolved fallback does.
+				predicate, _, resolved := resolveLabelPredicate(index, labelIndex, b.label)
+				if !resolved {
+					predicate = camelizeLabel(b.label)
+					namedLabels[predicate] = b.label
+				}
+				namedTextParas[predicate] = append(namedTextParas[predicate], strings.Join(b.content, "\n\n"))
+				continue
+			}
 			if predicate, role, resolved := resolveLabelPredicate(index, labelIndex, b.label); resolved && role == "text" {
 				if lines := listItemLines(b.list, source); len(lines) > 0 {
 					namedTexts[predicate] = append(namedTexts[predicate], lines...)
@@ -884,7 +971,7 @@ func walkNodeBody(children []ast.Node, source []byte, nodeType string, index Ind
 			// indistinguishable from free prose.
 			links, textLines := classifyListItems(b.list, source)
 			edges = append(edges, links...)
-			if rendered := renderBareTextListLines(textLines); rendered != "" {
+			if rendered := nextBareList(textLines); rendered != "" {
 				trailing = append(trailing, rendered)
 			}
 		case bodyBlockProse:
@@ -902,19 +989,25 @@ func walkNodeBody(children []ast.Node, source []byte, nodeType string, index Ind
 	hrefs = append(hrefs, notesHRefs...)
 
 	texts = map[string]string{}
-	if strippedText != "" {
-		texts[textPredicateFor(nodeType, true)] = strippedText
-	}
-	if strippedNotes != "" {
-		texts[textPredicateFor(nodeType, false)] = strippedNotes
+	// BUG-007 (FR-026): unlabeled prose merges into one value under the
+	// type's single default text-role predicate, regardless of whether it
+	// appeared before or after other body content — CORE §5 has no second,
+	// structurally distinct "trailing" predicate for a type to carry.
+	switch {
+	case strippedText != "" && strippedNotes != "":
+		texts[textPredicateFor(nodeType)] = strippedText + "\n\n" + strippedNotes
+	case strippedText != "":
+		texts[textPredicateFor(nodeType)] = strippedText
+	case strippedNotes != "":
+		texts[textPredicateFor(nodeType)] = strippedNotes
 	}
 	for predicate, lines := range namedTexts {
-		// BUG-003 (FR-020): a text-role block always originates from a
-		// Markdown list (the label+list loop above never matches a
-		// paragraph), so each line's own literal markup — wikilink
-		// brackets, inline `predicate::` tags — is reconstructed as a
-		// bulleted list verbatim, never routed through
-		// extractInlineLinks/reconstructHRefs's free-prose heuristic.
+		// BUG-003 (FR-020): a resolved text-role block sourced from a
+		// Markdown list (namedTexts, as opposed to namedTextParas below) has
+		// each line's own literal markup — wikilink brackets, inline
+		// `predicate::` tags — reconstructed as a bulleted list verbatim,
+		// never routed through extractInlineLinks/reconstructHRefs's
+		// free-prose heuristic.
 		rendered := renderTextListLines(lines)
 		if rendered == "" {
 			continue
@@ -923,6 +1016,24 @@ func walkNodeBody(children []ast.Node, source []byte, nodeType string, index Ind
 			texts[predicate] = existing + "\n" + rendered
 		} else {
 			texts[predicate] = rendered
+		}
+	}
+	for predicate, occurrences := range namedTextParas {
+		// BUG-005 (FR-024): a text-role block sourced from prose paragraph(s)
+		// (not a list) is genuine free-flowing prose — CORE §5's `href` role
+		// applies here exactly as it already does to leading/trailing text,
+		// so it runs through the same extractInlineLinks/reconstructHRefs
+		// heuristic instead of namedTexts' verbatim list reconstruction.
+		joined := strings.Join(occurrences, "\n\n")
+		stripped, paraHRefs := extractInlineLinks(joined)
+		if stripped == "" {
+			continue
+		}
+		hrefs = append(hrefs, paraHRefs...)
+		if existing, ok := texts[predicate]; ok {
+			texts[predicate] = existing + "\n\n" + stripped
+		} else {
+			texts[predicate] = stripped
 		}
 	}
 	if len(texts) == 0 {
@@ -948,20 +1059,18 @@ func renderTextListLines(lines []string) string {
 	return renderMarkedListLines(lines, "-")
 }
 
-// renderBareTextListLines is renderTextListLines' counterpart for an
-// untitled list's plain-text lines (BUG-004, FR-023) — used only by
-// walkNodeBody's leading-prefix and trailing-remainder handling, neither of
-// which is preceded by a heading. Deliberately uses "*" instead of "-":
+// renderMarkedListLines is renderTextListLines' counterpart for an untitled
+// list's plain-text lines (BUG-004, FR-023), used only by walkNodeBody's
+// leading-prefix and trailing-remainder handling via nextBareList, neither
+// of which is preceded by a heading. The marker is never fixed to "*":
 // CommonMark starts a new list whenever the bullet marker changes, even
 // across a blank line with nothing else between — the only way, short of a
-// heading, to guarantee this list isn't silently re-merged on a later parse
-// with an adjacent bare "-" Edges list (or bare/grouped Edges block), which
-// would otherwise happen purely because Markdown itself cannot distinguish
-// "two same-marker lists separated by a blank line" from "one loose list".
-func renderBareTextListLines(lines []string) string {
-	return renderMarkedListLines(lines, "*")
-}
-
+// heading, to guarantee an untitled list isn't silently re-merged on a
+// later parse with an adjacent same-marker list (whether that's an Edges
+// block's own "-" bullets, or — since spec 010 BUG-007 merges leading and
+// trailing prose into one physical position — a second untitled list that
+// ends up string-adjacent to the first). nextBareList alternates "*"/"+"
+// call to call for exactly this reason.
 func renderMarkedListLines(lines []string, marker string) string {
 	var b strings.Builder
 	for _, line := range lines {
@@ -1131,6 +1240,42 @@ func boldLabel(p *ast.Paragraph, source []byte) (string, bool) {
 	return strings.TrimSpace(m[1]), true
 }
 
+// splitLeadingBoldLabel reports whether p's first source line is, by
+// itself, a complete "**Label**" bold-emphasis run with nothing else on
+// that line, and p has further lines beyond it. Unlike boldLabel/blockTitle
+// (which only ever recognize a title occupying its *entire* paragraph),
+// this recovers a title from a paragraph that *also* carries its own prose
+// — the shape CommonMark actually produces for
+//
+//	**Label**
+//	prose text
+//
+// with no blank line in between: goldmark joins the two lines into one
+// Paragraph via a soft line break rather than emitting two sibling
+// Paragraph nodes, so there is no second AST node for classifyNodeBody's
+// title+following-block pairing to ever find (BUG-005). Splitting by the
+// paragraph's own raw source lines — the same mechanism linesText already
+// uses to read a paragraph back — recovers the label without needing to
+// walk the paragraph's inline (Emphasis/Text/SoftLineBreak) children.
+func splitLeadingBoldLabel(p *ast.Paragraph, source []byte) (label, rest string, ok bool) {
+	l := p.Lines()
+	if l == nil || l.Len() < 2 {
+		return "", "", false
+	}
+	firstSeg := l.At(0)
+	first := strings.TrimSpace(string(firstSeg.Value(source)))
+	m := boldLabelPattern.FindStringSubmatch(first)
+	if m == nil {
+		return "", "", false
+	}
+	parts := make([]string, 0, l.Len()-1)
+	for i := 1; i < l.Len(); i++ {
+		seg := l.At(i)
+		parts = append(parts, strings.TrimSpace(string(seg.Value(source))))
+	}
+	return strings.TrimSpace(m[1]), strings.TrimSpace(strings.Join(parts, " ")), true
+}
+
 // listItemPattern recognizes a bullet's bare/aliased wikilink, optionally
 // predicate-tagged, tolerating trailing display-only annotation text after
 // the wikilink's closing "]]" (BUG-002 — ARCNET-CORE §11.5's own worked
@@ -1226,55 +1371,49 @@ func RenderNode(n Node, index Index) ([]byte, error) {
 // graph-node-file shape, true for RenderPatch's patch-exchange shape.
 //
 // Physical layout (contracts/ast-contract.md: "matching the original
-// leading-prose/edges/trailing-prose visual layout"): the leading-slot key
-// (textPredicateFor(n.Type, true)) renders first if present, then any other
-// Texts keys sorted alphabetically, then Edges via renderEdges — schema-
-// driven flat-vs-grouped shape per index (specs/013-predicate-role-rendering,
-// contracts/render-shape-contract.md), then the trailing-slot key
-// (textPredicateFor(n.Type, false)) last if present. This ordering is
-// load-bearing, not cosmetic: walkNodeBody's structural parser only
-// recognizes leading-paragraphs/list/trailing-paragraphs in that physical
-// sequence, so rendering every Texts value before Edges (rather than
-// sandwiching Edges between the leading and trailing slots) would break
-// FR-014's round-trip by merging the trailing prose back into the leading
-// slot on re-parse.
+// leading-prose/edges/trailing-prose visual layout"): the default key
+// (textPredicateFor(n.Type)) renders first if present, then any other Texts
+// keys sorted alphabetically, then Edges via renderEdges — schema-driven
+// flat-vs-grouped shape per index (specs/013-predicate-role-rendering,
+// contracts/render-shape-contract.md). There is no separate trailing-slot
+// write (spec 010 BUG-007, FR-026): any unlabeled prose that appeared after
+// other body content on parse was already merged into the same default
+// key's value (walkNodeBody), so it renders once, here, never a second time
+// after Edges.
 func renderNodeBody(n Node, index Index, patchFormat bool) []byte {
 	var buf bytes.Buffer
 
 	consumed := make([]bool, len(n.HRefs))
-	writeText := func(key string, heading bool) {
+	writeText := func(key string, labeled bool) {
 		rendered := reconstructHRefs(n.Texts[key], n.HRefs, consumed)
 		if rendered == "" {
 			return
 		}
 		buf.WriteString("\n")
-		if heading {
+		if labeled {
 			label := labelForNode(n, index, key)
-			if patchFormat {
-				buf.WriteString("**" + label + "**\n")
-			} else {
-				buf.WriteString("## " + label + "\n")
-			}
+			buf.WriteString("**" + label + "**\n")
 		}
 		buf.WriteString(rendered)
 		buf.WriteString("\n")
 	}
 
-	leadingKey := textPredicateFor(n.Type, true)
-	trailingKey := textPredicateFor(n.Type, false)
+	defaultKey := textPredicateFor(n.Type)
 
-	if _, ok := n.Texts[leadingKey]; ok {
-		writeText(leadingKey, false)
+	if _, ok := n.Texts[defaultKey]; ok {
+		writeText(defaultKey, false)
 	}
 
 	// Every "other" Texts key (BUG-003, FR-021) originates from a
 	// "**Label**"/"## Label" body block — walkNodeBody never produces one
-	// any other way — so it always gets its heading back on write, using
-	// the same label-resolution and heading-vs-bold-label format rules
-	// already defined for a role: link edge group (FR-001/FR-004/FR-014).
+	// any other way — so it always gets its label back on write. Unlike a
+	// role: link edge group (renderEdges, FR-001/FR-004/FR-014), a
+	// text-role predicate's block markup does NOT vary by caller format
+	// (BUG-006, FR-025): ARCNET-CORE §5 requires a bold label in every
+	// format — RenderNode and RenderPatch alike — never a `## ` heading.
 	var other []string
 	for k := range n.Texts {
-		if k == leadingKey || k == trailingKey {
+		if k == defaultKey {
 			continue
 		}
 		other = append(other, k)
@@ -1285,10 +1424,6 @@ func renderNodeBody(n Node, index Index, patchFormat bool) []byte {
 	}
 
 	renderEdges(&buf, n, index, patchFormat)
-
-	if _, ok := n.Texts[trailingKey]; ok {
-		writeText(trailingKey, false)
-	}
 
 	return buf.Bytes()
 }

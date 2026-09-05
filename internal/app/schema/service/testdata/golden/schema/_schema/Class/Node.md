@@ -8,6 +8,7 @@ The graph's implicit universal base type: every content type (Source, Entity, Re
 
 - optional:: [[published]]
 - optional:: [[created]]
+- optional:: [[indexed]]
 - optional:: [[tags]]
 - optional:: [[text]]
 - optional:: [[updated]]

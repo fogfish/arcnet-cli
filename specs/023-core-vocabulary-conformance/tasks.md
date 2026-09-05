@@ -129,7 +129,7 @@ change to type contracts, folders, or lint.
 - [X] T020 [US1] Change `cites` from `MergeAppend` to `MergeUnion` in the same map, leaving `role: link` unchanged as a documented divergence (FR-014; §10.6, [research.md D6](research.md) note 1)
 - [X] T021 [US1] Regenerate `testdata/golden/schema/` and **review the diff as a content change** — it is the reviewable artifact for every predicate this phase touches
 - [X] T022 [US1] Add unit tests in `internal/core/merge_test.go` with `github.com/fogfish/it/v2` covering `firstWriteWin` over reworded prose, identical prose, and absent-then-present, asserting the `OutcomeFlagged` / `OutcomeUnchanged` / `OutcomeFilled` labels
-- [X] T023 [US1] ⚠️ Reopened — BUG-001: Update the stale comment in `internal/core/merge.go` `mergeTexts` that claims `"notes"` declares `firstWriteWin` — `notes` is `append` per §10.7 and stays that way. **Reopened 2026-08-23**: `notes` itself is retired from `Entity`/`Resource`'s Optional lists under CORE 0.12 (FR-033); the comment now needs to say so, and `textPredicateFor`'s non-leading-prose branch needs a type-aware fix (T068). **Re-closed 2026-08-23 (implementation, deviates from FR-033's letter)**: `mergeTexts`'s comment updated to note `notes` stays registered (Reference still uses it) though retired from Entity/Resource. `textPredicateFor`'s non-leading branch was deliberately left unchanged (still returns `"notes"` universally, matching the pre-existing, unfixed status quo for Source/Timeline/Node/Property/Class) rather than made type-aware — inventing type-awareness there risked silent data loss for a trailing-prose slot with no principled replacement name, and the schema-table removal alone already makes lint correctly flag any Entity/Resource node using it (T068's real enforcement mechanism). Flagged to the user as a documented deviation.
+- [X] T023 [US1] ⚠️ Reopened — BUG-002: Update the stale comment in `internal/core/merge.go` `mergeTexts` that claims `"notes"` declares `firstWriteWin` — `notes` is `append` per §10.7 and stays that way. **Reopened 2026-08-23**: `notes` itself is retired from `Entity`/`Resource`'s Optional lists under CORE 0.12 (FR-033); the comment now needs to say so, and `textPredicateFor`'s non-leading-prose branch needs a type-aware fix (T068). **Re-closed 2026-08-23 (implementation, deviates from FR-033's letter)**: `mergeTexts`'s comment updated to note `notes` stays registered (Reference still uses it) though retired from Entity/Resource. `textPredicateFor`'s non-leading branch was deliberately left unchanged (still returns `"notes"` universally, matching the pre-existing, unfixed status quo for Source/Timeline/Node/Property/Class) rather than made type-aware — inventing type-awareness there risked silent data loss for a trailing-prose slot with no principled replacement name, and the schema-table removal alone already makes lint correctly flag any Entity/Resource node using it (T068's real enforcement mechanism). Flagged to the user as a documented deviation. **Reopened again 2026-09-05 (BUG-002)**: the "Reference still uses it" premise this comment's 2026-08-23 fix relied on is itself wrong against `Reference`'s current (v0.12) worked example, which carries neither `notes` nor `relevance` — `notes` is retired outright, everywhere. **Re-closed 2026-09-05**: rewrote the comment to state both are retired outright (no longer registered, no longer seeded, no longer produced by `textPredicateFor` for any type) rather than describing either as a still-live, merely-narrowed predicate.
 
 **Checkpoint**: US1's 6 E2E tests pass; prose drift is fixed for all four first-fixed predicates.
 
@@ -296,7 +296,7 @@ T065–T072 (implementation) can proceed.
   also required repointing `internal/app/graph/service/apply.go`'s `applyTimeline` (reads
   `source.Attrs["authors"]` for timeline entry lines) at the singular `author` — not identified
   until implementation.
-- [X] T068 [US6] Remove `notes` from `Entity` and `Resource`'s Optional lists; make
+- [X] T068 (reopened — BUG-002, reclosed by spec 010 BUG-007's own T117-T119) [US6] Remove `notes` from `Entity` and `Resource`'s Optional lists; make
   `textPredicateFor`'s non-leading-prose branch type-aware so it no longer keys either type's
   trailing body section as `notes` (FR-033; `internal/core/markdown.go`). **Done 2026-08-23,
   with a deliberate deviation from the letter of this task and FR-033**: the schema-table half
@@ -307,7 +307,12 @@ T065–T072 (implementation) can proceed.
   Source/Timeline/Node/Property/Class. The schema-table removal alone is sufficient: it makes lint
   correctly flag any Entity/Resource node that actually uses trailing prose as an
   undeclared-predicate violation, which is the enforcement FR-033 actually needs. Flagged to the
-  user in the completion report.
+  user in the completion report. **Reopened 2026-09-05 (BUG-002)**: the "no safe target to
+  redirect ... to" reasoning no longer holds — spec 010's own BUG-007 provides exactly that safe
+  target (merge trailing prose into the type's one default `text`-role predicate, eliminating the
+  trailing-slot concept entirely, for every type, not just Entity/Resource). This task's
+  reclosure is spec 010's own T117-T119, run in the same implementation pass as this feature's
+  T074-T080 below.
 - [X] T069 [US6] Remove `ref` and `status` from `Reference`'s Optional list and from
   `CorePredicateDefs` (FR-034; `internal/app/schema/kernel/schema.go`) **Done 2026-08-23.**
 - [X] T070 [US6] Remove `granularity` from `Timeline`'s Optional list and from
@@ -359,6 +364,74 @@ shape (T070). The full pre-existing test suite (`cmd/arc/graph`, `cmd/arc/lint`,
 retired predicate name in a test fixture was found via iterative `go test ./...` failures rather
 than pre-audited, and updated to either the renamed replacement or a still-registered stand-in
 predicate with equivalent merge semantics (documented at each site).
+
+**Bugfix**: 2026-09-05 — [BUG-002](bugs/BUG-002.md) Updated from bugfix patch: reopened T023 and
+T068 (both re-verified the "Reference still uses `notes`"/"no safe replacement key" premises
+against a stale reading of `Reference`'s worked example) and added Phase 11 (T074-T080): the same
+0.11→0.12 revision note this feature's own BUG-001 already read once also retires `relevance`
+outright, and `Reference`'s *current* worked example carries neither `notes` nor `relevance` —
+both retired everywhere, not just from Entity/Resource (FR-038, FR-028 corrected).
+
+---
+
+## Phase 11: Bugfix BUG-002 — `notes`/`relevance` Retired Everywhere, Not Just From Entity/Resource
+
+**Purpose**: Addresses [bugs/BUG-002.md](bugs/BUG-002.md): `CorePredicateDefs` still registers `notes`
+and `relevance`, and `Reference`'s `CoreTypeDefs.Optional` still lists `relevance` — stale against
+`Reference`'s current (v0.12) worked example, which lists neither. `notes` was kept registered in
+2026-08-23's BUG-001 fix "because Reference still declares it" (true as of the 0.9→0.10 worked
+example BUG-001's own comment cites, no longer true of 0.12's); `relevance`'s own retirement was
+checked and explicitly confirmed "unaffected" at the time, because it wasn't one of the seven names
+`CORE-FIX.md` §8.5's brief had pre-catalogued going into that fix — a second, narrower instance of
+the exact class of drift BUG-001 exists to catch. Land together with spec 010's own
+[BUG-007](../../010-predicate-node-model/bugs/BUG-007.md) (T117-T121), which retires
+`textPredicateFor`'s trailing-slot *concept* this bug's vocabulary retirement would otherwise leave
+half-fixed.
+
+- [X] T074 [P] Removed `"notes"` and `"relevance"` from `CorePredicateDefs`, and their now-stale
+  accompanying comments, in `internal/app/schema/kernel/schema.go` (FR-038; reclosed T023)
+- [X] T075 Removed `"relevance"` from `Reference`'s `CoreTypeDefs.Optional`; added `"text"` in its
+  place — `Reference`'s worked example carries unlabeled body prose despite CORE's own
+  Requires/Optional lists for `Reference` never listing a text-role predicate at all (an apparent
+  gap in the upstream worked example, not this codebase's to fix), and `text` is the same shared
+  generic predicate `Entity`/`Resource` already use for theirs (FR-030) — not a
+  reintroduced, Reference-specific name (FR-028, FR-038; `internal/app/schema/kernel/schema.go`,
+  depends on T074)
+- [X] T076 Landed alongside spec 010's own T117-T119 (BUG-007): `textPredicateFor`'s trailing
+  slot is collapsed into the type's single default `text`-role key, and `Reference`'s leading key
+  is now `"text"` (not `"relevance"`), confirmed by `TestTextPredicateForCoreTypes`
+  (`internal/core/markdown_test.go`) and `TestRevertLeadingKeyAgreesWithCoreForCoreTypes`
+  (`internal/app/graph/service/revert_internal_test.go`) (FR-033, FR-038, depends on T074, T075,
+  and spec 010 T117-T119)
+- [X] T077 [P] Deleted `internal/app/schema/service/testdata/golden/schema/_schema/Property/{notes,relevance}.md`;
+  updated `.../Class/Reference.md`'s golden snapshot to drop `optional:: [[relevance]]` and add
+  `optional:: [[text]]`; regenerated via `go test ./internal/app/schema/service -run
+  TestSeedGolden -update` and reviewed the diff (depends on T074, T075)
+- [X] T078 [P] Updated `TestSeedRetiredPredicatesAreGoneEntirely` (`seed_golden_test.go`, T072's own
+  addition) to include `notes` and `relevance` in its absence check — T072's own completion note
+  explicitly excluded `notes` "because it is not fully retired (only from Entity/Resource's
+  Optional lists)"; that exclusion no longer holds (depends on T074, T075)
+- [X] T079 Swept every test fixture across the module using `"notes"` or `"relevance"` as a literal
+  predicate name/value — found and fixed occurrences in `internal/core/markdown_test.go`
+  (`TestParseRenderRoundTripPreservesLeadingProseKey`'s Reference fixture now expects `"text"`),
+  `internal/app/graph/service/{apply_test.go,revert_internal_test.go}` (the shared
+  `coreIndexFixture`'s dead `"relevance"` entry removed, two conflict-detection tests given a
+  local `indexWithPredicateDef("text", MergeFirstWriteWin)` override instead of relying on the
+  now-retired predicate), `internal/app/schema/{kernel/schema_test.go,service/schema_test.go}`,
+  and `cmd/arc/{ctrl/init_test.go,graph/apply_test.go}` — renamed to `"text"` or removed, following
+  T072's own precedent for this exact kind of sweep; corrected `internal/core/merge.go:165-172`'s
+  stale comments citing `"notes"`/`"relevance"` as live, seeded vocabulary members (depends on
+  T074-T076)
+- [X] T080 Ran `go build ./... && go test ./... && go vet ./...`; all green (`staticcheck`
+  unavailable — pre-existing local toolchain mismatch, see spec 010 T110/T116). Manually
+  re-verified against spec 010 BUG-005's own reproduction plus a new `Reference` node case via a
+  real `arc init`/`arc apply`/`arc lint` run, and grepped the entire written graph tree: no node
+  ever produces a `notes` or `relevance` predicate, under any input shape (depends on T074-T079,
+  and spec 010's T117-T121)
+
+**Checkpoint**: BUG-002 fixed — `notes` and `relevance` are retired from the seeded vocabulary
+entirely, matching ARCNET-CORE v0.12's current worked examples exactly; `Reference`'s own leading
+prose is keyed as `text`, the same shared predicate every other core type already uses for theirs.
 
 ---
 

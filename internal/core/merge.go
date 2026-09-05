@@ -162,21 +162,15 @@ const paragraphShingleSize = 3
 // fallback) is reconciled paragraph-by-paragraph through mergeText; every
 // other key goes through the scalar dispatch classes (mergeScalar),
 // keyed by that key's own declared MergeOp — no key is special-cased by
-// name. "notes" in particular needs no carve-out: it declares append
-// (CORE §10.7) and so takes the paragraph path like any other
-// accumulating prose key, which is exactly what its removed carve-out
-// used to hard-code — the earlier claim here, that "notes" declares
-// firstWriteWin, was never true of the seeded vocabulary. "notes" is no
-// longer declared by Entity/Resource at all (BUG-001/FR-033), but stays
-// registered — Reference still uses it. No prose key is first-fixed any
-// more: "abstract", "description" and "relevance" have all joined "text"
-// in declaring append, so every text-role predicate takes the paragraph
-// path. A prose key that must NOT accumulate would express that through
-// its own firstWriteWin declaration rather than through a name check here
-// (specs/023-core-vocabulary-conformance FR-013), which is why removing
-// the last such declaration needed no change to this function. A key
-// present on only one side behaves like a scalar/paragraph merge against
-// "" on the other.
+// name. "notes" and "relevance" are retired outright (spec 023 BUG-002) —
+// neither is registered or seeded for any type any more, and
+// textPredicateFor never produces either as a key (spec 010 BUG-007). No
+// prose key is first-fixed: "text", "abstract", and "description" all
+// declare append, so every text-role predicate takes the paragraph path.
+// A prose key that must NOT accumulate would express that through its own
+// firstWriteWin declaration rather than through a name check here
+// (specs/023-core-vocabulary-conformance FR-013). A key present on only
+// one side behaves like a scalar/paragraph merge against "" on the other.
 func mergeTexts(existing, incoming map[string]string, index Index, sourceID string) (map[string]string, []string, []PredicateOutcome) {
 	merged := make(map[string]string, len(existing)+len(incoming))
 

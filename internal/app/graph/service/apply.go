@@ -99,15 +99,14 @@ func combineLabels(existing, incoming map[string]string) map[string]string {
 // distinctPredicates collects every distinct predicate name node declares —
 // every non-empty Link.Predicate in Edges (research.md D4, D5 — Edges is
 // now the single unioned collection, what used to be Edges+Links) plus every
-// Texts key that isn't one of textPredicateFor's own two reserved structural
-// slots (BUG-002) — each paired with the role it was observed in and, via
+// Texts key that isn't textPredicateFor's own reserved default-key slot
+// (BUG-002) — each paired with the role it was observed in and, via
 // labels (BUG-003, combineLabels' output), the block's own literal label
-// text when carried. The leading/trailing slot keys are excluded: they are
-// walkNodeBody's own always-present structural convention (research.md D4,
-// "a temporary stopgap superseded by spec 011's Schema Index"), not a
-// predicate genuinely discovered from body content, so auto-registering a
-// schema document for "abstract"/"definition"/"text"/etc. on every single
-// node would be a much larger behavior change than this bugfix intends.
+// text when carried. The default key is excluded: it is walkNodeBody's own
+// always-present structural convention (research.md D4), not a predicate
+// genuinely discovered from body content, so auto-registering a schema
+// document for "abstract"/"text"/etc. on every single node would be a much
+// larger behavior change than this bugfix intends.
 // HRefs are excluded too — those are citation-type predicates, a separate
 // vocabulary this feature does not seed.
 func distinctPredicates(node core.Node, labels map[string]string) []predicateObservation {
@@ -129,10 +128,9 @@ func distinctPredicates(node core.Node, labels map[string]string) []predicateObs
 		add(l.Predicate, "edge")
 	}
 
-	leadingKey := core.TextPredicateFor(node.Type, true)
-	trailingKey := core.TextPredicateFor(node.Type, false)
+	defaultKey := core.TextPredicateFor(node.Type)
 	for k := range node.Texts {
-		if k == leadingKey || k == trailingKey {
+		if k == defaultKey {
 			continue
 		}
 		add(k, "text")
