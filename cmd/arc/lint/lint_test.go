@@ -10,6 +10,7 @@ package lint
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
@@ -20,6 +21,7 @@ import (
 	"github.com/fogfish/it/v2"
 	"github.com/spf13/cobra"
 
+	"github.com/fogfish/arcnet-cli/internal/app/lint/kernel"
 	appschema "github.com/fogfish/arcnet-cli/internal/app/schema"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
@@ -1960,4 +1962,278 @@ func TestLintStillReportsBrokenNodeBesideForeignFiles(t *testing.T) {
 	for path := range rootModeForeignFiles {
 		it.Then(t).ShouldNot(it.String(out).Contain(path))
 	}
+}
+
+// parseSkip
+// data-model.md's parsing table, row by row (Principle VI table-driven
+// requirement).
+func TestParseSkip(t *testing.T) {
+	tests := []struct {
+		name    string
+		csv     string
+		skip    []kernel.Rule
+		unknown []string
+	}{
+		{name: "empty value", csv: "", skip: nil, unknown: nil},
+		{name: "comma list", csv: "entityCategory,linkResolves", skip: []kernel.Rule{kernel.RuleEntityCategory, kernel.RuleLinkResolves}, unknown: nil},
+		{name: "whitespace and empty segments", csv: "entityCategory, ,entityCategory", skip: []kernel.Rule{kernel.RuleEntityCategory}, unknown: nil},
+		{name: "unknown name", csv: "entityCategory,bogus", skip: []kernel.Rule{kernel.RuleEntityCategory}, unknown: []string{"bogus"}},
+		{name: "only unknown names, deduplicated", csv: "bogus,bogus,other", skip: nil, unknown: []string{"bogus", "other"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			skip, unknown := parseSkip(tt.csv)
+
+			it.Then(t).Should(it.Equal(len(tt.skip), len(skip)))
+			for _, r := range tt.skip {
+				it.Then(t).Should(it.True(skip[r]))
+			}
+			it.Then(t).Should(it.Equal(len(tt.unknown), len(unknown)))
+			for i, name := range tt.unknown {
+				it.Then(t).Should(it.Equal(name, unknown[i]))
+			}
+		})
+	}
+}
+
+const brokenWidgetBothRules = `---
+"@id": Widget
+"@type": Entity
+title: Widget
+category: [independent, abstract, occurrent]
+---
+# Widget
+
+A test entity.
+
+## Mentions
+- mentions:: [[foo-2026-x]]
+- mentions:: [[Nonexistent Node]]
+`
+
+// arc lint --skip
+// spec.md US1 Scenario 1.1: skipping one rule leaves another rule's
+// violations in the same file untouched.
+func TestLintSkipSuppressesNamedRuleOnly(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	writeNode(t, dir, "Entity/Widget.md", brokenWidgetBothRules)
+	chdir(t, dir)
+
+	cmd := NewLintCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("skip", "entityCategory")))
+
+	out, err := sut(cmd, nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("[linkResolves]")).
+		ShouldNot(it.String(out).Contain("[entityCategory]"))
+}
+
+// arc lint --skip
+// spec.md US1 Scenario 1.2: skipping the only rule a node violates clears it
+// entirely — success, zero failing.
+func TestLintSkipAllViolationsInSkippedRuleSucceeds(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	broken := `---
+"@id": Widget
+"@type": Entity
+category: [independent, abstract, occurrent, script]
+published: "2026-04-12"
+created: "2026-04-12"
+---
+# Widget
+
+A test entity.
+
+## MentionedIn
+- mentionedIn:: [[foo-2026-x]]
+- mentionedIn:: [[Not A Real Node]]
+`
+	writeNode(t, dir, "Entity/Widget.md", broken)
+	chdir(t, dir)
+
+	cmd := NewLintCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("skip", "linkResolves")))
+
+	out, err := sut(cmd, nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.String(out).Contain("2 nodes checked, 2 passing, 0 failing"))
+}
+
+// arc lint --skip
+// spec.md US1 Scenario 1.3: multiple rules named, comma-separated, are all
+// suppressed while a third rule's violation elsewhere still reports.
+func TestLintSkipMultipleRulesCommaSeparated(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	writeNode(t, dir, "Entity/Widget.md", brokenWidgetBothRules)
+	conflicted := "<<<<<<< HEAD\nkind: entity\n=======\nkind: entity\n>>>>>>> feature-branch\n"
+	writeNode(t, dir, "Entity/Broken.md", conflicted)
+	chdir(t, dir)
+
+	cmd := NewLintCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("skip", "entityCategory,linkResolves")))
+
+	out, err := sut(cmd, nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("[entityCategory]")).
+		ShouldNot(it.String(out).Contain("[linkResolves]")).
+		Should(it.String(out).Contain("[mergeConflict]"))
+}
+
+// arc lint --skip
+// spec.md US1 Scenario 1.4: skipping every rule the tool implements still
+// enumerates every node and succeeds cleanly.
+func TestLintSkipEveryRuleStillEnumeratesNodes(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	writeNode(t, dir, "Entity/Widget.md", brokenWidgetBothRules)
+	chdir(t, dir)
+
+	names := make([]string, len(kernel.RuleDefinitions))
+	for i, def := range kernel.RuleDefinitions {
+		names[i] = string(def.Rule)
+	}
+
+	cmd := NewLintCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("skip", strings.Join(names, ","))))
+
+	out, err := sut(cmd, nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		Should(it.String(out).Contain("2 nodes checked, 2 passing, 0 failing"))
+}
+
+// arc lint --skip
+// FR-002/FR-003: whitespace around segments and duplicate rule names are
+// silently normalized, not errors.
+func TestLintSkipIgnoresWhitespaceAndEmptySegments(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	writeNode(t, dir, "Entity/Widget.md", brokenWidgetBothRules)
+	chdir(t, dir)
+
+	cmd := NewLintCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("skip", "entityCategory, ,entityCategory")))
+
+	out, err := sut(cmd, nil)
+
+	it.Then(t).
+		ShouldNot(it.Nil(err)).
+		Should(it.String(out).Contain("[linkResolves]")).
+		ShouldNot(it.String(out).Contain("[entityCategory]"))
+}
+
+// arc lint --skip
+// FR-004 edge case: a graph-spanning rule (RuleUniqueBasename, no single
+// owning node) is suppressed exactly like a node-owned one.
+func TestLintSkipGraphSpanningRuleSuppressesBothFiles(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+
+	widget := readFile(t, filepath.Join(dir, "Entity", "Widget.md"))
+	writeNode(t, dir, "Resource/Widget.md", widget)
+	chdir(t, dir)
+
+	cmd := NewLintCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("skip", "uniqueBasename")))
+
+	out, err := sut(cmd, nil)
+
+	it.Then(t).
+		Should(it.Nil(err)).
+		ShouldNot(it.String(out).Contain("uniqueBasename"))
+}
+
+// arc lint --skip --json
+// --json contract: a skipped rule's violations are absent from the JSON
+// output too, and passing/failing reflect the filtered count.
+func TestLintSkipJSONOutputOmitsSkippedRuleViolations(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	writeNode(t, dir, "Entity/Widget.md", brokenWidgetBothRules)
+	chdir(t, dir)
+	bios.JSON = true
+	t.Cleanup(func() { bios.JSON = false })
+
+	cmd := NewLintCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("skip", "entityCategory")))
+
+	out, err := sut(cmd, nil)
+
+	it.Then(t).ShouldNot(it.Nil(err))
+
+	var result kernel.LintResult
+	it.Then(t).Should(it.Nil(json.Unmarshal([]byte(out), &result)))
+
+	for _, v := range result.Violations {
+		it.Then(t).ShouldNot(it.Equal(kernel.RuleEntityCategory, v.Rule))
+	}
+	it.Then(t).
+		Should(it.Equal(1, result.Passing)).
+		Should(it.Equal(1, result.Failing))
+}
+
+// arc lint --skip
+// spec.md US3 Scenario 3.1: an unrecognized --skip value refuses, naming it
+// and pointing at `arc lint rules`.
+func TestLintSkipUnknownRuleRefuses(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	chdir(t, dir)
+
+	cmd := NewLintCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("skip", "bogusRule")))
+
+	out, err := sut(cmd, nil)
+
+	it.Then(t).
+		Should(it.Error(out, err).Contain("bogusRule")).
+		Should(it.Error(out, err).Contain("arc lint rules")).
+		Should(it.Equal("", out))
+}
+
+// arc lint --skip
+// spec.md US3 Scenario 3.2: a mix of one valid and one invalid rule name
+// still refuses outright — no partial lint output is printed.
+func TestLintSkipMixedValidAndInvalidRefuses(t *testing.T) {
+	dir := t.TempDir()
+	buildConformantGraph(t, dir)
+	chdir(t, dir)
+
+	cmd := NewLintCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("skip", "entityCategory,bogusRule")))
+
+	out, err := sut(cmd, nil)
+
+	it.Then(t).
+		Should(it.Error(out, err).Contain("bogusRule")).
+		Should(it.Equal("", out))
+}
+
+// arc lint --skip
+// FR-008: an unrecognized --skip value is refused before the graph is even
+// resolved — the error names the bad rule, not "not an initialized graph".
+func TestLintSkipUnknownRuleRefusesBeforeGraphCheck(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	cmd := NewLintCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("skip", "bogusRule")))
+
+	out, err := sut(cmd, nil)
+
+	it.Then(t).
+		Should(it.Error(out, err).Contain("bogusRule")).
+		ShouldNot(it.Error(out, err).Contain("initialized graph"))
 }

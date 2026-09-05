@@ -33,6 +33,20 @@ func TestNewLintResultDerivesPassingFailing(t *testing.T) {
 		Should(it.Equal(1, len(result.Violations)))
 }
 
+// TestRuleDefinitionsCoverEveryRule confirms kernel.RuleDefinitions'
+// Invariant A (data-model.md): its length matches the declared Rule const
+// block, and every entry carries a non-empty Description — so arc lint
+// rules can never silently omit a rule --skip is able to reference.
+func TestRuleDefinitionsCoverEveryRule(t *testing.T) {
+	const wantRules = 18
+
+	it.Then(t).Should(it.Equal(wantRules, len(kernel.RuleDefinitions)))
+
+	for _, def := range kernel.RuleDefinitions {
+		it.Then(t).ShouldNot(it.Equal("", def.Description))
+	}
+}
+
 func TestNewLintResultIncludesGraphSpanningFirst(t *testing.T) {
 	nodes := []kernel.NodeStatus{
 		{Path: "a.md", ID: "a", Violations: []kernel.Violation{

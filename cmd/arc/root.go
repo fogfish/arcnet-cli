@@ -60,7 +60,9 @@ Report issues at https://github.com/fogfish/arcnet-cli/issues`,
 	cmd.AddCommand(graph.NewSubgraphCmd())
 	cmd.AddCommand(graph.NewServeCmd())
 	cmd.AddCommand(graph.NewStatsCmd())
-	cmd.AddCommand(lint.NewLintCmd())
+	lintCmd := lint.NewLintCmd()
+	lintCmd.AddCommand(lint.NewLintRulesCmd())
+	cmd.AddCommand(lintCmd)
 
 	return cmd
 }

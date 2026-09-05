@@ -230,7 +230,8 @@ arc revert <source-id> [--force]          # retract a document's contribution
 # read
 arc grep <pattern> [filter]               # search node content
 arc subgraph <basename> [--depth n] [filter] [--stubs]
-arc lint                                  # validate against the conformance checklist
+arc lint [--skip <rule[,rule...]>]        # validate against the conformance checklist
+arc lint rules                            # list every rule --skip can name
 arc stats [--verbose]                     # report the graph's shape and health
 
 # serve

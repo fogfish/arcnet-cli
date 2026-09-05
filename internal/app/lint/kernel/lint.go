@@ -40,6 +40,38 @@ const (
 	RuleIdentityCharset     Rule = "identityCharset"
 )
 
+// RuleDefinition pairs a Rule's canonical identifier with a human-readable
+// description of what it checks — the single source both arc lint --skip's
+// validation and arc lint rules' listing read (data-model.md, FR-014).
+type RuleDefinition struct {
+	Rule        Rule   `json:"rule"`
+	Description string `json:"description"`
+}
+
+// RuleDefinitions is the fixed, ordered catalog of every rule arc lint
+// implements, one entry per Rule constant above, in the same order
+// (data-model.md's table; Invariant A/B).
+var RuleDefinitions = []RuleDefinition{
+	{RuleFrontMatter, `Front matter parses as well-formed YAML and declares a recognized identity ("@id"/"@type" or legacy "kind").`},
+	{RuleUniqueBasename, "No two node files anywhere in the graph share the same basename."},
+	{RuleLinkResolves, "Every [[link]] target, both structural edges and inline prose references, resolves to a node that exists in the graph."},
+	{RuleSourceCitekey, "A source node's identity matches the citekey convention its own content implies."},
+	{RuleEntityCategory, "An entity node declares one of the twelve legal Sowa category combinations."},
+	{RuleDerivedProvenance, "A derived node records the node(s) it was derived from."},
+	{RulePredicateCase, "Predicates are written in their registered camelCase form, not an unregistered casing variant."},
+	{RulePredicateRegistered, "Every predicate a node uses is registered in the graph's schema."},
+	{RuleCitationPredicate, "Citation predicates align with the schema's cito-aligned citation vocabulary."},
+	{RuleUnrecognizedKind, "A node's kind is one the graph recognizes, not an unrecognized extension kind."},
+	{RuleIngestCommit, `A source node's content is backed by exactly one "graph(ingest):" commit in git history.`},
+	{RuleMergeConflict, "No unresolved git merge-conflict markers remain in a node file."},
+	{RuleTypeRequires, "A node satisfies every predicate its declared type's schema marks Required."},
+	{RuleTypeOptional, "A node's use of predicates its type's schema marks Optional is well-formed."},
+	{RuleIdentityQuoting, `"@id"/"@type" front-matter keys and values are quoted, not left as bare YAML.`},
+	{RulePredicateRole, "A predicate's structural occurrence (bullet vs. heading, etc.) matches the role its schema declares."},
+	{RuleTypeCase, "A node's or schema document's declared type is written in its registered camelCase form."},
+	{RuleIdentityCharset, "A node's or schema's identity uses only the graph's permitted identifier character set."},
+}
+
 // Violation is the domain value one failed check produces.
 type Violation struct {
 	// Rule is the checklist item that failed.

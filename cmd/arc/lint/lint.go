@@ -12,9 +12,11 @@ package lint
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -22,9 +24,84 @@ import (
 	"github.com/fogfish/arcnet-cli/internal/adapter/git"
 	applint "github.com/fogfish/arcnet-cli/internal/app/lint"
 	"github.com/fogfish/arcnet-cli/internal/app/lint/kernel"
+	"github.com/fogfish/arcnet-cli/internal/app/lint/service"
 	appschema "github.com/fogfish/arcnet-cli/internal/app/schema"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
+
+// errNoCause is passed to a faults.SafeN.With for guard conditions that are
+// not caused by an underlying Go error, so the rendered message has no
+// trailing "%!s(<nil>)" artifact (mirrors cmd/arc/graph's own precedent).
+var errNoCause = errors.New("")
+
+// knownRules is the set of every rule kernel.RuleDefinitions declares,
+// computed once and shared by every parseSkip call.
+var knownRules = func() map[kernel.Rule]bool {
+	m := make(map[kernel.Rule]bool, len(kernel.RuleDefinitions))
+	for _, def := range kernel.RuleDefinitions {
+		m[def.Rule] = true
+	}
+	return m
+}()
+
+// parseSkip splits csv on "," trimming whitespace and dropping empty
+// segments, then validates each remaining name against knownRules
+// (research.md D7). unknown preserves first-occurrence order and names each
+// bad value exactly once (FR-007); skip collapses duplicates by
+// construction, being a map.
+func parseSkip(csv string) (skip map[kernel.Rule]bool, unknown []string) {
+	skip = map[kernel.Rule]bool{}
+	seenUnknown := map[string]bool{}
+
+	for _, segment := range strings.Split(csv, ",") {
+		name := strings.TrimSpace(segment)
+		if name == "" {
+			continue
+		}
+
+		rule := kernel.Rule(name)
+		if !knownRules[rule] {
+			if !seenUnknown[name] {
+				seenUnknown[name] = true
+				unknown = append(unknown, name)
+			}
+			continue
+		}
+		skip[rule] = true
+	}
+
+	return skip, unknown
+}
+
+// filterViolations drops every entry whose Rule is in skip, preserving
+// order.
+func filterViolations(violations []kernel.Violation, skip map[kernel.Rule]bool) []kernel.Violation {
+	var out []kernel.Violation
+	for _, v := range violations {
+		if skip[v.Rule] {
+			continue
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+// applySkip rebuilds r with every skipped rule's violations removed, from
+// both node-owned and graph-spanning violations, via the same
+// NewLintResultWithForeign constructor service.Lint itself uses — so
+// Passing/Failing are recomputed consistently rather than adjusted by hand
+// (data-model.md, Invariant C/D).
+func applySkip(r kernel.LintResult, skip map[kernel.Rule]bool) kernel.LintResult {
+	filteredNodes := make([]kernel.NodeStatus, len(r.Nodes))
+	for i, n := range r.Nodes {
+		filteredNodes[i] = n
+		filteredNodes[i].Violations = filterViolations(n.Violations, skip)
+	}
+
+	filteredGraphSpanning := filterViolations(graphSpanningViolations(r), skip)
+
+	return kernel.NewLintResultWithForeign(r.Root, filteredNodes, r.Foreign, filteredGraphSpanning...)
+}
 
 func formatOwnedViolation(v kernel.Violation) string {
 	loc := v.Path
@@ -148,6 +225,7 @@ var lintRenderers = bios.Registry[kernel.LintResult]{
 // NewLintCmd builds the `arc lint` command.
 func NewLintCmd() *cobra.Command {
 	var result kernel.LintResult
+	var skipFlag string
 
 	cmd := &cobra.Command{
 		Use:   "lint",
@@ -162,17 +240,25 @@ document, extension-kind recognition, absence of unresolved git
 merge-conflict markers, a node's own type-declared Requires/Optional
 predicate contract, "@id"/"@type" front-matter quoting, and predicate-role
 structural conformance. Every violation is reported with its file and line;
-the run never stops at the first one found. lint is strictly read-only.
+the run never stops at the first one found. --skip excludes one or more
+named rules (see `+"`arc lint rules`"+`) from the report entirely. lint is
+strictly read-only.
 
 See more info https://github.com/fogfish/arcnet-cli`,
 		Example: `
 	arc lint
 	arc lint --verbose
-	arc lint --json`,
+	arc lint --json
+	arc lint --skip ingestCommit`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			skip, unknown := parseSkip(skipFlag)
+			if len(unknown) > 0 {
+				return service.ErrUnknownSkipRule.With(errNoCause, strings.Join(unknown, ", "))
+			}
+
 			dir, err := filepath.Abs(".")
 			if err != nil {
 				return err
@@ -208,6 +294,10 @@ See more info https://github.com/fogfish/arcnet-cli`,
 				return err
 			}
 
+			if len(skip) > 0 {
+				result = applySkip(result, skip)
+			}
+
 			printer := lintRenderers.Resolve(bios.ResolveMode())
 			out, err := printer.Show(result)
 			if err != nil {
@@ -228,6 +318,8 @@ See more info https://github.com/fogfish/arcnet-cli`,
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&skipFlag, "skip", "", "Comma-separated rule names to exclude from the report (see `arc lint rules`)")
 
 	return cmd
 }
