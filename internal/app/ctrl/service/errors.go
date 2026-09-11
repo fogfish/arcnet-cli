@@ -24,4 +24,11 @@ const (
 	ErrNoParentRepository = faults.Safe1[string]("%s is not inside a git repository; --skip-git-init requires an existing repository to add the graph to")
 	ErrLayoutCollision    = faults.Safe1[string]("%s already exists; initialize the graph into a subfolder instead")
 	ErrTargetIgnored      = faults.Safe1[string]("%s is excluded by the repository's ignore rules; the graph could never be committed")
+
+	// specs/034-serve-dir-public-state FR-017. Distinct from
+	// ErrTargetIgnored: the graph's content would commit fine, but its
+	// .arc/ state would not, so the failure is a clone that is not a
+	// graph rather than a commit that never happens. Wording is part of
+	// the contract (contracts/cli-contract.md C2).
+	ErrStateIgnored = faults.Safe1[string]("%s/.arc is excluded by the repository's ignore rules; a clone would not be a usable graph")
 )

@@ -15,10 +15,13 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fogfish/it/v2"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -1873,4 +1876,318 @@ func TestServeContextRetrieveInvalidLimitReturnsToolError(t *testing.T) {
 	})
 	it.Then(t).Should(it.Nil(err2))
 	it.Then(t).ShouldNot(it.True(result2.IsError))
+}
+
+// ---------------------------------------------------------------------------
+// specs/034-serve-dir-public-state — User Story 1: arc serve [<dir>]
+// ---------------------------------------------------------------------------
+
+// freeLoopbackAddr reserves and immediately releases a loopback port, so a
+// test can hand arc serve an address nothing is listening on yet. The
+// window between release and re-bind is inherent to asking the OS for a
+// free port at all — the alternative, a hardcoded port, is worse.
+func freeLoopbackAddr(t *testing.T) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	it.Then(t).Should(it.Nil(err))
+	addr := listener.Addr().String()
+	it.Then(t).Should(it.Nil(listener.Close()))
+	return addr
+}
+
+// serveOverHTTP runs arc serve's own RunE — the real command, with args as
+// its positional arguments — over Streamable HTTP, and returns a connected
+// MCP client session addressed at it.
+//
+// It exists because connectServeSession calls buildServer directly and so
+// can never observe how RunE decided which directory to build for. The
+// <dir> argument's whole contract is that decision, so US1's scenarios are
+// driven through RunE (Constitution VIII) rather than around it.
+func serveOverHTTP(t *testing.T, ctx context.Context, args []string) *mcp.ClientSession {
+	t.Helper()
+
+	addr := freeLoopbackAddr(t)
+
+	cmd := NewServeCmd()
+	cmd.SetContext(ctx)
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("http", addr)))
+
+	served := make(chan error, 1)
+	go func() { served <- cmd.RunE(cmd, args) }()
+
+	session := connectHTTPSession(t, ctx, "http://"+addr, served)
+	t.Cleanup(func() { session.Close() })
+	return session
+}
+
+// connectHTTPSession polls until arc serve's listener accepts, or until the
+// command's RunE returns — a refusal reported on served is a test failure
+// with the command's own message, not a connect timeout that hides it.
+func connectHTTPSession(t *testing.T, ctx context.Context, endpoint string, served <-chan error) *mcp.ClientSession {
+	t.Helper()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "arc-test-serve-dir", Version: "0.0.0"}, nil)
+
+	var last error
+	for range 100 {
+		select {
+		case err := <-served:
+			it.Then(t).Should(it.Nil(err))
+			t.Fatalf("arc serve returned before serving %s", endpoint)
+		default:
+		}
+
+		session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: endpoint}, nil)
+		if err == nil {
+			return session
+		}
+		last = err
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	it.Then(t).Should(it.Nil(last))
+	return nil
+}
+
+// refuseServe runs arc serve's RunE with args and an --http address, and
+// returns the refusal plus whether that address was still free afterwards —
+// the observable form of FR-004's "before any transport is opened".
+func refuseServe(t *testing.T, args []string) (err error, addrStillFree bool) {
+	t.Helper()
+
+	addr := freeLoopbackAddr(t)
+
+	cmd := NewServeCmd()
+	it.Then(t).Should(it.Nil(cmd.Flags().Set("http", addr)))
+
+	out, err := sut(cmd, args)
+	it.Then(t).Should(it.Equal("", out))
+
+	listener, listenErr := net.Listen("tcp", addr)
+	if listenErr == nil {
+		listener.Close()
+	}
+	return err, listenErr == nil
+}
+
+// arc serve /path/to/graph, from a working directory that is not a graph
+// Scenario 1.1 and 1.3 from specs/034-serve-dir-public-state/spec.md
+func TestServeNamedDirServesThatGraphFromUnrelatedWorkingDirectory(t *testing.T) {
+	graph := t.TempDir()
+	initGraph(t, graph)
+	seedServeFixture(t, graph)
+
+	// deliberately NOT a graph, and unrelated to it
+	chdir(t, t.TempDir())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	session := serveOverHTTP(t, ctx, []string{graph})
+
+	it.Then(t).Should(it.String(session.InitializeResult().Instructions).Contain("schema"))
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_get",
+		Arguments: map[string]any{"id": "Transport Layer Security"},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	it.Then(t).Should(it.String(textOf(t, result)).Contain("TLS is the successor to SSL."))
+}
+
+// arc serve
+// Scenario 1.2 from specs/034-serve-dir-public-state/spec.md (SC-004): the
+// no-argument form is byte-for-byte what it was before the feature — the
+// working directory is the graph.
+func TestServeWithoutArgumentStillServesTheWorkingDirectory(t *testing.T) {
+	graph := t.TempDir()
+	initGraph(t, graph)
+	seedServeFixture(t, graph)
+	chdir(t, graph)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	session := serveOverHTTP(t, ctx, nil)
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_get",
+		Arguments: map[string]any{"id": "Transport Layer Security"},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	it.Then(t).Should(it.String(textOf(t, result)).Contain("TLS is the successor to SSL."))
+}
+
+// arc serve /abs/path/to/graph
+// Scenario 1.4 from specs/034-serve-dir-public-state/spec.md: a path that
+// does not exist, and a path that exists but is not a graph, are both
+// refused before any transport is opened, each naming the absolute path.
+func TestServeRefusesBadDirBeforeOpeningAnyTransport(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+
+	err, free := refuseServe(t, []string{missing})
+	it.Then(t).ShouldNot(it.Nil(err))
+	it.Then(t).
+		Should(it.String(err.Error()).Contain(missing)).
+		Should(it.String(err.Error()).Contain("does not exist")).
+		Should(it.True(free))
+
+	notAGraph := t.TempDir()
+	err, free = refuseServe(t, []string{notAGraph})
+	it.Then(t).ShouldNot(it.Nil(err))
+	it.Then(t).
+		Should(it.String(err.Error()).Contain(notAGraph)).
+		Should(it.String(err.Error()).Contain("is not an initialized graph")).
+		Should(it.True(free))
+}
+
+// arc serve --http <addr> /path/to/graph
+// Scenario 1.5 from specs/034-serve-dir-public-state/spec.md: the <dir>
+// argument applies identically over the network transport and the default
+// one — the same graph answers the same call either way.
+func TestServeDirAppliesIdenticallyOverHTTPAndDefaultTransport(t *testing.T) {
+	graph := t.TempDir()
+	initGraph(t, graph)
+	seedServeFixture(t, graph)
+	chdir(t, t.TempDir())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	call := &mcp.CallToolParams{
+		Name:      "node_get",
+		Arguments: map[string]any{"id": "Transport Layer Security"},
+	}
+
+	overHTTP, err := serveOverHTTP(t, ctx, []string{graph}).CallTool(ctx, call)
+	it.Then(t).Should(it.Nil(err))
+
+	inMemory, err := connectServeSession(t, ctx, graph).CallTool(ctx, call)
+	it.Then(t).Should(it.Nil(err))
+
+	it.Then(t).Should(it.Equal(textOf(t, inMemory), textOf(t, overHTTP)))
+}
+
+// arc serve /path/to/a-file
+// Edge case from specs/034-serve-dir-public-state/spec.md: the path exists
+// but is a file — refused naming the path, and not as "not a graph".
+func TestServeRefusesDirThatIsAFile(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "notes.md")
+	it.Then(t).Should(it.Nil(os.WriteFile(file, []byte("# notes\n"), 0o644)))
+
+	err, free := refuseServe(t, []string{file})
+
+	it.Then(t).ShouldNot(it.Nil(err))
+	it.Then(t).
+		Should(it.String(err.Error()).Contain(file)).
+		Should(it.String(err.Error()).Contain("is not a directory")).
+		Should(it.True(free))
+}
+
+// arc serve /path/to/unreadable
+// Edge case from specs/034-serve-dir-public-state/spec.md: an unreadable
+// path gets a permission-specific message rather than "not a graph".
+func TestServeRefusesUnreadableDir(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses directory permissions; the refusal is unreachable")
+	}
+
+	unreadable := filepath.Join(t.TempDir(), "sealed")
+	it.Then(t).Should(it.Nil(os.MkdirAll(unreadable, 0o755)))
+	it.Then(t).Should(it.Nil(os.Chmod(unreadable, 0o000)))
+	t.Cleanup(func() { os.Chmod(unreadable, 0o755) })
+
+	err, free := refuseServe(t, []string{unreadable})
+
+	it.Then(t).ShouldNot(it.Nil(err))
+	it.Then(t).
+		Should(it.String(err.Error()).Contain(unreadable)).
+		Should(it.String(err.Error()).Contain("cannot be read")).
+		Should(it.True(free))
+}
+
+// arc serve ./sub
+// Edge case from specs/034-serve-dir-public-state/spec.md: a relative
+// argument is resolved against the working directory, then treated exactly
+// as an absolute one.
+func TestServeRelativeDirResolvedAgainstWorkingDirectory(t *testing.T) {
+	parent := t.TempDir()
+	graph := filepath.Join(parent, "sub")
+	it.Then(t).Should(it.Nil(os.MkdirAll(graph, 0o755)))
+	initGraph(t, graph)
+	seedServeFixture(t, graph)
+	chdir(t, parent)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	session := serveOverHTTP(t, ctx, []string{"./sub"})
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_get",
+		Arguments: map[string]any{"id": "Transport Layer Security"},
+	})
+
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(result.IsError))
+	it.Then(t).Should(it.String(textOf(t, result)).Contain("TLS is the successor to SSL."))
+}
+
+// arc serve <other-graph>, run from inside a graph
+// Edge case from specs/034-serve-dir-public-state/spec.md: the named
+// directory wins; the working directory is never consulted, even when it is
+// itself a perfectly good graph.
+func TestServeNamedDirWinsOverWorkingDirectoryGraph(t *testing.T) {
+	working := t.TempDir()
+	initGraph(t, working)
+	seedServeFixture(t, working)
+
+	named := t.TempDir()
+	initGraph(t, named)
+	writeGrepNode(t, named, "Entity/Named Graph Marker.md",
+		"---\n\"@id\": Named Graph Marker\n\"@type\": Entity\ncategory: form structure attribute process\n---\n# Named Graph Marker\n\nOnly the named graph holds this node.\n")
+
+	chdir(t, working)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	session := serveOverHTTP(t, ctx, []string{named})
+
+	found, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_get",
+		Arguments: map[string]any{"id": "Named Graph Marker"},
+	})
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).ShouldNot(it.True(found.IsError))
+
+	// and the working directory's own node is NOT reachable
+	absent, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "node_get",
+		Arguments: map[string]any{"id": "Transport Layer Security"},
+	})
+	it.Then(t).Should(it.Nil(err))
+	it.Then(t).Should(it.True(absent.IsError))
+}
+
+// arc serve <dir> <dir>
+// Edge case from specs/034-serve-dir-public-state/spec.md (FR-007): more
+// than one positional argument is a usage error decided by Cobra's own
+// argument validator, so RunE never runs and no transport is opened.
+func TestServeRejectsTwoPositionalArguments(t *testing.T) {
+	graph := t.TempDir()
+	initGraph(t, graph)
+
+	cmd := NewServeCmd()
+	it.Then(t).ShouldNot(it.Nil(cmd.Args))
+
+	it.Then(t).Should(it.Nil(cmd.Args(cmd, []string{graph})))
+
+	err := cmd.Args(cmd, []string{graph, t.TempDir()})
+	it.Then(t).ShouldNot(it.Nil(err))
+	it.Then(t).Should(it.String(err.Error()).Contain("accepts at most 1 arg"))
 }

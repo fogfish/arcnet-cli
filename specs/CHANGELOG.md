@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-11
+
+/speckit-specify The cli suffesr from usability especially when `arc serve` is used from clones of repository. An improvlment for following aspects is required:
+* `arc serve` take an optional parameter `arc serve <dir>` to switch the context from current to specified dir. This approach allows explicit MCP configuration with agents.
+* `.arc` is git ignored but `arc` cli requires it. The purpose of `.gitignore` was a preparation for internal state management. The structure of `.arc` has to be split into the public `.arc` and `.arc/cache` where `.arc/cache` has gitignore file with `*`.
+
+/speckit-plan The feature does not require any structural changes in the code base. Only impacted component has to be modified. Keep minimal changes to interfaces, adjust only the behaviour of `serve` and `init` commands.
+
 ## 2026-09-05
 
 /speckit-specify `arc lint` takes `--skip`, it is a list of rule names to skip, it uses comma to separate multiple values. The flag requires a sibling command `arc lint rules` that shows a human readable definition for all rules implemented by the app. 

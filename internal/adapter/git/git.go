@@ -168,11 +168,17 @@ func (v VCS) RepoRoot(ctx context.Context, dir string) (string, error) {
 // (contracts/vcs-adapter-contract.md A2). The exit-code discrimination is
 // the same one IsTracked performs.
 //
-// This answers one question only: does the HOST project exclude the graph
-// directory (FR-020). It must not be repurposed to verify .arc/.gitignore's
-// own exclusion — a `*` rule inside .arc/ ignores that directory's
-// contents, not its entry, so check-ignore on .arc itself correctly reports
-// "not ignored" while nothing inside it is ever tracked (research.md D4).
+// It answers one class of question: does the HOST project exclude a path
+// the graph needs tracked — the graph directory itself (FR-020), and, since
+// .arc/ became version-controlled, the graph's state directory too
+// (specs/034-serve-dir-public-state FR-017, research D5). Both callers are
+// in cmd/arc/ctrl.resolveRepoContext.
+//
+// It must not be repurposed to verify the graph's OWN rules. Those live
+// inside .arc/ and are scoped to what they enclose rather than to their own
+// entry — check-ignore on .arc/cache reports "not ignored" from the
+// repository root while nothing inside it is ever tracked — so a "not
+// ignored" answer about an arc-owned path says nothing useful.
 func (v VCS) IsIgnored(ctx context.Context, dir, path string) (bool, error) {
 	_, err := run(ctx, dir, "check-ignore", "-q", path)
 	if err == nil {

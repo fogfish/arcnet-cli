@@ -11,6 +11,7 @@ package ctrl
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -24,7 +25,9 @@ import (
 	"github.com/fogfish/it/v2"
 	"github.com/spf13/cobra"
 
+	"github.com/fogfish/arcnet-cli/cmd/arc/graph"
 	"github.com/fogfish/arcnet-cli/cmd/arc/lint"
+	ctrlservice "github.com/fogfish/arcnet-cli/internal/app/ctrl/service"
 	"github.com/fogfish/arcnet-cli/internal/app/schema/kernel"
 	"github.com/fogfish/arcnet-cli/internal/bios"
 )
@@ -148,14 +151,22 @@ func TestInitCurrentDirectoryCreatesLayout(t *testing.T) {
 	it.Then(t).Should(it.True(os.IsNotExist(metaErr)))
 	assertIsDir(t, filepath.Join(dir, ".arc"))
 
-	// specs/031 research.md D4: the exclusion rule moved inside .arc/, and
+	// specs/031 research.md D4: the exclusion rule lives inside .arc/, and
 	// no .gitignore is written at the graph root any more — in either mode.
-	// SC-008's observable outcomes (local state untracked, clean working
-	// tree, one commit) are asserted by the tests below and are unchanged.
+	//
+	// specs/034-serve-dir-public-state research D3 supersedes what that
+	// rule SAYS: `cache/`, not `*`, so .arc/ itself is version-controlled
+	// and a clone of a graph is a graph. The self-ignoring `*` moved down
+	// into .arc/cache/.
 	gitignore, rerr := os.ReadFile(filepath.Join(dir, ".arc", ".gitignore"))
 	it.Then(t).
 		Should(it.Nil(rerr)).
-		Should(it.Equal("*\n", string(gitignore)))
+		Should(it.Equal("cache/\n", string(gitignore)))
+
+	cacheIgnore, cerr := os.ReadFile(filepath.Join(dir, ".arc", "cache", ".gitignore"))
+	it.Then(t).
+		Should(it.Nil(cerr)).
+		Should(it.Equal("*\n", string(cacheIgnore)))
 
 	_, rootIgnoreErr := os.Stat(filepath.Join(dir, ".gitignore"))
 	it.Then(t).Should(it.True(os.IsNotExist(rootIgnoreErr)))
@@ -190,8 +201,13 @@ func TestInitCurrentDirectoryCleanWorkingTree(t *testing.T) {
 	status := strings.TrimSpace(gitOutput(t, dir, "status", "--short"))
 	it.Then(t).Should(it.Equal("", status))
 
+	// specs/034-serve-dir-public-state US2: .arc/ IS tracked now — that is
+	// what makes a clone a graph. What stays untracked is .arc/cache/.
 	tracked := gitOutput(t, dir, "ls-files")
-	it.Then(t).ShouldNot(it.String(tracked).Contain(".arc/"))
+	it.Then(t).
+		Should(it.String(tracked).Contain(".arc/.gitkeep")).
+		Should(it.String(tracked).Contain(".arc/.gitignore")).
+		ShouldNot(it.String(tracked).Contain(".arc/cache"))
 }
 
 // arc init
@@ -1249,17 +1265,26 @@ func TestInitSkipGitNeverTouchesHostIgnoreFile(t *testing.T) {
 }
 
 // arc init --skip-git-init <repo>/notes
-// spec.md US3 Acceptance Scenario 2 (FR-016): the graph's local state is
-// excluded from version control by .arc/.gitignore alone.
+// spec.md US3 Acceptance Scenario 2 (FR-016): the graph's machine-local
+// state is excluded from version control by rules living inside .arc/
+// alone — arc still owns no ignore file outside it.
+//
+// specs/034-serve-dir-public-state US2/US3 narrows WHAT is excluded: .arc/
+// is tracked, .arc/cache/ is not. The property spec 031 asserts — arc
+// creates no ignore rule of the host project's — is unchanged.
 func TestInitSkipGitExcludesLocalStateViaArcIgnore(t *testing.T) {
 	repo := newHostRepo(t)
 
 	_, err := sut(initCmdSkipGit(t), []string{filepath.Join(repo, "notes")})
 	it.Then(t).Should(it.Nil(err))
 
-	it.Then(t).Should(it.Equal("*\n", readGraphFile(t, filepath.Join(repo, "notes", ".arc", ".gitignore"))))
+	it.Then(t).Should(it.Equal("cache/\n", readGraphFile(t, filepath.Join(repo, "notes", ".arc", ".gitignore"))))
+	it.Then(t).Should(it.Equal("*\n", readGraphFile(t, filepath.Join(repo, "notes", ".arc", "cache", ".gitignore"))))
+
+	tracked := gitOutput(t, repo, "ls-files")
 	it.Then(t).
-		ShouldNot(it.String(gitOutput(t, repo, "ls-files")).Contain("notes/.arc")).
+		Should(it.String(tracked).Contain("notes/.arc/.gitkeep")).
+		ShouldNot(it.String(tracked).Contain("notes/.arc/cache")).
 		Should(it.Equal("", strings.TrimSpace(gitOutput(t, repo, "status", "--porcelain"))))
 }
 
@@ -1364,5 +1389,307 @@ func TestInitSkipGitRollbackLeavesPreExistingFilesIntact(t *testing.T) {
 	for _, path := range []string{"Source/.gitkeep", "_schema/Class/Entity.md", ".arc/.gitignore"} {
 		_, statErr := os.Stat(filepath.Join(target, filepath.FromSlash(path)))
 		it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// specs/034-serve-dir-public-state — a graph's .arc/ state is version
+// controlled, and .arc/cache/ is the one part that never is.
+//
+// User Story 2 (a clone of a graph is a graph), User Story 3 (machine-local
+// state never leaves the machine), User Story 4 (the legacy layout keeps
+// working and has a documented migration). quickstart.md V4-V7.
+// ---------------------------------------------------------------------------
+
+// assertStateDir asserts root holds a .arc/ state directory. It exists
+// rather than reusing assertIsDir because that helper dereferences a nil
+// FileInfo when the path is absent — and an absent .arc/ in a clone is
+// precisely the failure these scenarios are written to catch, so it has to
+// report as a failed assertion rather than as a panic.
+func assertStateDir(t *testing.T, root string) {
+	t.Helper()
+	info, err := os.Stat(filepath.Join(root, ".arc"))
+	it.Then(t).Should(it.Nil(err))
+	if err == nil {
+		it.Then(t).Should(it.True(info.IsDir()))
+	}
+}
+
+// assertExistingFile asserts path is an existing regular file, nil-safely,
+// for the same reason assertStateDir exists.
+func assertExistingFile(t *testing.T, path string) {
+	t.Helper()
+	info, err := os.Stat(path)
+	it.Then(t).Should(it.Nil(err))
+	if err == nil {
+		it.Then(t).Should(it.True(!info.IsDir()))
+	}
+}
+
+// trackedUnder returns every path git tracks under a graph-relative prefix,
+// sorted — the direct observable form of "what version control tracks".
+func trackedUnder(t *testing.T, dir, prefix string) []string {
+	t.Helper()
+	out := strings.TrimSpace(gitOutput(t, dir, "ls-files", prefix))
+	if out == "" {
+		return nil
+	}
+	paths := strings.Split(out, "\n")
+	sort.Strings(paths)
+	return paths
+}
+
+// cloneOf clones dir into a fresh temporary directory and returns it — how
+// a collaborator actually receives a graph (US2), and the only honest test
+// of whether a clone IS a graph.
+func cloneOf(t *testing.T, dir string) string {
+	t.Helper()
+	dst := filepath.Join(t.TempDir(), "clone")
+	cmd := exec.Command("git", "clone", "-q", dir, dst)
+	out, err := cmd.CombinedOutput()
+	it.Then(t).Should(it.Nil(err))
+	_ = out
+	return dst
+}
+
+// arc init <dir>
+// Scenario 2.1 from specs/034-serve-dir-public-state/spec.md: the graph's
+// state directory and its published contents are tracked.
+func TestInitTracksArcStateDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "graph")
+
+	out, err := sut(NewInitCmd(), []string{dir})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	it.Then(t).Should(it.Seq(trackedUnder(t, dir, ".arc")).Equal(
+		".arc/.gitignore", ".arc/.gitkeep",
+	))
+}
+
+// arc init <dir>; git clone <dir>
+// Scenario 2.2 from specs/034-serve-dir-public-state/spec.md: the clone is
+// recognized as an initialized graph by every command, with no extra step.
+func TestInitCloneIsRecognizedAsAGraph(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "graph")
+	out, err := sut(NewInitCmd(), []string{dir})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	clone := cloneOf(t, dir)
+
+	assertStateDir(t, clone)
+	assertExistingFile(t, filepath.Join(clone, ".arc", ".gitignore"))
+
+	// and a real command run inside the clone succeeds with no repair
+	chdir(t, clone)
+	out, err = sut(graph.NewStatsCmd(), nil)
+	it.Then(t).ShouldNot(it.Error(out, err))
+}
+
+// arc init <dir>; tune .arc/config.yml; commit; git clone <dir>
+// Scenario 2.3 from specs/034-serve-dir-public-state/spec.md: the graph's
+// configuration travels with the repository — no manual copying.
+func TestInitCommittedConfigTravelsToClone(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "graph")
+	out, err := sut(NewInitCmd(), []string{dir})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	config := "grep:\n  workers: 3\n"
+	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(dir, ".arc", "config.yml"), []byte(config), 0o644)))
+	gitOutput(t, dir, "add", ".arc/config.yml")
+	gitOutput(t, dir, "commit", "-qm", "graph: tune grep")
+
+	clone := cloneOf(t, dir)
+
+	it.Then(t).Should(it.Equal(config, readGraphFile(t, filepath.Join(clone, ".arc", "config.yml"))))
+}
+
+// arc init <dir>
+// Scenario 2.4 from specs/034-serve-dir-public-state/spec.md: the working
+// tree is clean immediately afterwards — nothing unstaged, nothing untracked.
+func TestInitLeavesACleanWorkingTree(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "graph")
+
+	out, err := sut(NewInitCmd(), []string{dir})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	it.Then(t).Should(it.Equal("", strings.TrimSpace(gitOutput(t, dir, "status", "--porcelain"))))
+}
+
+// arc init <dir>
+// Scenario 3.1 from specs/034-serve-dir-public-state/spec.md: a dedicated
+// cache sub-location exists, carrying an exclusion rule covering everything
+// inside it — the rule file itself included.
+func TestInitCreatesSelfIgnoringCacheDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "graph")
+
+	out, err := sut(NewInitCmd(), []string{dir})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	assertStateDir(t, dir)
+	assertExistingFile(t, filepath.Join(dir, ".arc", "cache", ".gitignore"))
+	it.Then(t).Should(it.Equal("*\n", readGraphFile(t, filepath.Join(dir, ".arc", "cache", ".gitignore"))))
+
+	// the rule that survives a clone lives in the TRACKED parent
+	it.Then(t).Should(it.Equal("cache/\n", readGraphFile(t, filepath.Join(dir, ".arc", ".gitignore"))))
+}
+
+// arc init <dir>; echo scratch > .arc/cache/probe
+// Scenario 3.2 from specs/034-serve-dir-public-state/spec.md: any file
+// written into the cache is ignored and the working tree stays clean.
+func TestInitCacheContentIsIgnoredAndTreeStaysClean(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "graph")
+	out, err := sut(NewInitCmd(), []string{dir})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	probe := filepath.Join(dir, ".arc", "cache", "probe.tmp")
+	it.Then(t).Should(it.Nil(os.WriteFile(probe, []byte("scratch\n"), 0o644)))
+
+	it.Then(t).Should(it.Equal("", strings.TrimSpace(gitOutput(t, dir, "status", "--porcelain"))))
+	it.Then(t).Should(it.String(gitOutput(t, dir, "check-ignore", "-v", ".arc/cache/probe.tmp")).Contain("probe.tmp"))
+}
+
+// arc init <dir>
+// Scenario 3.3 from specs/034-serve-dir-public-state/spec.md: the initial
+// commit holds the shared state directory's contents and nothing from the
+// cache location.
+func TestInitCommitCarriesArcStateButNoCache(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "graph")
+	out, err := sut(NewInitCmd(), []string{dir})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	paths := commitPaths(t, dir)
+
+	it.Then(t).Should(it.Seq(paths).Contain(".arc/.gitkeep", ".arc/.gitignore"))
+	for _, path := range paths {
+		it.Then(t).Should(it.True(!strings.HasPrefix(path, ".arc/cache")))
+	}
+}
+
+// arc init --skip-git-init <repo>/notes, into a project with its own rules
+// Scenario 3.4 from specs/034-serve-dir-public-state/spec.md (FR-016): arc
+// neither reads, creates, nor modifies any exclusion rule outside .arc/.
+func TestInitSkipGitLeavesHostGitignoreByteIdentical(t *testing.T) {
+	repo := newHostRepo(t)
+	hostIgnore := filepath.Join(repo, ".gitignore")
+	original := "build/\n*.log\n"
+	it.Then(t).Should(it.Nil(os.WriteFile(hostIgnore, []byte(original), 0o644)))
+	gitOutput(t, repo, "add", "-A")
+	gitOutput(t, repo, "commit", "-qm", "host: own ignore rules")
+
+	out, err := sut(initCmdSkipGit(t), []string{filepath.Join(repo, "notes")})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	it.Then(t).Should(it.Equal(original, readGraphFile(t, hostIgnore)))
+	_, statErr := os.Stat(filepath.Join(repo, "notes", ".gitignore"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+}
+
+// fabricateLegacyLayout rewrites an initialized graph into the layout
+// releases before this feature produced: .arc/ wholly untracked, its
+// .gitignore a single `*`, and no cache directory at all.
+func fabricateLegacyLayout(t *testing.T, dir string) {
+	t.Helper()
+	if len(trackedUnder(t, dir, ".arc")) > 0 {
+		gitOutput(t, dir, "rm", "-r", "-q", "--cached", ".arc")
+	}
+	it.Then(t).Should(it.Nil(os.RemoveAll(filepath.Join(dir, ".arc", "cache"))))
+	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(dir, ".arc", ".gitignore"), []byte("*\n"), 0o644)))
+	// --allow-empty: a graph already IN the legacy layout needs no
+	// change at all, and the fixture must be a no-op there rather than
+	// failing on git's "nothing to commit".
+	gitOutput(t, dir, "commit", "--allow-empty", "-qam", "simulate legacy layout")
+}
+
+// arc stats, in a graph left in the pre-034 layout
+// Scenario 4.1 from specs/034-serve-dir-public-state/spec.md (FR-018,
+// FR-020): the command still works, and says nothing at all about the
+// layout — no detection, no warning, no conversion.
+func TestLegacyLayoutGraphStillWorksSilently(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "graph")
+	out, err := sut(NewInitCmd(), []string{dir})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	fabricateLegacyLayout(t, dir)
+	chdir(t, dir)
+
+	stdout, stderr, err := sutCaptureStderr(t, graph.NewStatsCmd(), nil)
+
+	it.Then(t).Should(it.Nil(err))
+	for _, stream := range []string{stdout, stderr} {
+		it.Then(t).
+			Should(it.True(!strings.Contains(stream, "legacy"))).
+			Should(it.True(!strings.Contains(stream, "migrat"))).
+			Should(it.True(!strings.Contains(stream, ".arc/.gitignore")))
+	}
+}
+
+// the three migration commands from README, applied to a legacy graph
+// Scenario 4.2 from specs/034-serve-dir-public-state/spec.md (FR-019): a
+// fresh clone of the migrated repository is a usable graph.
+func TestLegacyLayoutMigrationYieldsUsableClone(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "graph")
+	out, err := sut(NewInitCmd(), []string{dir})
+	it.Then(t).ShouldNot(it.Error(out, err))
+
+	fabricateLegacyLayout(t, dir)
+
+	// a clone of the UNMIGRATED graph is not a graph — the failure this
+	// migration exists to remove.
+	_, statErr := os.Stat(filepath.Join(cloneOf(t, dir), ".arc"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+
+	// the documented migration, verbatim (research.md D7)
+	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(dir, ".arc", ".gitignore"), []byte("cache/\n"), 0o644)))
+	it.Then(t).Should(it.Nil(os.MkdirAll(filepath.Join(dir, ".arc", "cache"), 0o755)))
+	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(dir, ".arc", "cache", ".gitignore"), []byte("*\n"), 0o644)))
+	gitOutput(t, dir, "add", ".arc/.gitkeep", ".arc/.gitignore")
+	gitOutput(t, dir, "commit", "-qm", "graph: publish .arc state")
+
+	clone := cloneOf(t, dir)
+	assertStateDir(t, clone)
+
+	chdir(t, clone)
+	out, err = sut(graph.NewStatsCmd(), nil)
+	it.Then(t).ShouldNot(it.Error(out, err))
+}
+
+// arc init --skip-git-init <repo>/notes, into a repo whose rules ignore .arc/
+// specs/034-serve-dir-public-state FR-017 (quickstart V6): the refusal is
+// upfront and names the consequence, rather than surfacing late as a raw
+// `git add` failure once the layout is already on disk.
+func TestInitSkipGitRefusesWhenHostRepoIgnoresArcState(t *testing.T) {
+	repo := newHostRepo(t)
+	it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(repo, ".gitignore"), []byte(".arc/\n"), 0o644)))
+	gitOutput(t, repo, "add", "-A")
+	gitOutput(t, repo, "commit", "-qm", "host: ignore .arc")
+
+	out, err := sut(initCmdSkipGit(t), []string{filepath.Join(repo, "notes")})
+
+	message := errorMessage(t, out, err)
+	it.Then(t).
+		Should(it.String(message).Contain("/notes/.arc")).
+		Should(it.String(message).Contain("a clone would not be a usable graph"))
+
+	// FR-005: the refusal precedes every write, so the target does not
+	// exist and the host repository is untouched — index included.
+	_, statErr := os.Stat(filepath.Join(repo, "notes"))
+	it.Then(t).Should(it.True(os.IsNotExist(statErr)))
+	it.Then(t).Should(it.Equal("", strings.TrimSpace(gitOutput(t, repo, "status", "--porcelain"))))
+}
+
+// The same refusal for a directory-only rule spelled without the trailing
+// slash, and for one reached through a broader pattern — the guard must not
+// depend on how the host happened to write the rule.
+func TestInitSkipGitRefusesIgnoredArcStateForEveryRuleSpelling(t *testing.T) {
+	for _, rule := range []string{".arc/\n", ".arc\n", "**/.arc/\n"} {
+		repo := newHostRepo(t)
+		it.Then(t).Should(it.Nil(os.WriteFile(filepath.Join(repo, ".gitignore"), []byte(rule), 0o644)))
+		gitOutput(t, repo, "add", "-A")
+		gitOutput(t, repo, "commit", "-qm", "host: ignore arc state")
+
+		out, err := sut(initCmdSkipGit(t), []string{filepath.Join(repo, "notes")})
+
+		it.Then(t).Should(it.True(errors.Is(err, ctrlservice.ErrStateIgnored)))
+		it.Then(t).Should(it.String(errorMessage(t, out, err)).Contain("a clone would not be a usable graph"))
 	}
 }

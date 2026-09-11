@@ -321,12 +321,29 @@ func buildServer(ctx context.Context, dir string) (*mcp.Server, error) {
 	return server, nil
 }
 
+// resolveGraphDir turns arc serve's optional positional argument into the
+// absolute graph directory the whole session answers from (data-model.md
+// §5). filepath.Abs resolves a relative argument against the process
+// working directory and returns an absolute one unchanged, so both forms
+// reach buildServer identically.
+//
+// It is local to this file rather than shared with ctrl.resolveInitDir:
+// exporting five lines of path arithmetic across two command packages is
+// worse coupling than the duplication, and batch.go already resolves its
+// own argument inline (research D1).
+func resolveGraphDir(args []string) (string, error) {
+	if len(args) == 1 {
+		return filepath.Abs(args[0])
+	}
+	return filepath.Abs(".")
+}
+
 // NewServeCmd builds the `arc serve` command.
 func NewServeCmd() *cobra.Command {
 	var httpAddr string
 
 	cmd := &cobra.Command{
-		Use:   "serve",
+		Use:   "serve [<dir>]",
 		Short: "Run an MCP server exposing the graph to LLM clients.",
 		Long: `
 arc serve starts a Model Context Protocol (MCP) server exposing eight
@@ -349,12 +366,26 @@ A bare port or :port binds 127.0.0.1 only; an explicit host binds exactly
 that host. serve is strictly read-only and never modifies the graph or its
 git history.
 
+<dir> names the graph to serve. Given, it is resolved against the current
+directory when relative and used verbatim when absolute, and it wins over
+the current directory even when that is itself a graph. Omitted, the
+current directory is the graph — unchanged from before. A <dir> that does
+not exist, is not a directory, cannot be read, or holds no initialized
+graph is refused before any transport is opened. The argument applies
+identically over stdio and --http, which is what lets an MCP client
+configuration name the graph directly:
+
+	{"mcpServers": {"arc": {"command": "arc",
+	  "args": ["serve", "/abs/path/to/graph"]}}}
+
 See more info https://github.com/fogfish/arcnet-cli`,
 		Example: `
 	arc serve
+	arc serve ~/graphs/notes
 	arc serve --http :8080
+	arc serve --http :8080 ~/graphs/notes
 	arc serve --http 0.0.0.0:8080`,
-		Args:          cobra.NoArgs,
+		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -365,7 +396,7 @@ See more info https://github.com/fogfish/arcnet-cli`,
 			ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
-			dir, err := filepath.Abs(".")
+			dir, err := resolveGraphDir(args)
 			if err != nil {
 				return err
 			}

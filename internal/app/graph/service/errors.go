@@ -22,6 +22,21 @@ var errNoCause = errors.New("")
 
 const (
 	ErrNotAGraph = faults.Safe1[string]("%s is not an initialized graph")
+
+	// ErrGraphDirNotFound/ErrGraphDirNotDirectory/ErrGraphDirUnreadable
+	// classify the graph root ITSELF, before ErrNotAGraph is allowed to
+	// speak (specs/034-serve-dir-public-state, research D2). They exist
+	// because fsys.Local.Mount performs no existence check by design, so a
+	// path arc serve was handed that does not exist, is a file, or cannot
+	// be read used to reach guardIsGraph and be reported as "is not an
+	// initialized graph" — technically true and actively unhelpful, which
+	// is what Constitution XII forbids. ErrNotAGraph keeps its own, now
+	// exact, meaning: a directory that exists, is readable, and simply has
+	// no .arc/.
+	ErrGraphDirNotFound     = faults.Safe1[string]("%s does not exist")
+	ErrGraphDirNotDirectory = faults.Safe1[string]("%s is not a directory")
+	ErrGraphDirUnreadable   = faults.Safe1[string]("%s cannot be read")
+
 	ErrPatchRead = faults.Safe1[string]("failed to read patch file %s")
 	ErrNodeWrite = faults.Safe1[string]("failed to write %s")
 	// ErrNodeRead reports a rejection raised while READING an existing node

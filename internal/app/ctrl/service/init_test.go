@@ -222,10 +222,14 @@ func TestInitSuccessWritesLayoutAndCommits(t *testing.T) {
 	it.Then(t).Should(it.True(store.written["_schema/Class/.gitkeep"]))
 	it.Then(t).Should(it.True(store.written[".arc/.gitkeep"]))
 	// research.md D4: the exclusion rule lives inside .arc/, not at the
-	// graph root, in BOTH modes.
+	// graph root, in BOTH modes. specs/034-serve-dir-public-state research
+	// D3: what it excludes is .arc/cache/, not all of .arc/ — the change
+	// that makes a clone of a graph a graph.
 	it.Then(t).
 		Should(it.True(store.written[".arc/.gitignore"])).
-		Should(it.Equal("*\n", string(store.content[".arc/.gitignore"]))).
+		Should(it.Equal("cache/\n", string(store.content[".arc/.gitignore"]))).
+		Should(it.True(store.written[".arc/cache/.gitignore"])).
+		Should(it.Equal("*\n", string(store.content[".arc/cache/.gitignore"]))).
 		Should(it.True(!store.written[".gitignore"]))
 	it.Then(t).Should(it.Equal("/target", result.Repository))
 	it.Then(t).
@@ -233,7 +237,11 @@ func TestInitSuccessWritesLayoutAndCommits(t *testing.T) {
 		// FR-013/FR-014: staged and committed by explicit pathspec, never
 		// "everything under the graph root".
 		Should(it.True(strings.HasPrefix(vcs.Calls[2], "StagePaths:/target:Source/.gitkeep,"))).
-		Should(it.True(strings.HasPrefix(vcs.Calls[3], "CommitPaths:/target:graph(init): empty knowledge graph:Source/.gitkeep,")))
+		Should(it.True(strings.HasPrefix(vcs.Calls[3], "CommitPaths:/target:graph(init): empty knowledge graph:Source/.gitkeep,"))).
+		// specs/034-serve-dir-public-state: the pathspec now ENDS with the
+		// .arc/ state files and still never names .arc/cache/.
+		Should(it.True(strings.HasSuffix(vcs.Calls[2], ",.arc/.gitkeep,.arc/.gitignore"))).
+		Should(it.True(!strings.Contains(vcs.Calls[2], ".arc/cache")))
 }
 
 func TestInitRollsBackOnCommitFailureWithoutCreatedRoot(t *testing.T) {
@@ -246,6 +254,7 @@ func TestInitRollsBackOnCommitFailureWithoutCreatedRoot(t *testing.T) {
 	it.Then(t).ShouldNot(it.Nil(err))
 	it.Then(t).Should(it.Seq(store.removed).Contain(
 		"Source/.gitkeep", "_schema/Class/.gitkeep", ".arc/.gitkeep", ".arc/.gitignore",
+		".arc/cache/.gitignore",
 	))
 	it.Then(t).ShouldNot(it.Seq(store.removed).Contain(".gitignore"))
 }
@@ -470,13 +479,138 @@ func TestInitRollbackIsScopedToTheFootprint(t *testing.T) {
 
 	it.Then(t).ShouldNot(it.Nil(err))
 	it.Then(t).Should(it.Seq(store.removed).Contain(
-		"Source/.gitkeep", ".arc/.gitkeep", ".arc/.gitignore",
+		"Source/.gitkeep", ".arc/.gitkeep", ".arc/.gitignore", ".arc/cache/.gitignore",
 		// the directories this run created, removed deepest-first
-		"_schema/Class", "_schema", ".arc",
+		"_schema/Class", "_schema", ".arc/cache", ".arc",
 	))
 	for _, removed := range store.removed {
 		it.Then(t).
 			Should(it.True(removed != "keep.txt")).
 			Should(it.True(removed != "notes"))
 	}
+}
+
+// ---------------------------------------------------------------------------
+// specs/034-serve-dir-public-state — .arc/ becomes version-controlled and
+// .arc/cache/ becomes the one part that never is.
+// ---------------------------------------------------------------------------
+
+// research D3/D4: .arc/.gitkeep and .arc/.gitignore now enter the commit's
+// pathspec, and only the self-ignoring .arc/cache/.gitignore stays out —
+// naming an ignored path is the case `git add` rejects outright.
+func TestInitFootprintTracksArcStateButNotCache(t *testing.T) {
+	withStubbedResolve(t, false, nil)
+	store := newFakeStore()
+	vcs := &mock.VCS{CommitHash: "abc123"}
+
+	_, err := Init(context.Background(), fakeMounter{store: store}, vcs, "/target", nil, kernel.InitOpts{})
+	it.Then(t).Should(it.Nil(err))
+
+	staged := strings.TrimPrefix(vcs.Calls[2], "StagePaths:/target:")
+	tracked := strings.Split(staged, ",")
+
+	it.Then(t).Should(it.Seq(tracked).Contain(".arc/.gitkeep", ".arc/.gitignore"))
+	for _, path := range tracked {
+		it.Then(t).Should(it.True(!strings.HasPrefix(path, arcCacheDir)))
+	}
+}
+
+// data-model.md §1: the rule that survives a clone is `cache/` in the
+// tracked parent; the self-ignoring `*` lives in the child.
+func TestInitWritesSplitIgnoreRules(t *testing.T) {
+	withStubbedResolve(t, false, nil)
+	store := newFakeStore()
+
+	_, err := Init(context.Background(), fakeMounter{store: store}, &mock.VCS{CommitHash: "abc123"}, "/target", nil, kernel.InitOpts{})
+	it.Then(t).Should(it.Nil(err))
+
+	it.Then(t).
+		Should(it.True(store.written[arcIgnorePath])).
+		Should(it.Equal("cache/\n", string(store.content[arcIgnorePath]))).
+		Should(it.True(store.written[arcCacheIgnorePath])).
+		Should(it.Equal("*\n", string(store.content[arcCacheIgnorePath])))
+
+	// FR-016: still no ignore rule anywhere outside .arc/
+	for path := range store.written {
+		if strings.HasSuffix(path, ".gitignore") {
+			it.Then(t).Should(it.True(strings.HasPrefix(path, arcStateDir+"/")))
+		}
+	}
+}
+
+// data-model.md §2: absentDirs picks .arc/cache up for free and sorts it
+// deepest-first, so rollback removes it before .arc/.
+func TestInitRollbackRemovesCacheDirBeforeStateDir(t *testing.T) {
+	withStubbedResolve(t, false, nil)
+	store := newFakeStore()
+	vcs := &mock.VCS{CommitErr: errors.New("commit failed")}
+
+	_, err := Init(context.Background(), fakeMounter{store: store}, vcs, "/target", nil, kernel.InitOpts{})
+	it.Then(t).ShouldNot(it.Nil(err))
+
+	it.Then(t).Should(it.Seq(store.removed).Contain(arcCacheIgnorePath))
+
+	cache, state := indexOf(store.removed, arcCacheDir), indexOf(store.removed, arcStateDir)
+	it.Then(t).
+		Should(it.True(cache >= 0)).
+		Should(it.True(state >= 0)).
+		Should(it.True(cache < state))
+}
+
+func indexOf(paths []string, want string) int {
+	for i, path := range paths {
+		if path == want {
+			return i
+		}
+	}
+	return -1
+}
+
+// FR-017, guard R4: --skip-git-init into a repository whose ignore rules
+// exclude the graph's .arc/ is refused before resolveLocalRoot runs, so the
+// target is never touched.
+func TestInitGuardStateIgnored(t *testing.T) {
+	withStubbedResolve(t, false, nil)
+	store := newAbsentFakeStore()
+	vcs := &mock.VCS{}
+
+	_, err := Init(context.Background(), fakeMounter{store: store}, vcs, "/repo/notes", nil,
+		kernel.InitOpts{ParentRepo: "/repo", SkipGitInit: true, StateIgnored: true})
+
+	it.Then(t).Should(it.True(errors.Is(err, ErrStateIgnored)))
+	it.Then(t).Should(it.String(err.Error()).Contain("/repo/notes/.arc"))
+	assertNoSideEffects(t, store, vcs)
+}
+
+// data-model.md §3: R3 keeps priority over R4 — a wholly ignored target is
+// the more fundamental complaint and must still be the one reported.
+func TestInitGuardTargetIgnoredWinsOverStateIgnored(t *testing.T) {
+	withStubbedResolve(t, false, nil)
+	store := newAbsentFakeStore()
+
+	_, err := Init(context.Background(), fakeMounter{store: store}, &mock.VCS{}, "/repo/private/g", nil,
+		kernel.InitOpts{ParentRepo: "/repo", SkipGitInit: true, TargetIgnored: true, StateIgnored: true})
+
+	it.Then(t).
+		Should(it.True(errors.Is(err, ErrTargetIgnored))).
+		Should(it.True(!errors.Is(err, ErrStateIgnored)))
+}
+
+// FR-005: R4 joins the guards that precede root creation.
+func TestInitStateIgnoredGuardRunsBeforeRootIsResolved(t *testing.T) {
+	resolved := false
+	originalResolve := resolveLocalRoot
+	originalRemove := removeLocalRoot
+	resolveLocalRoot = func(string) (bool, error) { resolved = true; return false, nil }
+	removeLocalRoot = func(string) error { return nil }
+	t.Cleanup(func() {
+		resolveLocalRoot = originalResolve
+		removeLocalRoot = originalRemove
+	})
+
+	_, err := Init(context.Background(), fakeMounter{store: newAbsentFakeStore()}, &mock.VCS{}, "/repo/notes", nil,
+		kernel.InitOpts{ParentRepo: "/repo", SkipGitInit: true, StateIgnored: true})
+
+	it.Then(t).Should(it.True(errors.Is(err, ErrStateIgnored)))
+	it.Then(t).Should(it.True(!resolved))
 }

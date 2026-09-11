@@ -79,8 +79,35 @@ func resolveRepoContext(ctx context.Context, probe repoProbe, mounter fsys.Mount
 	}
 
 	opts.TargetIgnored, err = probe.IsIgnored(ctx, repo, filepath.ToSlash(rel))
+	if err != nil {
+		return opts, err
+	}
+
+	// The graph's .arc/ is asked about separately (FR-017): a rule can
+	// exclude the state directory while leaving the graph's content
+	// perfectly committable, and that combination produces a commit whose
+	// clone is not a graph.
+	//
+	// The question is asked about the state MARKER FILE, not about the
+	// .arc/ directory. A directory-only pattern — `.arc/`, the very rule a
+	// user is most likely to have written — matches a path only when git
+	// knows that path is a directory, and nothing exists yet at probe time
+	// (FR-005 requires refusing before any write), so check-ignore on a
+	// bare `<rel>/.arc` answers "not ignored" and the guard would miss
+	// exactly the case it exists for. Naming the file init must actually
+	// stage is both correct for directory-only patterns and strictly more
+	// sensitive: any rule that excludes the directory excludes what is
+	// under it too.
+	opts.StateIgnored, err = probe.IsIgnored(ctx, repo, filepath.ToSlash(filepath.Join(rel, arcStateMarker)))
 	return opts, err
 }
+
+// arcStateMarker is the graph-relative path of the state directory's
+// marker file, mirroring internal/app/ctrl/service's own constant. It is
+// duplicated rather than exported because it is used here only to phrase a
+// question to git, not to decide anything — every decision taken from the
+// answer still belongs to the service (research.md D6).
+const arcStateMarker = ".arc/.gitkeep"
 
 // nearestExistingDir walks up from dir to the first directory that exists,
 // returning "" only at a filesystem root that somehow does not. The walk
@@ -154,9 +181,14 @@ func NewInitCmd() *cobra.Command {
 		Short: "Initialize a new, empty knowledge graph.",
 		Long: `
 arc init creates the canonical folder layout, the _meta/ registry stubs, the
-.arc/ local state directory with its own rule excluding it from version
-control, and a single initial git commit — a ready-to-use empty knowledge
-graph.
+.arc/ state directory, and a single initial git commit — a ready-to-use
+empty knowledge graph.
+
+.arc/ is version controlled, so a clone of the repository is itself a usable
+graph and .arc/config.yml travels with it. The one part kept out of version
+control is .arc/cache/, reserved for machine-local state that any checkout
+can regenerate; it carries its own rule and arc writes no ignore rule
+anywhere outside .arc/.
 
 By default the target must not be inside an existing git repository: arc
 refuses rather than nesting a new repository inside yours. Pass

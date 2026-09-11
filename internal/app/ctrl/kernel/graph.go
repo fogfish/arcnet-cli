@@ -73,6 +73,17 @@ type InitOpts struct {
 	// TargetIgnored reports whether the parent repository's ignore rules
 	// exclude the target. Meaningful only when ParentRepo is non-empty.
 	TargetIgnored bool
+
+	// StateIgnored reports whether the parent repository's ignore rules
+	// exclude the graph's .arc/ state directory. Meaningful only when
+	// ParentRepo is non-empty.
+	//
+	// It is a separate question from TargetIgnored because the answers
+	// differ: a repository rule naming .arc/ leaves the graph's content
+	// perfectly committable while making the commit useless — the clone
+	// would carry every node and none of the marker that says those nodes
+	// are a graph (specs/034-serve-dir-public-state, research D5).
+	StateIgnored bool
 }
 
 // InitResult is the domain value component.go's Init returns to
