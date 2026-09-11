@@ -118,7 +118,7 @@ arc init my-graph
 cd my-graph
 ```
 
-This is a complete, offline bootstrap: the canonical folder layout, a versioned `_schema/` seeded with the entire ARCNET-CORE built-in vocabulary (one document per type and per predicate), the `.arc/` state directory with its own rule keeping it out of version control, and the initial git commit.
+This is a complete, offline bootstrap: the canonical folder layout, a versioned `_schema/` seeded with the entire ARCNET-CORE built-in vocabulary (one document per type and per predicate), the `.arc/` state directory — version-controlled, so a clone of the repository *is* a graph — and the initial git commit. The one part `.arc/` keeps out of git is `.arc/cache/`, which is reserved for machine-local, regenerable state.
 
 **Adding a graph to a project you already version.** `arc init` refuses to run inside an existing git repository rather than nesting a new one inside yours; it names the repository it found and the flag that overrides the refusal:
 
@@ -139,7 +139,8 @@ my-graph/
 ├── _schema/
 │   ├── Class/           # one document per node type
 │   └── Property/        # one document per predicate, with its merge policy
-├── .arc/                # local state, excluded from git by its own .gitignore
+├── .arc/                # graph state, version-controlled — a clone is a graph
+│   └── cache/           # machine-local state, excluded from git by its own .gitignore
 └── .git/
 ```
 
@@ -202,6 +203,7 @@ arc stats --verbose
 
 ```bash
 arc serve --http :8080
+arc serve ~/graphs/my-graph        # or name the graph, from anywhere
 ```
 
 An MCP server over stdio, exposing your graph read-only to any MCP client.
@@ -212,7 +214,7 @@ An MCP server over stdio, exposing your graph read-only to any MCP client.
 
 ## Usage
 
-`arc` operates on the graph in the **current working directory** — the folder containing `.arc/`. Run commands from the graph root.
+`arc` operates on the graph in the **current working directory** — the folder containing `.arc/` — so run commands from the graph root. The one exception is `arc serve`, which takes an optional `<dir>` naming the graph to serve, so an agent can be configured to reach a graph without changing directory first.
 
 ```bash
 # bootstrap
@@ -235,7 +237,7 @@ arc lint rules                            # list every rule --skip can name
 arc stats [--verbose]                     # report the graph's shape and health
 
 # serve
-arc serve [--http <addr>]                 # MCP server over stdio or HTTP
+arc serve [<dir>] [--http <addr>]         # MCP server over stdio or HTTP
 ```
 
 Use `arc help <command>` for details.
@@ -318,17 +320,31 @@ Every predicate declares its merge behaviour from the closed set of six — `imm
 ### Serving the graph to an LLM agent
 
 ```bash
-arc serve                          # stdio, for a local MCP client
+arc serve                          # stdio, the current directory is the graph
+arc serve ~/graphs/notes           # name the graph, from any working directory
 arc serve --http :8080             # Streamable HTTP/SSE, loopback only
+arc serve --http :8080 ~/graphs/notes
 arc serve --http 0.0.0.0:8080      # bind explicitly
 ```
 
 A bare port or `:port` binds `127.0.0.1` only; an explicit host binds exactly that host. The server is strictly read-only and never modifies the graph or its git history.
 
+The optional `<dir>` names the graph to serve. Relative paths resolve against the current directory; an absolute path is used as given, and wins even when the current directory is itself a graph. A path that does not exist, is not a directory, cannot be read, or holds no graph is refused before any transport is opened — nothing ever starts listening on a mistake.
+
 Point an MCP client at it — for example, Claude Code:
 
 ```bash
-claude mcp add arcnet -- arc serve
+claude mcp add arcnet -- arc serve ~/graphs/notes
+```
+
+The agent host picks the working directory it launches the server in, and it is rarely your graph — so name the graph by absolute path in the configuration rather than relying on where the process happens to start:
+
+```json
+{
+  "mcpServers": {
+    "arc": { "command": "arc", "args": ["serve", "/abs/path/to/graph"] }
+  }
+}
 ```
 
 Eight read-only tools are exposed:
@@ -343,6 +359,30 @@ Eight read-only tools are exposed:
 | `node_backlinks`   | Every relation targeting a node, as `{source, predicate}` rows                                                    |
 | `subgraph_get`     | The resolved subgraph around a seed, to a hop depth, filterable                                                   |
 | `context_retrieve` | Free-text query + attribute match + one-hop expansion, ranked and truncated                                       |
+
+### Migrating a graph created before `.arc/` was version-controlled
+
+Earlier releases excluded the whole of `.arc/` from git, so a clone of such a graph carries the content but not the marker that says it *is* a graph — every `arc` command in the clone refuses.
+
+**An unmigrated graph keeps working.** `arc` never reads what `.arc/.gitignore` says, only whether `.arc/` exists, so nothing is rejected, no warning is printed, and nothing is converted for you. The consequence of not migrating is narrow and specific: **clones of your repository are not usable graphs**, and neither is `.arc/config.yml` shared with anyone who clones it. If you only ever use the graph on one machine, you can skip this.
+
+To migrate, run these three commands in the graph root, in order:
+
+```bash
+# 1. narrow the exclusion from all of .arc/ to just the cache
+printf 'cache/\n' > .arc/.gitignore
+
+# 2. create the cache directory with its own self-ignoring rule
+mkdir -p .arc/cache && printf '*\n' > .arc/cache/.gitignore
+
+# 3. publish the state directory
+git add .arc/.gitkeep .arc/.gitignore && git commit -m "graph: publish .arc state"
+```
+
+Verify with `git ls-files .arc` — it should list `.arc/.gitignore` and `.arc/.gitkeep` — and then `git clone` the repository somewhere and run `arc stats` in the clone.
+
+The migration is reversible: `git revert` the commit from step 3, or `git rm --cached -r .arc` and restore `.arc/.gitignore` to `*`.
+
 
 Every connecting client is told at session start to call `schema` first.
 

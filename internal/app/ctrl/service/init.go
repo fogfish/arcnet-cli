@@ -26,18 +26,38 @@ const (
 	arcStateDir       = ".arc"
 	arcStateMarker    = ".arc/.gitkeep"
 
-	// arcIgnorePath excludes the graph's local state from version control
-	// from INSIDE .arc/ rather than from a .gitignore at the graph root.
-	// A `*` rule there excludes that directory's entire contents including
-	// the rule file itself, so nothing under .arc/ is ever tracked and arc
-	// creates no file it does not own — which is what lets a graph be
-	// added to a project that already has ignore rules of its own, without
-	// arc reading, creating or appending to them (FR-016, FR-017,
-	// research.md D4, Constitution XI). Applied identically in both modes:
-	// the observable outcome SC-008 protects — local state untracked, a
-	// clean working tree after init — is unchanged for a standalone graph.
+	// arcIgnorePath is the graph's own ignore rule, and it lives INSIDE
+	// .arc/ rather than in a .gitignore at the graph root: arc creates no
+	// ignore file it does not own, which is what lets a graph be added to
+	// a project that already has rules of its own, without arc reading,
+	// creating or appending to them (FR-016, research.md D4,
+	// Constitution XI).
+	//
+	// Its content is `cache/`, not `*`. A `*` rule excluded all of .arc/ —
+	// including the marker that says "this is a graph" and config.yml —
+	// so a clone of a graph was not a graph and a tuned configuration
+	// could not be shared (specs/034-serve-dir-public-state, research D3).
+	// `cache/` excludes only the machine-local part, and, not being
+	// self-ignoring, it is itself tracked and therefore present in every
+	// checkout — which is what keeps the exclusion true in a clone.
 	arcIgnorePath    = ".arc/.gitignore"
-	arcIgnoreContent = "*\n"
+	arcIgnoreContent = "cache/\n"
+
+	// arcCacheDir is the reserved home for machine-local state:
+	// reproducible, disposable, never tracked. This feature deliberately
+	// gives it no producer (FR-015) — it reserves the location so the
+	// pressure to re-exclude all of .arc/ does not return the moment
+	// derived state is introduced.
+	//
+	// Its own `*` rule ignores the rule file itself, so git cannot track
+	// it and the directory is absent in a fresh clone (data-model I6).
+	// That is deliberate and harmless: the load-bearing rule is `cache/`
+	// in the tracked parent above, which IS present in a clone. This file
+	// is belt-and-braces — it still holds if .arc/.gitignore is deleted,
+	// and it documents the directory's purpose in situ.
+	arcCacheDir           = ".arc/cache"
+	arcCacheIgnorePath    = ".arc/cache/.gitignore"
+	arcCacheIgnoreContent = "*\n"
 )
 
 // errNoCause is passed to faults.SafeN.With for guard conditions that are
@@ -78,18 +98,25 @@ type footprint struct {
 }
 
 // Tracked returns the paths that belong in the commit: everything except
-// the .arc/ local state, which arcIgnorePath deliberately excludes from
-// version control.
+// what lives under .arc/cache/, which arcCacheIgnorePath and the parent's
+// own `cache/` rule both exclude from version control.
 //
 // The distinction is forced by git, not merely tidy. `git add -A -- .`
 // skips ignored paths silently; `git add -- <path>` NAMED an ignored path
 // fails outright ("The following paths are ignored by one of your
 // .gitignore files"), so the pathspec that makes FR-013/FR-014 true must
 // carry only what is meant to be tracked.
+//
+// The excluded prefix is .arc/cache/ rather than all of .arc/
+// (specs/034-serve-dir-public-state, research D4): .arc/.gitkeep and
+// .arc/.gitignore are now tracked deliberately, so that a clone of a graph
+// IS a graph and .arc/config.yml travels with the repository. What must
+// stay out is precisely the self-ignoring path — naming it in the pathspec
+// is the case git rejects outright.
 func (f footprint) Tracked() []string {
 	tracked := make([]string, 0, len(f.Files))
 	for _, path := range f.Files {
-		if path == arcStateDir || strings.HasPrefix(path, arcStateDir+"/") {
+		if path == arcCacheDir || strings.HasPrefix(path, arcCacheDir+"/") {
 			continue
 		}
 		tracked = append(tracked, path)
@@ -201,10 +228,11 @@ func Init(ctx context.Context, mounter fsys.Mounter, vcs port.VCS, dir string, s
 }
 
 // guardRepositoryContext applies the two rules that depend only on the
-// repository facts cmd resolved — R1 and R2 of data-model.md — plus R3,
-// which asks whether the host project would exclude the graph from version
-// control. None of them reads the filesystem, so all three can and must
-// refuse before anything exists to clean up.
+// repository facts cmd resolved — R1 and R2 of data-model.md — plus R3 and
+// R4, which ask whether the host project would exclude the graph, or the
+// graph's own state directory, from version control. None of them reads
+// the filesystem, so all four can and must refuse before anything exists
+// to clean up.
 func guardRepositoryContext(dir string, opts kernel.InitOpts) error {
 	switch {
 	// R1 (FR-004, FR-006): nesting a repository inside a repository is the
@@ -223,6 +251,14 @@ func guardRepositoryContext(dir string, opts kernel.InitOpts) error {
 	// nothing, and the commit fails with "nothing to commit".
 	case opts.SkipGitInit && opts.TargetIgnored:
 		return ErrTargetIgnored.With(errNoCause, dir)
+
+	// R4 (specs/034-serve-dir-public-state FR-017): the same argument as
+	// R3, one level down. Now that .arc/.gitkeep must enter the commit, a
+	// host rule naming .arc/ makes StagePaths fail after the layout is on
+	// disk, rolling back with a raw git error. Placed last so a wholly
+	// ignored target — the more fundamental complaint — still wins.
+	case opts.SkipGitInit && opts.StateIgnored:
+		return ErrStateIgnored.With(errNoCause, dir)
 	}
 
 	return nil
@@ -336,7 +372,7 @@ func layoutPaths(layout kernel.ArcNetCoreLayout) []string {
 	sort.Strings(seeded)
 	paths = append(paths, seeded...)
 
-	return append(paths, arcStateMarker, arcIgnorePath)
+	return append(paths, arcStateMarker, arcIgnorePath, arcCacheIgnorePath)
 }
 
 // writeLayout writes every path layoutPaths describes and returns the
@@ -412,6 +448,9 @@ func contentFor(layout kernel.ArcNetCoreLayout, path string) string {
 	}
 	if path == arcIgnorePath {
 		return arcIgnoreContent
+	}
+	if path == arcCacheIgnorePath {
+		return arcCacheIgnoreContent
 	}
 	return ""
 }

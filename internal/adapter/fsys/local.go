@@ -45,10 +45,24 @@ func (l *local) FoldsCase() bool {
 }
 
 // probeFoldsCase writes a throwaway file and asks whether the location
-// resolves it under the opposite letter case. It prefers the graph's own
-// .arc/ (already gitignored, so a probe file that somehow outlives a crash
-// is never mistaken for graph content) and falls back to the root itself
-// when there is no .arc/ — a root mounted before "arc init" has run.
+// resolves it under the opposite letter case. It prefers .arc/cache/, then
+// .arc/, then the root itself.
+//
+// The preference is about where a probe file that outlives a crash does no
+// harm. .arc/cache/ is the graph's machine-local, disposable area, and it
+// is the only part of .arc/ still excluded from version control — .arc/
+// itself is tracked now, so a leaked probe file there would show up in
+// git status and be committable (specs/034-serve-dir-public-state,
+// research D6).
+//
+// The fallback chain is load-bearing, not decorative. A fresh clone has no
+// .arc/cache/ at all: its only file ignores itself, so git cannot
+// materialise the directory (data-model I6). Without the fallback
+// os.CreateTemp would fail there and this function would return its
+// safeDefault of case-INSENSITIVE — wrong on Linux, and it would silently
+// change node-identity merge behaviour in every clone. Falling back to
+// .arc/ keeps the pre-034 behaviour exactly; falling back to the root
+// covers a root mounted before "arc init" has run.
 //
 // Stat is the right tool here and is not the "Stat trap" research.md D11
 // warns about: this asks whether a flipped-case name RESOLVES, which is an
@@ -61,13 +75,25 @@ func (l *local) FoldsCase() bool {
 // the one that refuses to fork one subject across two node files, and it
 // degrades to a merge plus a warning rather than to silent duplication
 // (spec 003 FR-026).
+// probeDir picks where probeFoldsCase writes its throwaway file: the
+// deepest of .arc/cache/, .arc/ and root that exists as a directory. It is
+// separated from the probe itself purely so the preference chain — whose
+// fallbacks only matter on a checkout that lacks the preferred directory —
+// is directly assertable.
+func probeDir(root string) string {
+	dir := root
+	for _, candidate := range []string{filepath.Join(root, ".arc"), filepath.Join(root, ".arc", "cache")} {
+		if stat, err := os.Stat(candidate); err == nil && stat.IsDir() {
+			dir = candidate
+		}
+	}
+	return dir
+}
+
 func probeFoldsCase(root string) bool {
 	const safeDefault = true
 
-	dir := filepath.Join(root, ".arc")
-	if stat, err := os.Stat(dir); err != nil || !stat.IsDir() {
-		dir = root
-	}
+	dir := probeDir(root)
 
 	probe, err := os.CreateTemp(dir, "arc-case-probe-*.tmp")
 	if err != nil {

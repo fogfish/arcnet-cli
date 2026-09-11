@@ -10,6 +10,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 
 	"github.com/fogfish/arcnet-cli/internal/adapter/fsys"
 	"github.com/fogfish/arcnet-cli/internal/core"
@@ -44,10 +46,43 @@ func NodeGet(ctx context.Context, mounter fsys.Mounter, dir, id string) (core.No
 // EnsureGraph mounts dir and confirms it is an initialized graph, without
 // reading or parsing any node — the preflight arc serve's RunE calls before
 // starting any transport (spec FR-004, research.md D3/D6).
+//
+// The root is classified before guardIsGraph is consulted, so a path that
+// does not exist, is a file, or cannot be read is named for what it is
+// rather than as "not an initialized graph" (specs/034-serve-dir-public-
+// state, research D2). arc stats and arc apply reach this through
+// filepath.Abs("."), which by construction exists and is a directory, so
+// the new branches are unreachable for them.
 func EnsureGraph(ctx context.Context, mounter fsys.Mounter, dir string) error {
 	store, err := mounter.Mount(dir)
 	if err != nil {
 		return err
 	}
+
+	if err := guardGraphRoot(store, dir); err != nil {
+		return err
+	}
+
 	return guardIsGraph(store, dir)
+}
+
+// guardGraphRoot answers whether dir is usable as a graph root at all, by
+// the one question fsys.Store already answers truthfully about it
+// (research D2). fsys.ResolveLocalRoot is deliberately NOT used here: it
+// CREATES the directory when absent, which would turn a typo'd path handed
+// to a read-only command into a new empty directory.
+func guardGraphRoot(store fsys.Store, dir string) error {
+	_, err := store.Stat(".")
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, fs.ErrNotExist):
+		return ErrGraphDirNotFound.With(err, dir)
+	case errors.Is(err, fs.ErrPermission):
+		return ErrGraphDirUnreadable.With(err, dir)
+	default:
+		// ENOTDIR and anything else: the path resolves to something, but
+		// not to a directory a graph could live in.
+		return ErrGraphDirNotDirectory.With(err, dir)
+	}
 }
